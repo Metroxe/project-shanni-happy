@@ -23,7 +23,7 @@ const KEY = 'shanni-happy:save';
 const BACKUP_KEY = 'shanni-happy:save:backup';
 // The save-compatibility version. WE bump this — not the deploy. See migrate()
 // and the "Bump rule" in CLAUDE.md before changing it.
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;   // bumped: scene replaced with the elevated zone-camera city (old x/z would misplace)
 
 const clampNum = (v, lo, hi, d) =>
   Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d;

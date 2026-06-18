@@ -1,57 +1,78 @@
 {
-  "sky": "e9f1ea",
-  "ground": "cfe1c2",
-  "fog": [18, 46],
-  "bounds": { "xmin": -12, "xmax": 12, "zmin": -12, "zmax": 6 },
-  "hills": [
-    { "color": "c2dcc0", "x": -7, "z": -22, "w": 30, "h": 8 },
-    { "color": "d8cfe6", "x": 9, "z": -24, "w": 36, "h": 10 }
+  "sky": "e7edf2",
+  "ground": "d7d2c8",
+  "fog": [28, 64],
+  "bounds": { "xmin": -28, "xmax": 28, "zmin": -40, "zmax": 6 },
+  "spawn": { "x": 0, "z": 4 },
+
+  "ramps": [
+    { "id": "stairs", "axis": "z", "z0": -2, "z1": -22, "yLo": 0, "yHi": 4.0,
+      "x0": -4, "x1": 4, "treads": 15, "color": "e7ded0" }
   ],
-  "clouds": [
-    { "x": -8, "z": -20, "y": 10, "s": 3.0 },
-    { "x": 7, "z": -22, "y": 12, "s": 3.6 },
-    { "x": 0, "z": -18, "y": 11, "s": 2.4 }
+  "plateau": { "color": "dcd6cb" },
+
+  "buildings": [
+    { "x": -6.5, "z": -8, "w": 5, "d": 28, "h": 14, "color": "cbd6e2", "base": 0 },
+    { "x":  6.5, "z": -8, "w": 5, "d": 28, "h": 14, "color": "d4cfe0", "base": 0 },
+
+    { "x":  -8.5, "z": -24, "w": 9, "d": 4, "h": 7,  "color": "e2dccf", "base": 4 },
+    { "x":   8.5, "z": -24, "w": 9, "d": 4, "h": 7,  "color": "dfd8e0", "base": 4 },
+    { "x": -17.5, "z": -24, "w": 9, "d": 4, "h": 9,  "color": "d6dee6", "base": 4 },
+    { "x":  17.5, "z": -24, "w": 9, "d": 4, "h": 9,  "color": "e0d4c6", "base": 4 },
+    { "x": -25,   "z": -24, "w": 6, "d": 4, "h": 11, "color": "d8d2cc", "base": 4 },
+    { "x":  25,   "z": -24, "w": 6, "d": 4, "h": 11, "color": "d8d2cc", "base": 4 },
+
+    { "x":   0, "z": -34, "w": 8, "d": 4, "h": 9,  "color": "d2dfd0", "base": 4 },
+    { "x":  -8, "z": -34, "w": 8, "d": 4, "h": 12, "color": "e0d2c4", "base": 4 },
+    { "x":   8, "z": -34, "w": 8, "d": 4, "h": 10, "color": "e2d6c2", "base": 4 },
+    { "x": -16, "z": -34, "w": 8, "d": 4, "h": 14, "color": "cfd9e4", "base": 4 },
+    { "x":  16, "z": -34, "w": 8, "d": 4, "h": 13, "color": "cbd6e2", "base": 4 },
+    { "x": -24, "z": -34, "w": 8, "d": 4, "h": 11, "color": "d6dee6", "base": 4 },
+    { "x":  24, "z": -34, "w": 8, "d": 4, "h": 12, "color": "e2d6c2", "base": 4 }
   ],
-  "props": [
-    { "sprite": "tree_pink", "x": -3, "z": -10, "h": 5.2 },
-    { "sprite": "tree_a", "x": -9, "z": -8, "h": 5.0 },
-    { "sprite": "tree_b", "x": 8, "z": -9, "h": 5.2 },
-    { "sprite": "house", "x": 4, "z": -11, "h": 4.8 },
-    { "sprite": "tree_a", "x": 11, "z": -4, "h": 4.6 },
-    { "sprite": "tree_b", "x": -11, "z": -2, "h": 4.6 },
-    { "sprite": "bush", "x": -5, "z": -3, "h": 1.5 },
-    { "sprite": "bush", "x": 3, "z": 0, "h": 1.5 },
-    { "sprite": "bush", "x": -2, "z": 2, "h": 1.4 },
-    { "sprite": "rock", "x": 1, "z": -5, "h": 1.0 },
-    { "sprite": "rock", "x": 6, "z": 2, "h": 1.1 },
-    { "sprite": "tree_a", "x": -7, "z": 4, "h": 4.2 },
-    { "sprite": "tree_b", "x": 9, "z": 3, "h": 4.4 }
+
+  "zones": [
+    { "id": "road_right",
+      "center": [16, -29], "axisDeg": 90, "halfLen": 14, "halfWid": 3.5,
+      "height": 4.2, "back": 10.0, "side": 0, "lookAhead": 3.0, "lookY": 1.2,
+      "fov": 50, "pitchBias": 0, "follow": 6.0, "blendIn": 0.85 },
+
+    { "id": "road_left",
+      "center": [-16, -29], "axisDeg": 270, "halfLen": 14, "halfWid": 3.5,
+      "height": 4.2, "back": 10.0, "side": 0, "lookAhead": 3.0, "lookY": 1.2,
+      "fov": 50, "pitchBias": 0, "follow": 6.0, "blendIn": 0.85 },
+
+    { "id": "stairs",
+      "center": [0, -13], "axisDeg": 0, "halfLen": 22, "halfWid": 4.5,
+      "height": 3.4, "back": 8.5, "side": 0, "lookAhead": 2.0, "lookY": 1.2,
+      "fov": 38, "pitchBias": -0.06, "follow": 5.5, "blendIn": 0.85 }
   ],
+
   "collectibles": [
-    { "id": "f1", "x": -4, "z": -6 }, { "id": "f2", "x": 2, "z": -7 }, { "id": "f3", "x": 7, "z": -2 },
-    { "id": "f4", "x": -8, "z": 1 }, { "id": "f5", "x": 0, "z": 3 }, { "id": "f6", "x": 5, "z": -4 }
+    { "id": "c1", "x": 0, "z": -12 }, { "id": "c2", "x": -18, "z": -29 }, { "id": "c3", "x": 18, "z": -29 }
   ],
+
   "npcs": [
     {
       "name": "Chrees",
       "tex": "out/chrees-paper.png",
-      "x": -4, "z": -1, "h": 3.9,
+      "x": -12, "z": -29, "h": 2.4,
       "dialogue": {
         "start": "g1",
         "nodes": {
-          "g1":   { "text": "Hey! You're the one bouncing around picking flowers, huh?", "next": "g2" },
-          "g2":   { "text": "Name's Chrees. I get my reps in out here — soft hills, good air.", "next": "g3" },
+          "g1":   { "text": "Hey! You're the one bouncing around this block, huh?", "next": "g2" },
+          "g2":   { "text": "Name's Chrees. I get my reps in down this street — good shade between the towers.", "next": "g3" },
           "g3":   { "speaker": "Shen", "text": "Nice to meet you, Chrees!", "next": "menu" },
           "menu": { "text": "So — what's on your mind?", "choices": [
-            { "label": "Got any training tips?",   "next": "t1" },
-            { "label": "Seen any flowers around?", "next": "f1" },
-            { "label": "Just saying hi.",          "next": "h1" },
-            { "label": "I'd better get going.",    "next": "bye" }
+            { "label": "Got any training tips?",     "next": "t1" },
+            { "label": "Seen any flowers around?",    "next": "f1" },
+            { "label": "Just saying hi.",             "next": "h1" },
+            { "label": "I'd better get going.",       "next": "bye" }
           ] },
           "t1":   { "text": "Easy — jump for joy after every win. Celebrating IS the rep.", "next": "t2" },
           "t2":   { "text": "Squash down low, then launch. Your whole body remembers the bounce.", "next": "menu" },
-          "f1":   { "text": "Pink ones bloom by the big tree, last I looked. Go get 'em, champ!", "next": "menu" },
-          "h1":   { "text": "Hi yourself! Always good to see a friendly face out here.", "next": "menu" },
+          "f1":   { "text": "Saw a pink one back up the stairs, and one down each road. Go get 'em, champ!", "next": "menu" },
+          "h1":   { "text": "Hi yourself! Always good to see a friendly face down here.", "next": "menu" },
           "bye":  { "text": "Catch you later. Stay bouncy! ✿" }
         }
       }
