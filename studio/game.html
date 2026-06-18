@@ -157,6 +157,12 @@ let npcs=[], nearNpc=null, talkCooldown=0;
 const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
 const smooth=t=>t<=0?0:t>=1?1:t*t*(3-2*t);
 const ease=(a,b,t)=>a+(b-a)*smooth(t);
+// framerate-independent exponential smoothing toward a target (tau in seconds).
+const damp=(cur,tgt,tau,dt)=>tgt+(cur-tgt)*Math.exp(-dt/Math.max(tau,1e-4));
+// smoothed display pose: tweens between animation states so rapid direction
+// flips / start-stop / mode changes ease instead of snapping. Height stays
+// crisp (jumps feel responsive); lean & squash ease a touch more.
+const D={yW:0,sx:1,sy:1,rot:0}; let Dinit=false;
 function joyPose(u){let y=0,sx=1,sy=1,rot=0,spark=0;
   if(u<0.2){const p=u/0.2;sy=ease(1,0.78,p);sx=ease(1,1.14,p);}
   else if(u<0.95){const p=(u-0.2)/0.75;y=Math.sin(p*Math.PI)*JOY_H;
@@ -245,13 +251,18 @@ function draw(dt){
   if(talkCooldown>0)talkCooldown-=dt;
   Dialogue.tick(dt);
   const q=pose(S);
+  if(!Dinit){D.yW=q.yW;D.sx=q.sx;D.sy=q.sy;D.rot=q.rot;Dinit=true;}
+  D.yW =damp(D.yW, q.yW, 0.035,dt);   // height: snappy so jumps stay responsive
+  D.sx =damp(D.sx, q.sx, 0.05, dt);   // squash/stretch: light easing
+  D.sy =damp(D.sy, q.sy, 0.05, dt);
+  D.rot=damp(D.rot,q.rot,0.09, dt);   // lean: eased most → direction flips swing
   shen.position.set(S.x,GROUND_EPS,S.z);
-  mesh.position.y=SHEN_H/2+q.yW; shen.scale.set(q.sx,q.sy,1); shen.rotation.z=q.rot;
-  const k=clamp(q.yW/2.0,0,1);
+  mesh.position.y=SHEN_H/2+D.yW; shen.scale.set(D.sx,D.sy,1); shen.rotation.z=D.rot;
+  const k=clamp(D.yW/2.0,0,1);
   shadow.position.set(S.x,GROUND_EPS,S.z); const ss=1-0.5*k; shadow.scale.set(ss,ss,1);
   shadow.material.opacity=(1-0.55*k);
   sparkles.forEach((sp,i)=>{ if(q.spark<=0){sp.visible=false;return;} sp.visible=true;
-    const[ox,oy]=SP_OFF[i]; sp.position.set(S.x+ox*0.7,SHEN_H/2+q.yW+oy*0.7+q.spark*0.5,S.z+0.3);
+    const[ox,oy]=SP_OFF[i]; sp.position.set(S.x+ox*0.7,SHEN_H/2+D.yW+oy*0.7+q.spark*0.5,S.z+0.3);
     const sc=0.55+0.5*Math.sin(q.spark*Math.PI);sp.scale.set(sc,sc,1);
     sp.material.opacity=Math.sin(q.spark*Math.PI);});
   flowers.forEach((f,i)=>{const c=S.collectibles[i]; f.visible=!c.got;
@@ -364,6 +375,7 @@ window.game={
   joy:()=>{aiJoy=true;return 'joy';},
   talk:()=>{ if(Dialogue.active){Dialogue.advance();return 'advance';} edgeTalk=true; return 'talk'; },
   dialogue:()=>({active:Dialogue.active,near:nearNpc&&nearNpc.data.name||null}),
+  disp:()=>({yW:+D.yW.toFixed(3),sx:+D.sx.toFixed(3),sy:+D.sy.toFixed(3),rot:+D.rot.toFixed(4)}),
   reset:()=>{S=initState(world.collectibles);return 'reset';},
   pause:()=>{playing=false;return 'paused';},play:()=>{playing=true;return 'playing';},
 };
