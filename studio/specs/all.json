@@ -1,0 +1,524 @@
+{
+  "summary": "Generate diverse flat-papercraft environment SceneSpecs for project-shanni-happy",
+  "agentCount": 6,
+  "logs": [],
+  "result": [
+    {
+      "name": "morning-meadow",
+      "palette": {
+        "sky": "eaf3ee",
+        "ground": "d9ecd2",
+        "path": "e8e2cf",
+        "shadow": "3c3428"
+      },
+      "hills": [
+        {
+          "color": "cfe6c6",
+          "xPct": 26,
+          "widthPct": 60,
+          "heightPct": 18
+        },
+        {
+          "color": "c4e0bd",
+          "xPct": 74,
+          "widthPct": 66,
+          "heightPct": 22
+        }
+      ],
+      "clouds": [
+        {
+          "xPct": 22,
+          "yPct": 16,
+          "scale": 1
+        },
+        {
+          "xPct": 68,
+          "yPct": 12,
+          "scale": 0.8
+        }
+      ],
+      "props": [
+        {
+          "type": "tree",
+          "xPct": 14,
+          "scale": 1.1,
+          "color": "a9d6a0",
+          "color2": "c9a98a"
+        },
+        {
+          "type": "tree",
+          "xPct": 86,
+          "scale": 0.95,
+          "color": "b6dcab",
+          "color2": "c9a98a"
+        },
+        {
+          "type": "flower",
+          "xPct": 24,
+          "scale": 0.6,
+          "color": "f3c9d6"
+        },
+        {
+          "type": "flower",
+          "xPct": 33,
+          "scale": 0.55,
+          "color": "f5e6a8"
+        },
+        {
+          "type": "bush",
+          "xPct": 70,
+          "scale": 0.7,
+          "color": "bfe0b3"
+        },
+        {
+          "type": "flower",
+          "xPct": 78,
+          "scale": 0.65,
+          "color": "d9c4ec"
+        },
+        {
+          "type": "flower",
+          "xPct": 90,
+          "scale": 0.5,
+          "color": "f5e6a8"
+        }
+      ],
+      "shen": {
+        "xPct": 50,
+        "scale": 0.95
+      },
+      "rationale": "Dewy-morning calm comes from keeping sky (eaf3ee), ground (d9ecd2) and hills all in a tight light-green value band so nothing jumps. The path is a soft warm cream (e8e2cf) for a gentle complementary note underfoot. Two overlapping far hills give airy depth without weight; two soft clouds sit high (yPct 12-16) leaving lots of open sky. Trees are pushed to the far edges (14 / 86) with muted paper trunks, framing Shen who stands centred on the path with the middle kept clear. Scattered pastel wildflowers (pink, butter-yellow, lavender) plus one low bush add meadow detail at small scales without clutter, spread across the ground for balance."
+    },
+    {
+      "name": "dusk-village",
+      "palette": {
+        "sky": "e9d4dd",
+        "ground": "e3d2c4",
+        "path": "ecdfce",
+        "shadow": "3c3428"
+      },
+      "hills": [
+        {
+          "color": "d8c3cf",
+          "xPct": 24,
+          "widthPct": 60,
+          "heightPct": 20
+        },
+        {
+          "color": "ddc8bd",
+          "xPct": 74,
+          "widthPct": 56,
+          "heightPct": 17
+        }
+      ],
+      "clouds": [
+        {
+          "xPct": 20,
+          "yPct": 14,
+          "scale": 0.9
+        },
+        {
+          "xPct": 66,
+          "yPct": 22,
+          "scale": 1.05
+        },
+        {
+          "xPct": 86,
+          "yPct": 12,
+          "scale": 0.75
+        }
+      ],
+      "props": [
+        {
+          "type": "house",
+          "xPct": 16,
+          "scale": 1.05,
+          "color": "eccdbd",
+          "color2": "c69a93"
+        },
+        {
+          "type": "house",
+          "xPct": 82,
+          "scale": 0.95,
+          "color": "e7d0c8",
+          "color2": "b59292"
+        },
+        {
+          "type": "tree",
+          "xPct": 70,
+          "scale": 1.15,
+          "color": "bfcfb4",
+          "color2": "b09a82"
+        },
+        {
+          "type": "bush",
+          "xPct": 28,
+          "scale": 0.8,
+          "color": "c8d3bc"
+        },
+        {
+          "type": "flower",
+          "xPct": 90,
+          "scale": 0.65,
+          "color": "ead2d8"
+        },
+        {
+          "type": "rock",
+          "xPct": 10,
+          "scale": 0.7,
+          "color": "d3c7ba"
+        }
+      ],
+      "shen": {
+        "xPct": 50,
+        "scale": 0.92
+      },
+      "rationale": "Dusk reads through a warm dusty lilac sky (e9d4dd) sitting only a step lighter than the peachy-tan ground and lilac/peach far hills, so the whole frame stays low-contrast and calm. The two cosy houses are pushed to the far edges (xPct 16 and 82) with soft peach and rose walls and muted dusty-rose roofs, framing the centre where Shen stands without crowding it. A single sage tree at 70 anchors the right with quiet greenery, balanced by a small bush and rock on the left. A lilac flower and three soft clouds add gentle warmth. Everything is pastel and close in value for a tranquil twilight-village feel."
+    },
+    {
+      "name": "lakeside-calm",
+      "palette": {
+        "sky": "dbe9ec",
+        "ground": "cfe2dd",
+        "path": "d9cdb6",
+        "shadow": "3c3428"
+      },
+      "hills": [
+        {
+          "color": "bcd6d1",
+          "xPct": 70,
+          "widthPct": 95,
+          "heightPct": 30
+        }
+      ],
+      "clouds": [
+        {
+          "xPct": 24,
+          "yPct": 16,
+          "scale": 0.95
+        },
+        {
+          "xPct": 66,
+          "yPct": 24,
+          "scale": 0.8
+        }
+      ],
+      "props": [
+        {
+          "type": "bush",
+          "xPct": 10,
+          "scale": 0.85,
+          "color": "a9cdb5"
+        },
+        {
+          "type": "bush",
+          "xPct": 20,
+          "scale": 1.05,
+          "color": "9cc6ac"
+        },
+        {
+          "type": "tree",
+          "xPct": 86,
+          "scale": 1.1,
+          "color": "a7cdc0",
+          "color2": "b6a584"
+        },
+        {
+          "type": "bush",
+          "xPct": 90,
+          "scale": 0.9,
+          "color": "a9cdb5"
+        },
+        {
+          "type": "rock",
+          "xPct": 32,
+          "scale": 0.6,
+          "color": "c4cdc9"
+        },
+        {
+          "type": "flower",
+          "xPct": 74,
+          "scale": 0.6,
+          "color": "e3d4dc"
+        }
+      ],
+      "shen": {
+        "xPct": 50,
+        "scale": 0.95
+      },
+      "rationale": "A serene lakeside built on a cool blue-green pastel palette kept tight in value so it reads calm: a soft blue-grey sky (dbe9ec) sits just above a muted green-water ground (cfe2dd), with a single far mint hill (bcd6d1) low on the horizon. The path uses a warm sandy tan (d9cdb6) to read like weathered boardwalk planking, a gentle warm note against all the cool greens. Reedy bushes cluster at the left edge (xPct 10/20) and frame the right with a teal-green tree (86) and a companion bush (90), leaving the centre open for Shen at xPct 50. A low rock and a tiny dusty-mauve flower add quiet detail near mid-frame without crowding. Two soft clouds drift in the upper sky for stillness and lots of calm negative space."
+    },
+    {
+      "name": "garden-courtyard",
+      "palette": {
+        "sky": "f3eef6",
+        "ground": "e8efe0",
+        "path": "ece2d4",
+        "shadow": "3c3428"
+      },
+      "hills": [
+        {
+          "color": "dfe8d6",
+          "xPct": 28,
+          "widthPct": 60,
+          "heightPct": 17
+        },
+        {
+          "color": "e6ddec",
+          "xPct": 74,
+          "widthPct": 52,
+          "heightPct": 14
+        }
+      ],
+      "clouds": [
+        {
+          "xPct": 22,
+          "yPct": 14,
+          "scale": 0.85
+        },
+        {
+          "xPct": 68,
+          "yPct": 11,
+          "scale": 1
+        },
+        {
+          "xPct": 88,
+          "yPct": 22,
+          "scale": 0.7
+        }
+      ],
+      "props": [
+        {
+          "type": "house",
+          "xPct": 80,
+          "scale": 0.95,
+          "color": "f6e7e4",
+          "color2": "d8a7ad"
+        },
+        {
+          "type": "bush",
+          "xPct": 14,
+          "scale": 0.85,
+          "color": "cfe0c2"
+        },
+        {
+          "type": "bush",
+          "xPct": 90,
+          "scale": 0.8,
+          "color": "cfe0c2"
+        },
+        {
+          "type": "flower",
+          "xPct": 22,
+          "scale": 0.7,
+          "color": "f2c4d4"
+        },
+        {
+          "type": "flower",
+          "xPct": 33,
+          "scale": 0.6,
+          "color": "f7dba8"
+        },
+        {
+          "type": "flower",
+          "xPct": 66,
+          "scale": 0.65,
+          "color": "d9c2ec"
+        },
+        {
+          "type": "flower",
+          "xPct": 74,
+          "scale": 0.55,
+          "color": "f2c4d4"
+        },
+        {
+          "type": "bush",
+          "xPct": 50,
+          "scale": 0.55,
+          "color": "c6dbb8"
+        }
+      ],
+      "shen": {
+        "xPct": 48,
+        "scale": 0.92
+      },
+      "rationale": "Sweet, orderly courtyard built on a near-monochrome pastel base: lavender-cream sky, soft sage ground, and a warm cream path all sit within a few values of each other so the scene reads calm and tidy. Two low rounded hills (one sage, one lavender) echo the sky/ground pair on the horizon. Flowers are spaced in a balanced left/right arrangement in three sweet pastel tints (rose, butter, lilac) and kept small so they cluster neatly rather than crowd. Trimmed round bushes anchor the corners symmetrically, with one tiny centre bush as a low accent that won't compete with Shen. A single small blush-pink house with a dusty-rose roof sits off to the right for the courtyard feel. Shen stands just left of centre on the path with the middle kept clear. Colours harmonise as a rose/lilac/sage/butter pastel set — low-contrast and never saturated."
+    },
+    {
+      "name": "forest-clearing",
+      "palette": {
+        "sky": "e9f0e4",
+        "ground": "dfe9d4",
+        "path": "e8ddc4",
+        "shadow": "3c3428"
+      },
+      "hills": [
+        {
+          "color": "d2e1c5",
+          "xPct": 30,
+          "widthPct": 60,
+          "heightPct": 26
+        },
+        {
+          "color": "cadcbb",
+          "xPct": 72,
+          "widthPct": 55,
+          "heightPct": 22
+        }
+      ],
+      "clouds": [
+        {
+          "xPct": 50,
+          "yPct": 16,
+          "scale": 0.85
+        }
+      ],
+      "props": [
+        {
+          "type": "tree",
+          "xPct": 9,
+          "scale": 1.25,
+          "color": "a7c79a",
+          "color2": "9a7d5c"
+        },
+        {
+          "type": "tree",
+          "xPct": 22,
+          "scale": 1,
+          "color": "b6d2a6",
+          "color2": "9a7d5c"
+        },
+        {
+          "type": "tree",
+          "xPct": 91,
+          "scale": 1.25,
+          "color": "9fc191",
+          "color2": "9a7d5c"
+        },
+        {
+          "type": "tree",
+          "xPct": 79,
+          "scale": 1,
+          "color": "bcd6ac",
+          "color2": "9a7d5c"
+        },
+        {
+          "type": "bush",
+          "xPct": 17,
+          "scale": 0.7,
+          "color": "c2dcb0"
+        },
+        {
+          "type": "bush",
+          "xPct": 84,
+          "scale": 0.65,
+          "color": "b9d4a8"
+        },
+        {
+          "type": "rock",
+          "xPct": 68,
+          "scale": 0.6,
+          "color": "c8c6bc"
+        }
+      ],
+      "shen": {
+        "xPct": 50,
+        "scale": 0.95
+      },
+      "rationale": "Cosy enclosure comes from tall trees anchored at both edges (xPct 9 and 91 at scale 1.25) framing the scene, with mid-size trees just inside them to build a layered green wall. Bushes nestle at the tree bases for soft grounding, and a single small grey rock breaks the right side without crowding. Shen stands centred on the path in a clear pocket of negative space. The palette is a tight band of soft sage greens for sky, ground and hills so the whole frame reads calm and low-contrast; the warm cream path and a single small cloud keep the tiny sky patch from feeling empty. Trunks share one muted brown for cohesion."
+    },
+    {
+      "name": "spring-orchard",
+      "palette": {
+        "sky": "fdeef2",
+        "ground": "e7f0df",
+        "path": "f3e7d6",
+        "shadow": "3c3428"
+      },
+      "hills": [
+        {
+          "color": "d8e8cd",
+          "xPct": 22,
+          "widthPct": 70,
+          "heightPct": 24
+        },
+        {
+          "color": "cfe3c4",
+          "xPct": 74,
+          "widthPct": 66,
+          "heightPct": 20
+        }
+      ],
+      "clouds": [
+        {
+          "xPct": 18,
+          "yPct": 14,
+          "scale": 0.9
+        },
+        {
+          "xPct": 52,
+          "yPct": 22,
+          "scale": 0.7
+        },
+        {
+          "xPct": 82,
+          "yPct": 12,
+          "scale": 1
+        }
+      ],
+      "props": [
+        {
+          "type": "tree",
+          "xPct": 10,
+          "scale": 0.7,
+          "color": "f6d3df",
+          "color2": "c9a98f"
+        },
+        {
+          "type": "tree",
+          "xPct": 24,
+          "scale": 0.95,
+          "color": "f8dde6",
+          "color2": "bfa07f"
+        },
+        {
+          "type": "tree",
+          "xPct": 76,
+          "scale": 0.95,
+          "color": "f6d3df",
+          "color2": "c9a98f"
+        },
+        {
+          "type": "tree",
+          "xPct": 90,
+          "scale": 0.75,
+          "color": "fae3ea",
+          "color2": "bfa07f"
+        },
+        {
+          "type": "flower",
+          "xPct": 17,
+          "scale": 0.6,
+          "color": "f4c4d6"
+        },
+        {
+          "type": "flower",
+          "xPct": 84,
+          "scale": 0.65,
+          "color": "f7cfdd"
+        },
+        {
+          "type": "bush",
+          "xPct": 68,
+          "scale": 0.7,
+          "color": "d3e7c7"
+        }
+      ],
+      "shen": {
+        "xPct": 50,
+        "scale": 0.92
+      },
+      "rationale": "A near-monochrome pastel scheme keeps the scene calm: a barely-blushed pink sky (fdeef2) sits close in value to the soft green ground (e7f0df) and two muted sage hills, so nothing fights for attention. The orchard reads through four blossom trees in two pink tones (f6d3df / f8dde6) on warm tan trunks, placed in flanking pairs at 10/24 and 76/90 to suggest rows while leaving the centre open for Shen. A low bush and two small pink flowers act as fallen-petal accents along the edges. Soft cream clouds high in the sky add gentle air. Shen stands centred at xPct 50 on the warm cream path, framed by the symmetric blossom rows with plenty of restful negative space."
+    }
+  ]
+}

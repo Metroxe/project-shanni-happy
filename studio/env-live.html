@@ -1,0 +1,131 @@
+<!doctype html><html><head><meta charset="utf-8">
+<style>html,body{margin:0;background:#eaf1ea;overflow:hidden}</style>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}</script>
+</head><body>
+<script type="module">
+import * as THREE from 'three';
+
+const PXW = 1000, PXH = 640;          // matches the backdrop image
+const ASPECT = PXW / PXH;
+const renderer = new THREE.WebGLRenderer({antialias:true, preserveDrawingBuffer:true, alpha:true});
+renderer.setSize(PXW, PXH); renderer.setPixelRatio(1);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const VH = 10, VW = VH * ASPECT;       // world view size
+const cam = new THREE.OrthographicCamera(-VW/2, VW/2, VH, 0, 0.1, 100);
+cam.position.z = 10;
+
+const GROUNDY = 0.1823 * VH;           // Shen's foot baseline (from env-render)
+const SHEN_H  = 0.475  * VH;           // Shen height in the concept
+const SHEN_W  = SHEN_H * 0.4634;
+const WALKUNIT = 0.094 * VW;           // 1 poseAt x-unit -> world x
+const JUMPUNIT = 0.213 * VH;           // 1 poseAt y-unit -> world y
+const MAXJUMP = 1.55;
+
+const loader = new THREE.TextureLoader();
+function tex(url, cb){ loader.load(url, t=>{ t.colorSpace=THREE.SRGBColorSpace; t.anisotropy=8;
+  t.minFilter=THREE.LinearMipmapLinearFilter; t.magFilter=THREE.LinearFilter; cb(t); }); }
+
+// backdrop
+tex('out/env-bg.png', t=>{
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(VW, VH),
+    new THREE.MeshBasicMaterial({map:t}));
+  m.position.set(0, VH/2, -1); scene.add(m);
+  render0();
+});
+
+// contact shadow
+function shadowTex(){
+  const s=128,c=document.createElement('canvas'); c.width=s;c.height=s;
+  const ctx=c.getContext('2d'); const g=ctx.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
+  g.addColorStop(0,'rgba(60,52,40,.5)'); g.addColorStop(.6,'rgba(60,52,40,.22)'); g.addColorStop(1,'rgba(60,52,40,0)');
+  ctx.fillStyle=g; ctx.fillRect(0,0,s,s); return new THREE.CanvasTexture(c);
+}
+const shadow = new THREE.Mesh(new THREE.PlaneGeometry(SHEN_W*1.5, SHEN_W*0.5),
+  new THREE.MeshBasicMaterial({map:shadowTex(), transparent:true, depthWrite:false}));
+shadow.position.set(0, GROUNDY, 0.4); scene.add(shadow);
+
+// Shen (group pivot at feet)
+const shen = new THREE.Group(); scene.add(shen);
+let mesh=null;
+const sparkles=[];
+function sparkTex(){
+  const s=64,c=document.createElement('canvas'); c.width=s;c.height=s;
+  const ctx=c.getContext('2d'); ctx.translate(s/2,s/2);
+  const g=ctx.createRadialGradient(0,0,0,0,0,s/2);
+  g.addColorStop(0,'rgba(255,255,255,.95)'); g.addColorStop(.4,'rgba(255,255,255,.5)'); g.addColorStop(1,'rgba(255,255,255,0)');
+  for(let i=0;i<4;i++){ctx.rotate(Math.PI/2);ctx.fillStyle=g;ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(4,-s/2);ctx.lineTo(-4,-s/2);ctx.fill();}
+  return new THREE.CanvasTexture(c);
+}
+const SP_COL=['#f3b6c3','#bcd9c4','#f4e2b8','#d7c3e0','#f3b6c3'];
+const SP_OFF=[[-.55,1.9],[.6,2.2],[-.35,2.6],[.45,1.6],[.15,2.4]];
+
+tex('out/shen-paper.png', t=>{
+  mesh = new THREE.Mesh(new THREE.PlaneGeometry(SHEN_W, SHEN_H),
+    new THREE.MeshBasicMaterial({map:t, transparent:true, alphaTest:0.5}));
+  mesh.position.y = SHEN_H/2; shen.add(mesh);     // feet at group origin
+  const st=sparkTex();
+  for(let i=0;i<5;i++){
+    const sp=new THREE.Mesh(new THREE.PlaneGeometry(0.6,0.6),
+      new THREE.MeshBasicMaterial({map:st,transparent:true,depthWrite:false,color:new THREE.Color(SP_COL[i])}));
+    sp.visible=false; scene.add(sp); sparkles.push(sp);
+  }
+  window.__ready=true; window.__startAuto();
+});
+
+// ---------- deterministic pose (same as paper-shen) ----------
+const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
+const smooth=t=>t<=0?0:t>=1?1:t*t*(3-2*t);
+const ease=(a,b,t)=>a+(b-a)*smooth(t);
+const T={walkEnd:2.6,settle:3.0,crouch:3.2,fall:4.15,land:4.35,reb:4.62,end:5.0};
+const X0=-3.2;
+function poseAt(t){
+  let x=0,y=0,sx=1,sy=1,rot=0;
+  if(t<T.walkEnd){
+    const p=smooth(clamp(t/T.walkEnd,0,1)); x=ease(X0,0,p);
+    const hop=Math.abs(Math.sin(t*Math.PI*2.0)); y=hop*0.24;
+    sy=1+hop*0.07-(1-hop)*0.06; sx=1/Math.sqrt(sy); rot=-0.05*(1-hop);
+  } else if(t<T.settle){ const p=(t-T.walkEnd)/(T.settle-T.walkEnd); y=Math.sin(p*Math.PI)*0.03; }
+  else if(t<T.end){
+    if(t<T.crouch){ const p=(t-T.settle)/(T.crouch-T.settle); sy=ease(1,0.78,p); sx=ease(1,1.14,p); }
+    else if(t<T.fall){ const p=(t-T.crouch)/(T.fall-T.crouch); y=Math.sin(p*Math.PI)*MAXJUMP;
+      sy=ease(1.22,1.0,smooth((t-T.crouch)/0.18)); sx=1/Math.sqrt(Math.max(sy,0.3));
+      rot=Math.sin((t-T.crouch)*9.0)*0.07*smooth(p); }
+    else if(t<T.land){ const p=(t-T.fall)/(T.land-T.fall); y=ease(0.35,0,p); sy=ease(1.0,0.72,p); sx=1/Math.sqrt(sy); }
+    else if(t<T.reb){ const p=(t-T.land)/(T.reb-T.land); y=Math.sin(p*Math.PI)*0.34; sy=ease(0.72,1.08,smooth(p)); sx=1/Math.sqrt(sy); }
+    else { const p=(t-T.reb)/(T.end-T.reb); sy=ease(1.08,1.0,p); sx=1/Math.sqrt(sy); }
+  }
+  return {x,y,sx,sy,rot};
+}
+
+function applyPose(t){
+  if(!mesh) return;
+  const q=poseAt(t);
+  const X=q.x*WALKUNIT, Y=q.y*JUMPUNIT;
+  shen.position.set(X, GROUNDY+Y, 0);
+  shen.scale.set(q.sx,q.sy,1); shen.rotation.z=q.rot;
+  const k=clamp(q.y/MAXJUMP,0,1);
+  shadow.position.x=X; const ss=1-0.5*k; shadow.scale.set(ss,ss,1);
+  shadow.material.opacity=(1-0.55*k);
+  const joy=t>T.crouch+0.15 && t<T.fall+0.05;
+  const life=clamp((t-(T.crouch+0.2))/0.55,0,1);
+  sparkles.forEach((sp,i)=>{
+    if(!joy||life<=0||life>=1){sp.visible=false;return;}
+    sp.visible=true; const [ox,oy]=SP_OFF[i];
+    sp.position.set(X+ox*WALKUNIT*0.6, GROUNDY+Y+oy*JUMPUNIT+life*JUMPUNIT*0.3, 0.5);
+    const sc=0.6+0.5*Math.sin(life*Math.PI); sp.scale.set(sc,sc,1);
+    sp.material.opacity=Math.sin(life*Math.PI); sp.rotation.z=life*2+i;
+  });
+  renderer.render(scene,cam);
+}
+function render0(){ if(mesh) applyPose(0); else renderer.render(scene,cam); }
+window.__render=applyPose;
+
+// real-time playback via setInterval clock (RAF is suspended in the preview tab)
+const LOOP=T.end+0.9; let timer=null,t0=null;
+function tick(){ const now=performance.now(); if(t0===null)t0=now; const t=((now-t0)/1000)%LOOP; applyPose(Math.min(t,T.end)); }
+window.__stopAuto=()=>{ if(timer){clearInterval(timer);timer=null;} };
+window.__startAuto=()=>{ if(!timer){t0=null;tick();timer=setInterval(tick,33);} };
+</script></body></html>

@@ -1,0 +1,25 @@
+# python
+studio/.venv/
+__pycache__/
+*.pyc
+
+# node
+node_modules/
+
+# machine-specific chrome path cache for playwright capture
+studio/.exec
+
+# secrets — NEVER commit
+*.gkey
+.gkey
+*.env
+.secrets*
+
+# os
+.DS_Store
+
+# large intermediate render frames (regenerated on demand)
+studio/out/anim/
+studio/out/walk/
+studio/out/joy/
+studio/out/paper/

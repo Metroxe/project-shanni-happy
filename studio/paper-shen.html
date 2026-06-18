@@ -1,0 +1,202 @@
+<!doctype html><html><head><meta charset="utf-8">
+<style>html,body{margin:0;background:#e9eee6;overflow:hidden}</style>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}</script>
+</head><body>
+<script type="module">
+import * as THREE from 'three';
+
+const W = 960, H = 720;
+const renderer = new THREE.WebGLRenderer({antialias:true, preserveDrawingBuffer:true});
+renderer.setSize(W,H); renderer.setPixelRatio(1);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const cam = new THREE.PerspectiveCamera(32, W/H, 0.1, 100);
+cam.position.set(0, 1.7, 8.4);
+cam.lookAt(0, 1.35, 0);
+
+// ---- soft pastel sky gradient backdrop ----
+function gradTex(stops){
+  const c=document.createElement('canvas'); c.width=8; c.height=256;
+  const g=c.getContext('2d').createLinearGradient(0,0,0,256);
+  stops.forEach(([o,col])=>g.addColorStop(o,col));
+  const ctx=c.getContext('2d'); ctx.fillStyle=g; ctx.fillRect(0,0,8,256);
+  const t=new THREE.CanvasTexture(c); t.colorSpace=THREE.SRGBColorSpace; return t;
+}
+const sky = new THREE.Mesh(new THREE.PlaneGeometry(40,24),
+  new THREE.MeshBasicMaterial({map:gradTex([[0,'#eaf1ea'],[0.62,'#f2eee6'],[1,'#efe7da']]),depthWrite:false}));
+sky.position.set(0,3,-9); scene.add(sky);
+
+// ---- soft rounded paper hills (minimal depth, low contrast) ----
+function hill(col,w,h,x,z){
+  const s=128, c=document.createElement('canvas'); c.width=s; c.height=s;
+  const ctx=c.getContext('2d'); ctx.clearRect(0,0,s,s);
+  ctx.fillStyle=col; ctx.beginPath(); ctx.ellipse(s/2,s,s/2,s,0,0,Math.PI*2); ctx.fill();
+  const t=new THREE.CanvasTexture(c); t.colorSpace=THREE.SRGBColorSpace;
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),
+    new THREE.MeshBasicMaterial({map:t,transparent:true,depthWrite:false}));
+  m.position.set(x,h/2-0.55,z); scene.add(m); return m;
+}
+hill('#dfe7d6',9,2.4,-3.2,-6);
+hill('#e6dfe9',11,3.0, 3.6,-6.8);
+hill('#d7e2d2',14,2.0, 0.4,-7.4);
+
+// ---- ground ----
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(40,24),
+  new THREE.MeshBasicMaterial({color:'#efe8da'}));
+ground.rotation.x = -Math.PI/2; ground.position.y=0; scene.add(ground);
+// faint path stripe for a touch of place
+const path = new THREE.Mesh(new THREE.PlaneGeometry(2.4,24),
+  new THREE.MeshBasicMaterial({color:'#e7dcc8'}));
+path.rotation.x=-Math.PI/2; path.position.set(0,0.001,0); scene.add(path);
+
+// ---- contact shadow ----
+function radialTex(){
+  const s=128,c=document.createElement('canvas'); c.width=s;c.height=s;
+  const ctx=c.getContext('2d');
+  const g=ctx.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
+  g.addColorStop(0,'rgba(60,52,40,0.55)'); g.addColorStop(0.6,'rgba(60,52,40,0.25)'); g.addColorStop(1,'rgba(60,52,40,0)');
+  ctx.fillStyle=g; ctx.fillRect(0,0,s,s);
+  const t=new THREE.CanvasTexture(c); return t;
+}
+const shadow = new THREE.Mesh(new THREE.PlaneGeometry(1.5,1.5),
+  new THREE.MeshBasicMaterial({map:radialTex(),transparent:true,depthWrite:false}));
+shadow.rotation.x=-Math.PI/2; shadow.position.y=0.004; scene.add(shadow);
+
+// ---- Shen paper cutout ----
+const ASPECT = 0.4634, FOOT = 0.9696;   // from cutout.py
+const PH = 2.45, PW = PH*ASPECT;
+const footOffset = PH*(FOOT-0.5);        // raise mesh so feet sit at group origin
+const shen = new THREE.Group(); scene.add(shen);
+const loader = new THREE.TextureLoader();
+let mesh;
+const sparkles = [];
+
+function sparkTex(){
+  const s=64,c=document.createElement('canvas'); c.width=s;c.height=s;
+  const ctx=c.getContext('2d'); ctx.translate(s/2,s/2);
+  const g=ctx.createRadialGradient(0,0,0,0,0,s/2);
+  g.addColorStop(0,'rgba(255,255,255,0.95)'); g.addColorStop(0.4,'rgba(255,255,255,0.5)'); g.addColorStop(1,'rgba(255,255,255,0)');
+  for(let i=0;i<4;i++){ctx.rotate(Math.PI/2);ctx.fillStyle=g;ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(4,-s/2);ctx.lineTo(-4,-s/2);ctx.fill();}
+  ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,0,8,0,7); ctx.fill();
+  const t=new THREE.CanvasTexture(c); return t;
+}
+const SPARK_COLS=['#f3b6c3','#bcd9c4','#f4e2b8','#d7c3e0','#f3b6c3'];
+const SPARK_OFF=[[-0.55,1.9],[0.6,2.2],[-0.35,2.6],[0.45,1.6],[0.15,2.4]];
+
+loader.load('out/shen-paper.png', tex=>{
+  tex.colorSpace=THREE.SRGBColorSpace; tex.anisotropy=8;
+  tex.minFilter=THREE.LinearMipmapLinearFilter; tex.magFilter=THREE.LinearFilter;
+  mesh = new THREE.Mesh(new THREE.PlaneGeometry(PW,PH),
+    new THREE.MeshBasicMaterial({map:tex,transparent:true,alphaTest:0.5,depthWrite:true}));
+  mesh.position.y = footOffset; shen.add(mesh);
+
+  const stex=sparkTex();
+  for(let i=0;i<5;i++){
+    const sp=new THREE.Mesh(new THREE.PlaneGeometry(0.34,0.34),
+      new THREE.MeshBasicMaterial({map:stex,transparent:true,depthWrite:false,
+        color:new THREE.Color(SPARK_COLS[i])}));
+    sp.visible=false; scene.add(sp); sparkles.push(sp);
+  }
+  window.__ready=true; renderer.render(scene,cam);
+});
+
+// ---------- deterministic pose ----------
+const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
+const smooth=t=>t<=0?0:t>=1?1:t*t*(3-2*t);
+const ease=(a,b,t)=>a+(b-a)*smooth(t);
+
+// timeline (seconds)
+const T = {walkEnd:2.6, settle:3.0, crouch:3.2, apex:3.75, fall:4.15, land:4.35, reb:4.62, end:5.0};
+const X0=-3.2, MAXJUMP=1.55;
+
+function poseAt(t){
+  let x=0,y=0,sx=1,sy=1,rot=0;
+  if(t < T.walkEnd){
+    const p = smooth(clamp(t/T.walkEnd,0,1));
+    x = ease(X0,0,p);
+    const hop = Math.abs(Math.sin(t*Math.PI*2.0));   // ~5 little steps
+    y = hop*0.24;
+    const air = hop;                                 // squash on contact, stretch in air
+    sy = 1 + air*0.07 - (1-air)*0.06;
+    sx = 1/Math.sqrt(sy);
+    rot = -0.05*(1-air);                              // tiny lean toward travel
+  } else if(t < T.settle){
+    const p=(t-T.walkEnd)/(T.settle-T.walkEnd);
+    y = Math.sin(p*Math.PI)*0.03;                     // little idle bob
+  } else if(t < T.end){
+    if(t < T.crouch){                                 // anticipation
+      const p=(t-T.settle)/(T.crouch-T.settle);
+      sy=ease(1,0.78,p); sx=ease(1,1.14,p);
+    } else if(t < T.fall){                            // launch + rise to apex + descend a bit
+      const p=(t-T.crouch)/(T.fall-T.crouch);
+      y = Math.sin(p*Math.PI)*MAXJUMP;                // up-and-over arc
+      const launch = clamp((T.crouch+0.12 - t)/0.12,0,1); // brief launch stretch
+      sy = ease(1.22,1.0,smooth((t-T.crouch)/0.18));
+      sx = 1/Math.sqrt(Math.max(sy,0.3));
+      rot = Math.sin((t-T.crouch)*9.0)*0.07*smooth(p); // joyful wiggle near apex
+    } else if(t < T.land){                            // big squash on contact
+      const p=(t-T.fall)/(T.land-T.fall);
+      y = ease(0.35,0,p);
+      sy=ease(1.0,0.72,p); sx=1/Math.sqrt(sy);
+    } else if(t < T.reb){                             // rebound hop = joy
+      const p=(t-T.land)/(T.reb-T.land);
+      y = Math.sin(p*Math.PI)*0.34;
+      sy=ease(0.72,1.08,smooth(p)); sx=1/Math.sqrt(sy);
+    } else {                                          // settle
+      const p=(t-T.reb)/(T.end-T.reb);
+      sy=ease(1.08,1.0,p); sx=1/Math.sqrt(sy);
+    }
+  }
+  return {x,y,sx,sy,rot};
+}
+
+function applyPose(t){
+  if(!mesh) return false;
+  const q = poseAt(t);
+  shen.position.set(q.x, q.y, 0);
+  shen.scale.set(q.sx, q.sy, 1);
+  shen.rotation.z = q.rot;
+  // shadow follows, shrinks + fades with height
+  const k = clamp(q.y/MAXJUMP,0,1);
+  shadow.position.x = q.x;
+  const ss = 1.05*(1-0.5*k);
+  shadow.scale.set(ss,ss,1);
+  shadow.material.opacity = 0.9*(1-0.55*k);
+  // sparkles only around the joy apex
+  const joy = t>T.crouch+0.15 && t<T.fall+0.05;
+  sparkles.forEach((sp,i)=>{
+    if(!joy){ sp.visible=false; return; }
+    const life = clamp((t-(T.crouch+0.2))/0.55,0,1);
+    sp.visible = life>0 && life<1;
+    const [ox,oy]=SPARK_OFF[i];
+    sp.position.set(q.x+ox, q.y+oy+life*0.5, 0.2);
+    const sc=0.34*(0.5+0.5*Math.sin(life*Math.PI));
+    sp.scale.set(sc,sc,1);
+    sp.material.opacity = Math.sin(life*Math.PI);
+    sp.rotation.z = life*2.0 + i;
+  });
+  renderer.render(scene,cam);
+  return true;
+}
+window.__render = applyPose;
+
+// ---- real-time playback loop (for the live preview pane) ----
+// NB: the preview renders as a background tab where requestAnimationFrame is
+// suspended, so we drive playback with a setInterval clock keyed off
+// performance.now(). Using wall-clock elapsed keeps motion correct even if the
+// timer is throttled — it just drops frames rather than freezing.
+const LOOP = T.end + 0.9;            // brief standing hold, then replay
+let timer=null, t0=null;
+function tick(){
+  const now = performance.now();
+  if(t0===null) t0=now;
+  const t = ((now - t0)/1000) % LOOP;
+  applyPose(Math.min(t, T.end));
+}
+window.__stopAuto  = ()=>{ if(timer){clearInterval(timer); timer=null;} };
+window.__startAuto = ()=>{ if(!timer){ t0=null; tick(); timer=setInterval(tick, 33); } };
+// auto-play unless a capture run explicitly stops it
+window.__startAuto();
+</script></body></html>

@@ -1,0 +1,15 @@
+{
+  "name": "project-shanni-happy",
+  "private": true,
+  "type": "module",
+  "description": "Hands-free papercraft game — flat Paper-Mario cutouts, deterministic renderer.",
+  "scripts": {
+    "preview": "python3 -m http.server 8723 --directory studio",
+    "render:demo": "studio/.venv/bin/python studio/env_render.py --demo",
+    "render:sheet": "studio/.venv/bin/python studio/env_sheet.py",
+    "cutout": "studio/.venv/bin/python studio/cutout.py"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.44.0"
+  }
+}
