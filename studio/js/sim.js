@@ -11,7 +11,6 @@ const SPEED  = 5.2;
 const ACCEL  = 42;
 const GRAV   = 30;
 const JUMP_V = 9.0;
-export const JOY_DUR = 1.6;
 const PICK_R = 0.85;
 const PLAYER_R = 0.42;          // player footprint for solid-prop collision
 
@@ -32,8 +31,8 @@ export function initState(collectibles) {
     x: 0, z: 2, vx: 0, vz: 0, y: 0, vy: 0,
     onGround: true, facing: 1,
     walkPhase: 0, animClock: 0,
-    mode: 'idle', joyT: 0, score: 0,
-    collectibles: (collectibles || []).map(c => ({ id: c.id, x: c.x, z: c.z, kind: c.kind || 'flower', got: false })),
+    mode: 'idle',
+    collectibles: (collectibles || []).map(c => ({ id: c.id, x: c.x, z: c.z, kind: c.kind || 'hamster', got: false })),
     justGot: -1, event: null,
   };
 }
@@ -42,13 +41,6 @@ export function initState(collectibles) {
 export function step(s, input, dt) {
   s.animClock += dt; s.justGot = -1; s.event = null;
   dt = Math.min(dt, 0.05);
-
-  if (s.mode === 'joy') {
-    s.joyT += dt;
-    if (s.joyT >= JOY_DUR) { s.mode = 'idle'; s.joyT = 0; }
-    return s;
-  }
-  if (input.joy && s.onGround) { s.mode = 'joy'; s.joyT = 0; s.vx = 0; s.vz = 0; return s; }
 
   let mx = input.moveX || 0, mz = input.moveZ || 0;
   const mag = Math.hypot(mx, mz);
@@ -86,21 +78,14 @@ export function step(s, input, dt) {
   s.walkPhase += (hsp / SPEED) * 9 * dt;
   s.mode = !s.onGround ? 'air' : (hsp > 0.3 ? 'walk' : 'idle');
 
+  // Collectibles (hamsters — Adrian's quest). Walking over one picks it up;
+  // there is no score or win, just the pickup event the quest engine listens to.
   for (let i = 0; i < s.collectibles.length; i++) {
     const c = s.collectibles[i];
     if (c.got) continue;
     const dx = c.x - s.x, dz = c.z - s.z;
     if (dx * dx + dz * dz < PICK_R * PICK_R && s.y < 1.2) {
-      c.got = true; s.justGot = i;
-      s.mode = 'joy'; s.joyT = 0; s.vx = 0; s.vz = 0;
-      // flowers are the base game (score + win); hamsters are a parallel quest
-      // collection — picked up the same way, but they don't touch score/win.
-      if (c.kind === 'hamster') {
-        s.event = 'critter';
-      } else {
-        s.score++;
-        s.event = s.collectibles.every(k => k.kind === 'hamster' || k.got) ? 'win' : 'collect';
-      }
+      c.got = true; s.justGot = i; s.event = 'critter';
     }
   }
   return s;
