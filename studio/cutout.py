@@ -1,8 +1,10 @@
 #!/usr/bin/env python
-"""Cut chibi #4 out of its flat background and build a Paper-Mario die-cut.
-Outputs:
-  out/shen-cut.png   -> figure only, transparent (reusable game asset)
-  out/shen-paper.png -> figure + cream sticker border + darker outer stroke
+"""Cut a chibi out of its flat background and build a Paper-Mario die-cut.
+
+Usage:  cutout.py <src.png> [name]
+  name defaults to "shen". Outputs (in out/):
+    <name>-cut.png   -> figure only, transparent (reusable game asset)
+    <name>-paper.png -> figure + cream sticker border + darker outer stroke
 Prints the paper PNG width/height and the foot-baseline ratio (for ground anchoring).
 """
 import sys, os, numpy as np
@@ -11,6 +13,7 @@ from scipy import ndimage
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 SRC = sys.argv[1] if len(sys.argv) > 1 else os.path.join(BASE, "refs", "shen-chibi-4.png")
+NAME = sys.argv[2] if len(sys.argv) > 2 else "shen"
 OUT = os.path.join(BASE, "out")
 
 im = Image.open(SRC).convert("RGB")
@@ -73,8 +76,8 @@ x0, x1 = max(0, xs.min() - pad), min(W, xs.max() + 1 + pad)
 
 paper_c = paper_img[y0:y1, x0:x1]
 cut_c   = cut[y0:y1, x0:x1]
-Image.fromarray(paper_c, "RGBA").save(f"{OUT}/shen-paper.png")
-Image.fromarray(cut_c,   "RGBA").save(f"{OUT}/shen-cut.png")
+Image.fromarray(paper_c, "RGBA").save(f"{OUT}/{NAME}-paper.png")
+Image.fromarray(cut_c,   "RGBA").save(f"{OUT}/{NAME}-cut.png")
 
 # foot baseline: lowest opaque row of the *figure*, as a ratio of the paper height
 fys = np.where(fg[y0:y1, x0:x1].any(axis=1))[0]

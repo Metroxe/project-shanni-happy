@@ -58,6 +58,20 @@ Preview: `http://localhost:8723/env-live.html`. The asset pipeline is the
   full-window responsive, 2D ground movement, depth-sorted billboard props
   (walk behind/in front), d-pad + keyboard, 6 collectible flowers; `/deploy` skill
   + GitHub Pages. **Live: https://metroxe.github.io/project-shanni-happy/**
-- NEXT (ideas): NPCs with dialogue (via the papercraft-asset pipeline); more
-  zones/goals; sound; idle polish. A `/done` skill was discussed but isn't needed
-  yet (work happens directly on `main`, not in worktrees).
+- DONE: **NPC dialogue system** (`studio/js/dialogue.js`) — walk-up proximity prompt
+  over the NPC, bottom dialogue box with typewriter reveal, advance-on-button, and
+  branching **choice menus** (↑/↓ or d-pad to pick; Talk/Enter/Space/click to confirm);
+  movement is gated while talking. Data-driven: per-NPC trees live in `world.json` under
+  `npcs[]` (`{name, tex, x, z, h, dialogue:{start, nodes:{id:{text, speaker?, next?,
+  choices?}}}}`). NPCs render as grounded billboards with idle paper breathing + a greet
+  hop. First NPC **Chrees** (buff, red headband, long hair, black tank) → `out/chrees-paper.png`.
+- DONE: **`studio/gen_image.py`** — reusable Gemini image-gen (text→image, optional
+  `--ref` style/face conditioning); made Chrees using chibi #4 as a style ref. Key: env
+  `GEMINI_API_KEY` from 1Password item **"Bowmark Gemini Key"** (id
+  `s66drdsfeobdn5brqel5kvdtta`, vault `Christopher-Macbook-CLI`); model `gemini-3-pro-image`.
+  `cutout.py` now takes an optional name arg: `cutout.py <src.png> <name>` →
+  `out/<name>-cut.png` + `out/<name>-paper.png`.
+- NEXT (ideas): more NPCs/quests; conversation state (remember choices); more zones/goals;
+  sound; idle polish. NOTE: photos in the macOS **Photos library** are unreadable from bash
+  (TCC blocks `cp`/`sips`/`qlmanage` on `~/Pictures/Photos Library.photoslibrary/originals/…`)
+  — have the user drag the image into chat or export it to `studio/refs/` to use as a gen ref.
