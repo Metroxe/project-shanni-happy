@@ -36,6 +36,7 @@ export const Dialogue = {
   onChoiceOpen: null, // ()               a choice menu appeared
   onChoiceMove: null, // ()               selection moved
   onChoicePick: null, // ()               a choice was confirmed
+  onAction: null,     // (action, node)   a node with an `action` was reached
 
   init() {
     this.el = {
@@ -47,18 +48,23 @@ export const Dialogue = {
     };
   },
 
-  start(npc) {
+  // startId optionally overrides the tree's default entry node — game.html uses it
+  // to pick a state-aware greeting (e.g. quest offer vs. "thanks for the help!").
+  start(npc, startId) {
     this.active = true;
     this.npc = npc;
     this.nodes = npc.dialogue.nodes;
     this.el.box.classList.add('on');
-    this._goto(npc.dialogue.start);
+    this._goto(startId != null ? startId : npc.dialogue.start);
   },
 
   _goto(id) {
     const node = id != null ? this.nodes[id] : null;
     if (!node) return this.end();
     this.cur = node;
+    // a node may carry a side-effect (e.g. "start:q_hamsters") — fire it as the
+    // node is reached, before the line types out. UI-agnostic: game.html acts on it.
+    if (node.action && this.onAction) this.onAction(node.action, node);
     this.full = node.text || '';
     this.shown = 0;
     this._spoken = 0;

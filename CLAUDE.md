@@ -242,8 +242,33 @@ camera change with unrun or failing QA is not finished. Reference + harness:
   master **volume** (`shen.vol`/`shen.muted`), **effects** (`shen.sfxvol`), **music**
   (`shen.musicvol`, 0 = off) — each its own key, none in the save blob. `Sound.setSfxVolume` /
   `setMusicVolume` / `setVolume`; defaults reproduce the old single-volume behaviour exactly.
-- NEXT (ideas): more NPCs/quests; conversation state (remember choices) — persist into the
-  reserved `npcs:{}` slot already in the save blob; more zones/goals;
+- DONE: **Quest system + journal book** (`studio/js/quests.js` + the journal UI in `game.html`).
+  - **Engine** (`Quests`, UI-agnostic like `dialogue.js`): data-driven quests in `world.json`
+    `quests[]` (`{id, name, giver?, summary?, steps:[{desc, goal?}]}`). Goal types auto-advance
+    against the live world: `collect` (`{kind?,ids?,count?}` — counted from the collected set, so
+    progress is **derived on load**, never stored), `talk` (`{npc}`), `reach` (`{x,z,r?}`),
+    `manual`. State is compact (`{status,step}` per quest) + persisted in the save blob's new
+    `quests` field (additive — **no `SAVE_VERSION` bump**; absent → fresh). Hooks `onStart/onAdvance/
+    onComplete` drive sound + toasts. `Quests.note({type,...})` is fed from game seams; `Quests.list()`
+    feeds the journal.
+  - **Wiring**: dialogue nodes carry an optional `action` (`"start:q_hamsters"`) fired via
+    `Dialogue.onAction`; NPCs get a `quest` field + `entryNode()` picks a **state-aware greeting**
+    (default intro / `progress` / `ready` / `done` nodes by quest status). Collecting feeds
+    `note('collect')`; talking feeds `note('talk')`.
+  - **Journal** = the pause menu replacement (Esc / 📖). A **book** with **left binder-divider tabs**
+    (📜 Quests, ⚙ Settings) and a **page-flip** on switch (`#pages` rotateY). Quests tab = expandable
+    list (name + giver → summary, rose "current task" box with a progress bar, done/active/future
+    step rows). Settings tab = the three volume sliders + mute + restart/resume (relocated, same ids).
+    Quest milestones show a `#qtoast` + a badge dot on the 📖 button when closed.
+  - **Content (Rocky-themed town)**: **Adrian** the shy pet-shop clerk (`out/adrian-paper.png`, Gemini
+    chibi → `cutout.py`) gives **Hamster Roundup** — find 5 escaped **hamsters** (`out/hamster-paper.png`,
+    new collectible `kind:"hamster"`, scattered, **not** counted in the flower HUD/score/win) and
+    return them. **Chrees** now also gives **Bloom the Block** (collect the 3 flowers → return).
+  - **Sounds** (all procedural, `audio.js`): `squeak` (hamster), `quest`/`questStep`/`questDone`,
+    `book`/`bookClose`/`flip`. Verified in preview: full lifecycle (accept→auto-track→complete),
+    real dialogue acceptance for both NPCs, journal DOM + page-flip, save round-trip, **camera QA 0 fails**.
+- NEXT (ideas): more NPCs/quests (drop-in: add art + a `world.json` npc/quest); conversation state
+  (remember choices) — persist into the reserved `npcs:{}` slot already in the save blob; more zones/goals;
   per-mood music loops (6 palettes in `specs/all.json`); idle polish. NOTE: photos in the macOS **Photos library** are unreadable from bash
   (TCC blocks `cp`/`sips`/`qlmanage` on `~/Pictures/Photos Library.photoslibrary/originals/…`)
   — have the user drag the image into chat or export it to `studio/refs/` to use as a gen ref.

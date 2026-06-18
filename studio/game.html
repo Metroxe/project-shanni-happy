@@ -10,33 +10,89 @@
   #hud b{color:#c27d8b}
   #hint{right:14px;top:12px;color:#7a756c;font-size:12px;background:rgba(255,255,255,.6)}
   #bMenu{position:fixed;right:14px;top:44px;font-size:16px;padding:4px 11px;line-height:1.2;z-index:21}
-  /* pause menu */
-  #menu{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;
-    background:rgba(70,64,52,.28);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
-  #menu.on{display:flex}
-  #menuPanel{background:rgba(255,253,248,.97);border:1px solid #d6c9b2;border-radius:18px;
-    padding:20px 22px 18px;width:300px;max-width:calc(100vw - 36px);color:#5a564e;
-    box-shadow:0 12px 36px rgba(90,80,60,.26)}
-  #menuTitle{font-weight:700;color:#c27d8b;font-size:18px;letter-spacing:.5px;text-align:center;margin-bottom:16px}
-  #menu .row{display:flex;align-items:center;gap:11px;margin:10px 0;font-size:14px}
-  #menu .row>span:first-child{width:52px;color:#7a756c}
-  #volVal{width:38px;text-align:right;color:#b76b7d;font-variant-numeric:tabular-nums}
-  #menu input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:6px;border-radius:4px;
+  /* journal (book) — replaces the pause menu */
+  #journal{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;
+    background:rgba(70,64,52,.30);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
+  #journal.on{display:flex}
+  #book{position:relative;display:flex;align-items:stretch;perspective:2200px;
+    width:min(560px,calc(100vw - 26px));height:min(560px,calc(100vh - 92px))}
+  /* left binder-divider tabs */
+  #tabs{display:flex;flex-direction:column;gap:10px;padding-top:28px;z-index:2}
+  .jtab{position:relative;width:50px;height:58px;margin-right:-9px;border:1px solid #d6c9b2;border-right:none;
+    border-radius:13px 0 0 13px;background:#ece0cd;color:#9a8f7c;font-size:23px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;box-shadow:-3px 3px 8px rgba(90,80,60,.12);
+    transition:background .15s,color .15s,transform .15s;-webkit-tap-highlight-color:transparent}
+  .jtab:hover{color:#7a6f5c}
+  .jtab.active{background:#fffdf8;color:#c27d8b;transform:translateX(-5px);z-index:3}
+  /* book body + page */
+  #bookBody{position:relative;flex:1;background:#fffdf8;border:1px solid #d6c9b2;border-radius:6px 16px 16px 6px;
+    box-shadow:0 14px 40px rgba(90,80,60,.30);overflow:hidden;
+    background-image:linear-gradient(90deg,#efe6d4 0,#f7efe0 13px,#fffdf8 30px)}
+  #pages{position:absolute;inset:0;padding:22px 24px 20px 42px;box-sizing:border-box;overflow-y:auto;
+    transform-origin:left center;transform-style:preserve-3d;backface-visibility:hidden;
+    transition:transform .2s ease,opacity .2s ease}
+  #pages.flipping{transform:rotateY(-88deg);opacity:.25}
+  .jpage[hidden]{display:none}
+  .jh{font-weight:700;color:#c27d8b;font-size:20px;letter-spacing:.5px;margin:0 0 14px;
+    border-bottom:2px dotted #e6dcc8;padding-bottom:9px}
+  /* quests list */
+  #questList{display:flex;flex-direction:column;gap:9px}
+  .jempty{color:#9a948a;font-size:14px;text-align:center;margin-top:34px;line-height:1.9}
+  .jempty span{font-size:12.5px;color:#b3aa9a}
+  .questItem{border:1px solid #e6dcc8;border-radius:12px;background:rgba(255,255,255,.55);overflow:hidden}
+  .questItem.done{opacity:.82}
+  .qhead{display:flex;align-items:center;gap:9px;padding:11px 13px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+  .qmark{color:#d39bab;font-size:12px;width:14px;text-align:center}
+  .questItem.done .qmark{color:#8fb592}
+  .qtitle{flex:1;display:flex;flex-direction:column;line-height:1.25}
+  .qname{font-weight:600;color:#5a564e;font-size:15px}
+  .qgiver{font-size:11px;color:#a99e8b}
+  .qchev{color:#c8b9a0;font-size:13px;transition:transform .25s}
+  .questItem.open .qchev{transform:rotate(180deg)}
+  .qbody{max-height:0;overflow:hidden;transition:max-height .3s ease}
+  .questItem.open .qbody{max-height:560px}
+  .qsummary{padding:0 14px 4px 36px;font-size:12.5px;color:#7a756c;font-style:italic;line-height:1.5}
+  .qcurrent{margin:6px 14px 4px 36px;padding:9px 12px;border-radius:9px;background:#f7eef0;border:1px solid #efd9df}
+  .qcurlabel{font-size:10px;letter-spacing:.7px;text-transform:uppercase;color:#c490a0;font-weight:700;margin-bottom:3px}
+  .qcurdesc{font-size:13.5px;color:#5a564e;line-height:1.4}
+  .qprogtext{margin-top:6px;font-size:12px;color:#b76b7d;font-weight:600;font-variant-numeric:tabular-nums}
+  .qbar{margin-top:5px;height:7px;border-radius:5px;background:#ece2d0;overflow:hidden}
+  .qbarfill{height:100%;border-radius:5px;background:linear-gradient(90deg,#e6b9c6,#d99bb0);transition:width .35s ease}
+  .qdoneline{margin:4px 14px 2px 36px;font-size:13px;color:#7aa37e;font-weight:600}
+  .qsteps{display:flex;flex-direction:column;gap:4px;padding:8px 14px 13px 36px}
+  .qstep{display:flex;gap:8px;align-items:baseline;font-size:13px;line-height:1.4}
+  .qbox{width:14px;text-align:center;font-size:12px;flex:none}
+  .qstep.done .qbox{color:#8fb592}.qstep.done .qsteptext{color:#a59d8e;text-decoration:line-through}
+  .qstep.active .qbox{color:#c27d8b}.qstep.active .qsteptext{color:#5a564e;font-weight:600}
+  .qstep.future{opacity:.6}.qstep.future .qbox{color:#c8bca6}
+  /* settings page (sliders reused from the old pause menu) */
+  .srow{display:flex;align-items:center;gap:11px;margin:13px 0;font-size:14px}
+  .srow>span:first-child{width:52px;color:#7a756c}
+  .sval{width:40px;text-align:right;color:#b76b7d;font-variant-numeric:tabular-nums}
+  #journal input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:6px;border-radius:4px;
     background:#ece2d0;outline:none;cursor:pointer}
-  #menu input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;
+  #journal input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;
     background:#e6b9c6;border:2px solid #fffdf8;box-shadow:0 1px 4px rgba(90,80,60,.3);cursor:pointer}
-  #menu input[type=range]::-moz-range-thumb{width:18px;height:18px;border:2px solid #fffdf8;border-radius:50%;
+  #journal input[type=range]::-moz-range-thumb{width:18px;height:18px;border:2px solid #fffdf8;border-radius:50%;
     background:#e6b9c6;box-shadow:0 1px 4px rgba(90,80,60,.3);cursor:pointer}
   .mrow{display:flex;justify-content:space-between;align-items:center;width:100%;box-sizing:border-box;
-    margin:8px 0 2px;padding:9px 13px;border:1px solid #e0d4bf;border-radius:11px;
+    margin:14px 0 2px;padding:10px 13px;border:1px solid #e0d4bf;border-radius:11px;
     background:rgba(255,255,255,.6);color:#6a655c;font:inherit;font-size:14px;cursor:pointer}
   .mrow #muteState{font-weight:700;color:#7aa37e}
   .mrow.off{opacity:.75}
   .mrow.off #muteState{color:#c08a8a}
-  .menuHint{margin:14px 2px 4px;font-size:11.5px;color:#8a8579;text-align:center;line-height:1.6}
-  .menuBtns{display:flex;gap:10px;margin-top:14px}
+  .jhint{margin:16px 2px 4px;font-size:11.5px;color:#8a8579;text-align:center;line-height:1.7}
+  .menuBtns{display:flex;gap:10px;margin-top:16px}
   .menuBtns .btn{flex:1;padding:11px 0;font-size:14px}
   .menuBtns .primary{background:#f6e7ea;border-color:#e6b9c6;color:#b76b7d;font-weight:600}
+  /* journal-button badge + quest toast */
+  #bMenu.badge::after{content:'';position:absolute;top:-3px;right:-3px;width:10px;height:10px;border-radius:50%;
+    background:#e08aa0;border:2px solid #fffdf8;box-shadow:0 1px 3px rgba(90,80,60,.3)}
+  #qtoast{position:fixed;left:50%;top:54px;transform:translateX(-50%) translateY(-8px);z-index:30;
+    background:rgba(255,253,248,.96);border:1px solid #e6c3cf;border-radius:20px;padding:7px 16px;
+    color:#b76b7d;font-size:13px;font-weight:600;white-space:nowrap;pointer-events:none;
+    opacity:0;transition:opacity .25s,transform .25s;box-shadow:0 4px 14px rgba(90,80,60,.16)}
+  #qtoast.on{opacity:1;transform:translateX(-50%) translateY(0)}
   #win{left:50%;top:24%;transform:translateX(-50%);opacity:0;transition:opacity .4s;
     border-color:#e6c3cf;color:#c27d8b;font-size:18px;font-weight:600}
   #dpad{position:fixed;left:18px;bottom:18px;display:grid;gap:6px;
@@ -139,8 +195,8 @@
 </div>
 <canvas id="c"></canvas>
 <div class="panel" id="hud">flowers <b id="score">0</b> / <span id="total">6</span></div>
-<div class="panel" id="hint">arrows / WASD move · space hop · J joy · E talk · Esc menu</div>
-<button class="btn" id="bMenu" aria-label="menu" title="menu (Esc)">☰</button>
+<div class="panel" id="hint">arrows / WASD move · space hop · J joy · E talk · Esc journal</div>
+<button class="btn" id="bMenu" aria-label="journal" title="journal (Esc)">📖</button>
 <div class="panel" id="win">all flowers! ✿</div>
 <div id="dpad">
   <button class="btn" id="bU" aria-label="up">▲</button>
@@ -172,26 +228,43 @@
     <div id="buildTag"></div>
   </div>
 </div>
-<div id="menu">
-  <div id="menuPanel">
-    <div id="menuTitle">paused</div>
-    <div class="row"><span>volume</span><input type="range" id="vol" min="0" max="100" value="70"><span id="volVal">70%</span></div>
-    <div class="row"><span>effects</span><input type="range" id="sfxvol" min="0" max="100" value="100"><span id="sfxVal">100%</span></div>
-    <div class="row"><span>music</span><input type="range" id="musicvol" min="0" max="100" value="42"><span id="musicVal">42%</span></div>
-    <button class="mrow" id="muteRow"><span>sound</span><span id="muteState">on</span></button>
-    <div class="menuHint">arrows / WASD move · space hop · J joy<br>E talk · Esc menu · M mute</div>
-    <div class="menuBtns">
-      <button class="btn" id="restartBtn">restart ✿</button>
-      <button class="btn primary" id="resumeBtn">resume</button>
+<div id="journal">
+  <div id="book">
+    <div id="tabs">
+      <button class="jtab active" data-tab="quests" aria-label="Quests" title="Quests"><span class="ico">📜</span></button>
+      <button class="jtab" data-tab="settings" aria-label="Settings" title="Settings"><span class="ico">⚙</span></button>
+    </div>
+    <div id="bookBody">
+      <div id="pages">
+        <section class="jpage" id="page-quests">
+          <div class="jh">Quests</div>
+          <div id="questList"></div>
+          <div class="jempty" id="questEmpty">No quests yet.<br><span>Find a friend in town who needs a hand. ✿</span></div>
+        </section>
+        <section class="jpage" id="page-settings" hidden>
+          <div class="jh">Settings</div>
+          <div class="srow"><span>volume</span><input type="range" id="vol" min="0" max="100" value="70"><span id="volVal" class="sval">70%</span></div>
+          <div class="srow"><span>effects</span><input type="range" id="sfxvol" min="0" max="100" value="100"><span id="sfxVal" class="sval">100%</span></div>
+          <div class="srow"><span>music</span><input type="range" id="musicvol" min="0" max="100" value="42"><span id="musicVal" class="sval">42%</span></div>
+          <button class="mrow" id="muteRow"><span>sound</span><span id="muteState">on</span></button>
+          <div class="jhint">arrows / WASD move · space hop · J joy<br>E talk · Esc journal · M mute</div>
+          <div class="menuBtns">
+            <button class="btn" id="restartBtn">restart ✿</button>
+            <button class="btn primary" id="resumeBtn">resume</button>
+          </div>
+        </section>
+      </div>
     </div>
   </div>
 </div>
+<div id="qtoast"></div>
 <script type="module">
 import * as THREE from 'three';
 import { WORLD, initState, step, setBounds, setColliders } from './js/sim.js';
 import { Dialogue } from './js/dialogue.js';
 import * as Save from './js/save.js';
 import { Sound } from './js/audio.js';
+import { Quests } from './js/quests.js';
 
 const canvas=document.getElementById('c');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
@@ -428,12 +501,18 @@ async function build(){
   ground.rotation.x=-Math.PI/2; ground.receiveShadow=true; scene.add(ground);
   buildTerrain();
 
-  // collectible flowers (billboard sprites, grounded on the terrain)
+  // collectible pickups (billboard sprites, grounded): flowers (the base game) +
+  // hamsters (Adrian's quest). One mesh per collectible, kept index-aligned to
+  // S.collectibles so the draw loop pairs them. Per-mesh half-height in userData.hh.
   const man=await (await fetch('out/sprites/manifest.json')).json();
   const fsp=man.flower; const ftex=await tx(fsp.file); const fw=FH*(fsp.w/fsp.h);
-  world.collectibles.forEach(c=>{const m=billboard(ftex,fw,FH);
-    m.position.set(c.x,groundHeight(c.x,c.z)+FH/2,c.z); m.userData={x:c.x,z:c.z}; scene.add(m); flowers.push(m); billboards.push(m);});
-  document.getElementById('total').textContent=world.collectibles.length;
+  const htex=await tx('out/hamster-paper.png'); const HAM_H=0.62; const hw=HAM_H*(htex.image.width/htex.image.height);
+  world.collectibles.forEach(c=>{const ham=(c.kind==='hamster');
+    const tex=ham?htex:ftex, w=ham?hw:fw, h=ham?HAM_H:FH;
+    const m=billboard(tex,w,h);
+    m.position.set(c.x,groundHeight(c.x,c.z)+h/2,c.z);
+    m.userData={x:c.x,z:c.z,hh:h/2,kind:c.kind||'flower'}; scene.add(m); flowers.push(m); billboards.push(m);});
+  document.getElementById('total').textContent=world.collectibles.filter(c=>(c.kind||'flower')!=='hamster').length;
 
   // NPCs (talk targets) — billboard + grounded group + contact shadow
   for(const nd of (world.npcs||[])){
@@ -454,6 +533,10 @@ async function build(){
   Dialogue.onChoiceOpen=()=>Sound.sfx('move');
   Dialogue.onChoiceMove=()=>Sound.sfx('move');
   Dialogue.onChoicePick=()=>Sound.sfx('select');
+  // a dialogue node may carry "verb:arg" (e.g. "start:q_hamsters") → drive the quest engine
+  Dialogue.onAction=(a)=>{ const i=a.indexOf(':'),verb=i<0?a:a.slice(0,i),arg=i<0?'':a.slice(i+1);
+    if(verb==='start')Quests.start(arg); else if(verb==='complete')Quests.complete(arg); else if(verb==='advance')Quests.advance(arg);
+    persist(); };
 
   // shadow + shen + sparkles + burst
   shadow=new THREE.Mesh(new THREE.PlaneGeometry(SHEN_W*1.5,SHEN_W*1.5),
@@ -476,6 +559,16 @@ async function build(){
   try{const r=await fetch('build.json',{cache:'no-store'});if(r.ok){const j=await r.json();BUILD=j.sha||'dev';}}catch{}
   const saved=Save.load(world);
   if(saved)Save.apply(S,saved);          // preview at the saved spot behind the title
+  // quests — the engine reads the LIVE collected set + collectible kinds (closures
+  // over S, so they survive a New Game's S reassignment). Restore persisted progress;
+  // init re-evaluates it against the world as it is now.
+  const kindMap={}; world.collectibles.forEach(c=>kindMap[c.id]=c.kind||'flower');
+  Quests.init(world.quests, saved&&saved.quests, {
+    collectedIds:()=>new Set(S.collectibles.filter(c=>c.got).map(c=>c.id)),
+    kindOf:(id)=>kindMap[id]||null });
+  Quests.onStart   =(d)=>questEvent('✶ New quest — '+d.name,'quest');
+  Quests.onAdvance =(d)=>questEvent('✦ '+d.name+' — task updated','questStep');
+  Quests.onComplete=(d)=>questEvent('✓ Quest complete — '+d.name,'questDone');
   setupTitle(!!saved);
   window.__ready=true; resize(); startAuto();
   const ld=document.getElementById('loader');
@@ -506,8 +599,15 @@ function draw(dt){
     const sc=0.4+0.4*Math.sin(q.spark*Math.PI);sp.scale.set(sc,sc,1);
     sp.material.opacity=Math.sin(q.spark*Math.PI);});
   flowers.forEach((f,i)=>{const c=S.collectibles[i]; f.visible=!c.got;
-    f.position.y=groundHeight(c.x,c.z)+FH/2+0.08*Math.sin(S.animClock*3+i);});
-  if(S.justGot>=0){const c=S.collectibles[S.justGot];burstPos.set(c.x,groundHeight(c.x,c.z)+0.7,c.z);burstT=0;persist();}
+    const hh=(f.userData&&f.userData.hh)||FH/2;
+    f.position.y=groundHeight(c.x,c.z)+hh+0.08*Math.sin(S.animClock*3+i);});
+  if(S.justGot>=0){const c=S.collectibles[S.justGot];burstPos.set(c.x,groundHeight(c.x,c.z)+0.7,c.z);burstT=0;
+    Quests.note({type:'collect',kind:c.kind,id:c.id});          // may advance/complete a quest
+    if(c.kind==='hamster'){
+      if(Quests.started('q_hamsters')){const f=S.collectibles.filter(k=>k.kind==='hamster'&&k.got).length,
+        t=S.collectibles.filter(k=>k.kind==='hamster').length; toast('🐹 '+f+' / '+t+' hamsters');}
+      else toast('🐹 a stray hamster!');}
+    persist();}
   if(burstT>=0){burstT+=dt;const p=burstT/0.45;burst.visible=p<1;burst.position.copy(burstPos);burst.quaternion.copy(cam.quaternion);
     const sc=0.6+p*2.4;burst.scale.set(sc,sc,1);burst.material.opacity=(1-p)*0.8;if(p>=1)burstT=-1;}
   // NPCs: gentle paper breathing + greet hop
@@ -547,7 +647,7 @@ function draw(dt){
 const aprev={onGround:true,mode:'idle',walkSeg:0};
 function audioStep(s){
   if(s.event==='win')Sound.sfx('win');
-  else if(s.event==='collect'||s.justGot>=0)Sound.sfx('collect');
+  else if(s.justGot>=0){const c=s.collectibles[s.justGot];Sound.sfx(c&&c.kind==='hamster'?'squeak':'collect');}
   if(aprev.onGround&&!s.onGround)Sound.sfx('hop');           // jump launch
   if(!aprev.onGround&&s.onGround)Sound.sfx('land');          // touchdown
   if(s.mode==='joy'&&aprev.mode!=='joy'&&s.justGot<0)Sound.sfx('joy'); // joy (not via pickup)
@@ -562,9 +662,9 @@ let aiMove=null, aiTarget=null, aiJump=false, aiJoy=false;
 addEventListener('keydown',e=>{const k=e.key.toLowerCase();
   if(!started)return;                        // title screen owns input until play begins
   Sound.resume();                            // browsers gate audio behind a gesture
-  if(k==='escape'&&!e.repeat){e.preventDefault();toggleMenu();return;}
+  if(k==='escape'&&!e.repeat){e.preventDefault();toggleJournal();return;}
   if(k==='m'&&!e.repeat){Sound.toggle();syncMenu();return;}
-  if(menuOpen())return;                      // paused menu eats other keys
+  if(journalOpen())return;                   // open journal eats other keys
   if(Dialogue.active){                       // dialogue captures all input
     if(k==='arrowup'||k==='w')Dialogue.move(-1);
     else if(k==='arrowdown'||k==='s')Dialogue.move(1);
@@ -584,11 +684,14 @@ addEventListener('keyup',e=>{const k=e.key.toLowerCase();
 // resume audio on the first touch/click too (mobile has no keydown)
 addEventListener('pointerdown',()=>Sound.resume(),{passive:true});
 
-// ---------- pause menu (volume slider + mute + controls) ----------
-const menu=document.getElementById('menu'), vol=document.getElementById('vol'),
-  sfxvol=document.getElementById('sfxvol'), musicvol=document.getElementById('musicvol'),
-  muteRow=document.getElementById('muteRow');
-const menuOpen=()=>menu.classList.contains('on');
+// ---------- journal (book: Quests + Settings tabs, page-flip) ----------
+const journal=document.getElementById('journal'), pagesEl=document.getElementById('pages');
+const vol=document.getElementById('vol'), sfxvol=document.getElementById('sfxvol'),
+  musicvol=document.getElementById('musicvol'), muteRow=document.getElementById('muteRow');
+const journalOpen=()=>journal.classList.contains('on');
+let curTab='quests', listDirty=true;
+
+// --- settings sliders (same behaviour as the old pause menu, relocated) ---
 function paintSlider(el){const v=+el.value; el.style.background=`linear-gradient(90deg,#e6b9c6 ${v}%,#ece2d0 ${v}%)`;}
 function setSlider(el,valId,frac){const v=Math.round(frac*100);
   el.value=v; document.getElementById(valId).textContent=v+'%'; paintSlider(el);}
@@ -598,20 +701,97 @@ function syncMenu(){
   setSlider(musicvol,'musicVal',Sound.musicVolume);
   document.getElementById('muteState').textContent=Sound.muted?'off':'on';
   muteRow.classList.toggle('off',Sound.muted);}
-function openMenu(){Sound.resume(); playing=false; held.up=held.down=held.left=held.right=false;
-  menu.classList.add('on'); syncMenu();}
-function closeMenu(){menu.classList.remove('on'); edgeJump=edgeJoy=edgeTalk=false; last=null; playing=true;}
-function toggleMenu(){Sound.resume(); menuOpen()?closeMenu():openMenu();}
+
+// --- quest page rendering (from Quests.list()) ---
+function mk(tag,cls,txt){const e=document.createElement(tag); if(cls)e.className=cls; if(txt!=null)e.textContent=txt; return e;}
+function renderQuests(){
+  const list=Quests.list();
+  document.getElementById('questEmpty').style.display=list.length?'none':'block';
+  const wrap=document.getElementById('questList'); wrap.innerHTML='';
+  list.forEach((q,qi)=>{
+    const item=mk('div','questItem'+(q.status==='done'?' done':''));
+    const head=mk('div','qhead');
+    head.appendChild(mk('span','qmark',q.status==='done'?'✓':'◆'));
+    const title=mk('span','qtitle'); title.appendChild(mk('span','qname',q.name));
+    if(q.giver)title.appendChild(mk('span','qgiver',q.giver));
+    head.appendChild(title); head.appendChild(mk('span','qchev','▾'));
+    const body=mk('div','qbody');
+    if(q.summary)body.appendChild(mk('div','qsummary',q.summary));
+    if(q.current){
+      const cur=mk('div','qcurrent');
+      cur.appendChild(mk('div','qcurlabel','Current task'));
+      cur.appendChild(mk('div','qcurdesc',q.current.desc));
+      if(q.current.prog){const p=q.current.prog,pct=Math.round(100*p.have/Math.max(1,p.need));
+        cur.appendChild(mk('div','qprogtext',p.have+' / '+p.need));
+        const bar=mk('div','qbar'),fill=mk('div','qbarfill'); fill.style.width=pct+'%'; bar.appendChild(fill); cur.appendChild(bar);}
+      body.appendChild(cur);
+    } else if(q.status==='done') body.appendChild(mk('div','qdoneline','Completed ✓'));
+    const steps=mk('div','qsteps');
+    q.steps.forEach(s=>{const row=mk('div','qstep'+(s.done?' done':s.active?' active':' future'));
+      row.appendChild(mk('span','qbox',s.done?'✓':s.active?'◆':'○'));
+      let t=s.desc; if(s.prog)t+=' ('+s.prog.have+'/'+s.prog.need+')';
+      row.appendChild(mk('span','qsteptext',t)); steps.appendChild(row);});
+    body.appendChild(steps);
+    head.addEventListener('click',()=>{item.classList.toggle('open'); Sound.sfx('move');});
+    item.appendChild(head); item.appendChild(body);
+    if(qi===0&&q.status==='active')item.classList.add('open');   // first active quest open by default
+    wrap.appendChild(item);
+  });
+}
+
+// --- tabs / page-flip ---
+function setActiveTab(name){document.querySelectorAll('.jtab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name));}
+function showPage(name){
+  document.getElementById('page-quests').hidden=name!=='quests';
+  document.getElementById('page-settings').hidden=name!=='settings';
+  if(name==='quests'&&listDirty){renderQuests(); listDirty=false;}
+  if(name==='settings')syncMenu();
+}
+function switchTab(name){
+  if(name===curTab)return; curTab=name; setActiveTab(name); Sound.sfx('flip');
+  pagesEl.classList.add('flipping');                              // turn the page edge-on...
+  setTimeout(()=>{showPage(name); pagesEl.classList.remove('flipping');},200);   // ...swap, turn back
+}
+document.querySelectorAll('.jtab').forEach(t=>t.addEventListener('click',e=>{e.preventDefault();Sound.resume();switchTab(t.dataset.tab);}));
+
+function openJournal(tab){Sound.resume(); playing=false; held.up=held.down=held.left=held.right=false;
+  const name=tab||curTab||'quests'; curTab=name; setActiveTab(name);
+  pagesEl.classList.remove('flipping'); listDirty=true; showPage(name);
+  document.getElementById('bMenu').classList.remove('badge');
+  journal.classList.add('on'); Sound.sfx('book');}
+function closeJournal(){journal.classList.remove('on'); edgeJump=edgeJoy=edgeTalk=false; last=null; playing=true; Sound.sfx('bookClose');}
+function toggleJournal(){Sound.resume(); journalOpen()?closeJournal():openJournal();}
+
+// --- quest toast (milestones + hamster count) ---
+let toastT=null;
+function toast(msg){const t=document.getElementById('qtoast'); t.textContent=msg; t.classList.add('on');
+  if(toastT)clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('on'),2200);}
+function questEvent(msg,sfx){toast(msg); Sound.sfx(sfx); listDirty=true;
+  if(journalOpen())renderQuests(); else document.getElementById('bMenu').classList.add('badge');}
+
+// pick a state-aware dialogue entry node for an NPC tied to a quest
+function entryNode(npc){
+  const qid=npc.quest; if(!qid||!Quests.defs[qid])return undefined;     // no quest → tree default
+  const N=npc.dialogue.nodes, status=Quests.status(qid);
+  if(status==='unstarted')return undefined;                            // intro / offer
+  if(status==='done')return N.done?'done':undefined;
+  const g=Quests.currentGoal(qid);                                     // active
+  if(g&&g.type==='talk'&&g.npc===npc.name)return N.ready?'ready':undefined;   // returning to the giver
+  return N.progress?'progress':undefined;                             // still working on it
+}
+
+// settings listeners
 vol.addEventListener('input',()=>{Sound.resume();Sound.setVolume(+vol.value/100);syncMenu();});
 vol.addEventListener('change',()=>Sound.sfx('select'));      // preview overall level on release
 sfxvol.addEventListener('input',()=>{Sound.resume();Sound.setSfxVolume(+sfxvol.value/100);syncMenu();});
 sfxvol.addEventListener('change',()=>Sound.sfx('select'));   // preview the SFX level on release
 musicvol.addEventListener('input',()=>{Sound.resume();Sound.setMusicVolume(+musicvol.value/100);syncMenu();});
 muteRow.addEventListener('click',e=>{e.preventDefault();Sound.resume();Sound.toggle();syncMenu();});
-document.getElementById('resumeBtn').addEventListener('click',e=>{e.preventDefault();closeMenu();});
-document.getElementById('restartBtn').addEventListener('click',e=>{e.preventDefault();Save.wipe();S=initState(world.collectibles);persist();Sound.sfx('move');closeMenu();});
-document.getElementById('bMenu').addEventListener('click',e=>{e.preventDefault();toggleMenu();});
-menu.addEventListener('pointerdown',e=>{if(e.target===menu)closeMenu();}); // backdrop closes
+document.getElementById('resumeBtn').addEventListener('click',e=>{e.preventDefault();closeJournal();});
+document.getElementById('restartBtn').addEventListener('click',e=>{e.preventDefault();Save.wipe();S=initState(world.collectibles);
+  Quests.init(world.quests,null,Quests.ctx); listDirty=true; renderQuests(); persist(); Sound.sfx('move'); closeJournal();});
+document.getElementById('bMenu').addEventListener('click',e=>{e.preventDefault();toggleJournal();});
+journal.addEventListener('pointerdown',e=>{if(e.target===journal)closeJournal();}); // backdrop closes
 syncMenu();
 function holdBtn(id,set){const b=document.getElementById(id);
   b.addEventListener('pointerdown',e=>{e.preventDefault();set(true);});
@@ -643,7 +823,9 @@ function resolveInput(){
 const FIXED=1/60; let playing=true,timer=null,last=null,acc=0;
 function frame(){const now=performance.now();if(last===null)last=now;
   let e=(now-last)/1000;last=now; if(e>0.5)e=0.5;
-  if(started&&edgeTalk){edgeTalk=false; if(playing&&!Dialogue.active&&nearNpc){nearNpc.greet=0.5; Sound.sfx('talk'); Dialogue.start(nearNpc.data);}}
+  if(started&&edgeTalk){edgeTalk=false; if(playing&&!Dialogue.active&&nearNpc){const npc=nearNpc.data;
+    nearNpc.greet=0.5; Sound.sfx('talk'); Dialogue.start(npc, entryNode(npc));   // entry node BEFORE noting
+    if(npc.name)Quests.note({type:'talk',npc:npc.name});}}
   if(playing){acc+=e;let n=0;while(acc>=FIXED&&n<40){S=step(S,resolveInput(),FIXED);audioStep(S);acc-=FIXED;n++;}}
   draw(e);}
 function startAuto(){if(!timer){last=null;acc=0;timer=setInterval(frame,16);}}
@@ -678,7 +860,8 @@ function onNew(){
 function beginGame(fresh){
   Sound.resume();                           // first gesture — unlock audio
   Sound.startMusic('out/music/calm.ogg');   // looping ambient (gated by shen.music)
-  if(fresh){Save.wipe(); S=initState(world.collectibles);}
+  if(fresh){Save.wipe(); S=initState(world.collectibles);
+    Quests.init(world.quests,null,Quests.ctx); listDirty=true;}   // New Game resets quests too
   started=true; titleEl.classList.add('off');
   persist();                                // stamp a save the moment play begins
 }
@@ -691,7 +874,7 @@ addEventListener('keydown',e=>{
 });
 
 // autosave: on hide / pagehide (true "exit any time") + a 10s crash backstop.
-function persist(){if(!started)return;try{Save.write(S,world,BUILD);}catch{}}
+function persist(){if(!started)return;try{Save.write(S,world,BUILD,{quests:Quests.serialize()});}catch{}}
 addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')persist();});
 addEventListener('pagehide',persist);
 setInterval(persist,10000);
@@ -719,6 +902,12 @@ window.game={
   save:()=>{persist();return 'saved';},
   wipe:()=>{Save.wipe();return 'wiped';},
   saveData:()=>Save.load(world),
+  // quests + journal debug surface
+  quests:()=>Quests.list(),
+  startQuest:(id)=>Quests.start(id)?('started '+id):'no',
+  noteTalk:(npc)=>Quests.note({type:'talk',npc}),
+  journal:(tab)=>{if(journalOpen())closeJournal();else openJournal(tab);return journalOpen()?('open:'+curTab):'closed';},
+  tab:(name)=>{if(!journalOpen())openJournal(name);else switchTab(name);return curTab;},
   // audio debug surface
   audio:()=>({ready:Sound.ready,muted:Sound.muted,volume:Sound.volume,effects:Sound.sfxVolume,
     music:Sound.musicVolume,musicOn:Sound.musicOn,musicPlaying:Sound.musicPlaying}),
