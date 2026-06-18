@@ -43,7 +43,20 @@ Classify (first match wins):
 
 1. Review `git diff` and `git diff --cached`. Write a clear commit subject + body in the repo's voice. One commit unless the changes are logically distinct.
 2. You're in a worktree, so you're already on a feature branch — **stay on it.** Never commit on `main`. (If somehow on `main`: `git checkout -b <kebab-slug>` first.)
-3. ```sh
+3. **Save-compatibility check (before committing).** Players' progress lives in `localStorage`
+   and must survive deploys. From the diff, decide whether this change breaks existing saves:
+   - The deploy/build version does NOT control this — `build.json` (git sha) is a debug label
+     only. The compatibility gate is **`SAVE_VERSION` in `studio/js/save.js`**, bumped by hand.
+   - **Breaking → bump `SAVE_VERSION`** (add a `migrate()` step to preserve progress instead of
+     resetting): a saved field's *meaning/units* changed (e.g. coordinate system, so old `x`/`z`
+     map wrong), a field load relies on was removed/renamed without a safe default, `collected`
+     semantics changed, or a collectible id was renumbered. Bump-without-migrate = old saves
+     cleanly discarded.
+   - **Not breaking → leave it:** new/moved/removed flower, art/colour/prop changes, new NPC or
+     dialogue, physics tuning, or a new saved field that load defaults when absent.
+   - When unsure, prefer bumping — a clean reset beats a silently broken world. See CLAUDE.md
+     "Save compatibility / Bump rule". Say in the PR whether you bumped and why.
+4. ```sh
    git add -A
    git commit -m "<subject>" -m "<body>"
    git push -u origin HEAD

@@ -113,7 +113,43 @@ always `git fetch origin main` and check for peers before acting.
   `s66drdsfeobdn5brqel5kvdtta`, vault `Christopher-Macbook-CLI`); model `gemini-3-pro-image`.
   `cutout.py` now takes an optional name arg: `cutout.py <src.png> <name>` →
   `out/<name>-cut.png` + `out/<name>-paper.png`.
-- NEXT (ideas): more NPCs/quests; conversation state (remember choices); more zones/goals;
+- DONE: **Save system** (`studio/js/save.js`) — localStorage persistence keyed
+  `shanni-happy:save`. Saves on `visibilitychange→hidden` + `pagehide` (true "exit
+  any time", sync write finishes during teardown), on every flower pickup, and a 10 s
+  interval backstop for hard kills. **Title / continue screen** (`#title` in game.html):
+  New Game / Continue over the dimmed live world; gameplay input gated by `started`;
+  New Game asks "Erase save?" once before wiping an existing save. Defensive load:
+  `sanitize()` clamps position to bounds, intersects collectible ids with the current
+  world, recomputes score; the whole load is try/catch → worst case "fresh start" (bad
+  blob stashed under `…:save:backup`). Debug surface: `window.game.{save,wipe,saveData,
+  start,reset}`. Verified end-to-end (collect→reload→continue, stale-id drop, OOB clamp,
+  corrupt JSON, future-version, erase guard).
+
+  ### Save compatibility — WE control it (not the deploy/build version)
+  `build.json` (the deploy git-sha) is a **debug label only and never decides whether a
+  save loads.** Compatibility is governed by two things we own in the project:
+  - **`SAVE_VERSION`** (integer in `studio/js/save.js`). A loaded save with an *older*
+    `v` is **discarded → clean fresh start** UNLESS `migrate()` has a step that walks it
+    up to the current `v` (then progress is preserved). A *newer* `v` (reverted deploy)
+    is preserved-but-ignored. So bumping `SAVE_VERSION` is the deliberate "this breaks
+    old saves" switch.
+  - **Stable collectible ids** (`world.json` `id:"f1"…`). Progress is a SET of collected
+    ids, never array indices. **⚠️ NEVER renumber/reuse an id once shipped** — that
+    silently corrupts saves and is exactly what the id scheme prevents.
+
+  **Bump rule — before every deploy, judge whether the diff breaks saves:**
+  - **Do NOT bump (the common case):** new / moved / removed flower (ids + sanitize
+    cover it), art / colour / prop / cloud / hill changes, new NPC or dialogue, physics
+    tuning, or adding a NEW saved field that load defaults when it's absent.
+  - **Bump `SAVE_VERSION`:** the *meaning or units* of a saved field change (e.g. the
+    coordinate system, so old `x`/`z` map to the wrong place), a saved field load relies
+    on is removed/renamed without a safe default, `collected` semantics change, or
+    restoring an old position/progress would soft-lock or misplace the player. Bump =
+    discard old saves; to keep progress instead, also add a `migrate()` step. When
+    genuinely unsure, prefer bumping — a clean reset beats a silently broken world.
+  The `/deploy` skill enforces this check at push time.
+- NEXT (ideas): more NPCs/quests; conversation state (remember choices) — persist into the
+  reserved `npcs:{}` slot already in the save blob; more zones/goals;
   sound; idle polish. NOTE: photos in the macOS **Photos library** are unreadable from bash
   (TCC blocks `cp`/`sips`/`qlmanage` on `~/Pictures/Photos Library.photoslibrary/originals/…`)
   — have the user drag the image into chat or export it to `studio/refs/` to use as a gen ref.

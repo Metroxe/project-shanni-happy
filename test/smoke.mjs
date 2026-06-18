@@ -63,6 +63,7 @@ try {
   if (ready) {
     await page.evaluate(`(async () => {
       const g = window.game; if (!g) throw new Error('window.game missing');
+      if (g.start) g.start(true);   // dismiss the title screen into a fresh game so input is live
       g.setMove(1, 0); await new Promise(r => setTimeout(r, 120));
       g.jump();        await new Promise(r => setTimeout(r, 120));
       g.joy();         await new Promise(r => setTimeout(r, 120));

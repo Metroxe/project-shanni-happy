@@ -76,6 +76,28 @@
   @keyframes twinkle{0%,34%{opacity:0;transform:scale(.4)}
     50%{opacity:.95;transform:scale(1)}66%,100%{opacity:0;transform:scale(.4)}}
   @keyframes dots{0%{content:''}25%{content:'.'}50%{content:'..'}75%{content:'...'}}
+  /* title / continue screen */
+  #title{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(120% 120% at 50% 30%,rgba(233,241,234,.55),rgba(233,241,234,.9));
+    opacity:1;transition:opacity .5s}
+  #title.off{opacity:0;pointer-events:none}
+  #title .card{display:flex;flex-direction:column;align-items:center;gap:4px;
+    background:rgba(255,253,248,.96);border:1px solid #d6c9b2;border-radius:22px;
+    padding:30px 40px 26px;box-shadow:0 10px 36px rgba(90,80,60,.18);text-align:center;
+    min-width:min(330px,calc(100vw - 48px))}
+  #title .mark{font-size:40px;color:#c27d8b;line-height:1}
+  #title h1{margin:6px 0 0;font-size:26px;font-weight:700;color:#5a564e;letter-spacing:.4px}
+  #title .sub{margin:2px 0 18px;font-size:13px;color:#9a948a}
+  #title .menu{display:flex;flex-direction:column;gap:9px;width:100%}
+  .tbtn{font:inherit;font-size:16px;border-radius:13px;border:1px solid #d6c9b2;
+    background:rgba(255,255,255,.85);color:#5a564e;padding:12px 22px;cursor:pointer;
+    user-select:none;touch-action:none;transition:.12s}
+  .tbtn:active{transform:scale(.97)}
+  .tbtn.primary{background:#f6e7ea;border-color:#e6b9c6;color:#b76b7d;font-weight:600}
+  .tbtn.sel{box-shadow:0 0 0 2px #e6b9c6,0 4px 12px rgba(183,107,125,.18)}
+  .tbtn.danger{background:#f7e3e3;border-color:#e6b9b9;color:#b76b6b}
+  .tbtn[hidden]{display:none}
+  #buildTag{margin-top:14px;font-size:11px;color:#bcb4a6;letter-spacing:.3px}
 </style>
 <script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}</script>
 </head><body>
@@ -109,10 +131,23 @@
   <div id="dlgNext">▾</div>
 </div>
 <div id="talkPrompt"></div>
+<div id="title">
+  <div class="card">
+    <div class="mark">✿</div>
+    <h1>Shen</h1>
+    <div class="sub">a little papercraft game</div>
+    <div class="menu">
+      <button class="tbtn" id="btnContinue" hidden>Continue</button>
+      <button class="tbtn" id="btnNew">New Game</button>
+    </div>
+    <div id="buildTag"></div>
+  </div>
+</div>
 <script type="module">
 import * as THREE from 'three';
 import { WORLD, initState, step, setBounds } from './js/sim.js';
 import { Dialogue } from './js/dialogue.js';
+import * as Save from './js/save.js';
 
 const canvas=document.getElementById('c');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
@@ -153,6 +188,7 @@ function blobTex(col){return softCanvasTex((x,s)=>{x.fillStyle=col;
 
 let world, S, shen, mesh=null, shadow, sparkles=[], flowers=[], propsMesh=[], burst, burstT=-1, burstPos=new THREE.Vector3();
 let npcs=[], nearNpc=null, talkCooldown=0;
+let started=false, BUILD='dev';
 
 const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
 const smooth=t=>t<=0?0:t>=1?1:t*t*(3-2*t);
@@ -240,6 +276,10 @@ async function build(){
     1,1,{soft:true}); burst.visible=false;burst.renderOrder=3;scene.add(burst);
 
   S=initState(world.collectibles);
+  try{const r=await fetch('build.json',{cache:'no-store'});if(r.ok){const j=await r.json();BUILD=j.sha||'dev';}}catch{}
+  const saved=Save.load(world);
+  if(saved)Save.apply(S,saved);          // preview at the saved spot behind the title
+  setupTitle(!!saved);
   window.__ready=true; resize(); startAuto();
   const ld=document.getElementById('loader');
   if(ld){ld.classList.add('done'); setTimeout(()=>ld.remove(),600);}
@@ -267,7 +307,7 @@ function draw(dt){
     sp.material.opacity=Math.sin(q.spark*Math.PI);});
   flowers.forEach((f,i)=>{const c=S.collectibles[i]; f.visible=!c.got;
     f.position.y=1.15/2+0.08*Math.sin(S.animClock*3+i);});
-  if(S.justGot>=0){const c=S.collectibles[S.justGot];burstPos.set(c.x,1.0,c.z);burstT=0;}
+  if(S.justGot>=0){const c=S.collectibles[S.justGot];burstPos.set(c.x,1.0,c.z);burstT=0;persist();}
   if(burstT>=0){burstT+=dt;const p=burstT/0.45;burst.visible=p<1;burst.position.copy(burstPos);
     const sc=0.6+p*2.4;burst.scale.set(sc,sc,1);burst.material.opacity=(1-p)*0.8;if(p>=1)burstT=-1;}
   // NPCs: gentle paper breathing + greet hop
@@ -308,6 +348,7 @@ function draw(dt){
 const held={up:false,down:false,left:false,right:false}; let edgeJump=false,edgeJoy=false,edgeTalk=false;
 let aiMove=null, aiTarget=null, aiJump=false, aiJoy=false;
 addEventListener('keydown',e=>{const k=e.key.toLowerCase();
+  if(!started)return;                        // title screen owns input until play begins
   if(Dialogue.active){                       // dialogue captures all input
     if(k==='arrowup'||k==='w')Dialogue.move(-1);
     else if(k==='arrowdown'||k==='s')Dialogue.move(1);
@@ -338,7 +379,7 @@ document.getElementById('bJoy').addEventListener('click',()=>{if(!Dialogue.activ
 document.getElementById('bTalk').addEventListener('click',()=>{
   if(Dialogue.active)Dialogue.advance(); else edgeTalk=true;});
 function resolveInput(){
-  if(Dialogue.active) return {moveX:0,moveZ:0,jump:false,joy:false};
+  if(!started||Dialogue.active) return {moveX:0,moveZ:0,jump:false,joy:false};
   let mx=(held.right?1:0)-(held.left?1:0), mz=(held.down?1:0)-(held.up?1:0);
   if(mx===0&&mz===0){
     if(aiMove){mx=aiMove.x;mz=aiMove.z;}
@@ -352,12 +393,56 @@ function resolveInput(){
 const FIXED=1/60; let playing=true,timer=null,last=null,acc=0;
 function frame(){const now=performance.now();if(last===null)last=now;
   let e=(now-last)/1000;last=now; if(e>0.5)e=0.5;
-  if(edgeTalk){edgeTalk=false; if(!Dialogue.active&&nearNpc){nearNpc.greet=0.5; Dialogue.start(nearNpc.data);}}
+  if(started&&edgeTalk){edgeTalk=false; if(!Dialogue.active&&nearNpc){nearNpc.greet=0.5; Dialogue.start(nearNpc.data);}}
   if(playing){acc+=e;let n=0;while(acc>=FIXED&&n<40){S=step(S,resolveInput(),FIXED);acc-=FIXED;n++;}}
   draw(e);}
 function startAuto(){if(!timer){last=null;acc=0;timer=setInterval(frame,16);}}
 window.__stopAuto=()=>{if(timer){clearInterval(timer);timer=null;}};
 window.__startAuto=startAuto;
+
+// ---------- title / continue screen + autosave ----------
+const titleEl=document.getElementById('title');
+const btnContinue=document.getElementById('btnContinue');
+const btnNew=document.getElementById('btnNew');
+let titleBtns=[], titleSel=0, confirmNew=false, hasSaved=false;
+function setupTitle(saveExists){
+  hasSaved=saveExists;
+  document.getElementById('buildTag').textContent='build '+BUILD;
+  if(saveExists){btnContinue.hidden=false;btnContinue.classList.add('primary');btnNew.classList.remove('primary');}
+  else{btnContinue.hidden=true;btnNew.classList.add('primary');}
+  titleBtns=saveExists?[btnContinue,btnNew]:[btnNew];
+  titleSel=0; renderTitleSel();
+  btnContinue.onclick=()=>beginGame(false);
+  btnNew.onclick=()=>onNew();
+}
+function renderTitleSel(){titleBtns.forEach((b,i)=>b.classList.toggle('sel',i===titleSel));}
+function titleMove(d){if(!titleBtns.length)return;titleSel=(titleSel+d+titleBtns.length)%titleBtns.length;renderTitleSel();}
+function titleConfirm(){const b=titleBtns[titleSel]; if(b===btnContinue)beginGame(false); else onNew();}
+function onNew(){
+  if(hasSaved&&!confirmNew){               // one guard click before erasing real progress
+    confirmNew=true; btnNew.textContent='Erase save?'; btnNew.classList.add('danger');
+    titleSel=titleBtns.indexOf(btnNew); renderTitleSel(); return;
+  }
+  beginGame(true);
+}
+function beginGame(fresh){
+  if(fresh){Save.wipe(); S=initState(world.collectibles);}
+  started=true; titleEl.classList.add('off');
+  persist();                                // stamp a save the moment play begins
+}
+addEventListener('keydown',e=>{
+  if(started)return;                        // only steer the menu before play
+  const k=e.key.toLowerCase();
+  if(k==='arrowup'||k==='w'){titleMove(-1);e.preventDefault();}
+  else if(k==='arrowdown'||k==='s'){titleMove(1);e.preventDefault();}
+  else if(k===' '||k==='enter'){titleConfirm();e.preventDefault();}
+});
+
+// autosave: on hide / pagehide (true "exit any time") + a 10s crash backstop.
+function persist(){if(!started)return;try{Save.write(S,world,BUILD);}catch{}}
+addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')persist();});
+addEventListener('pagehide',persist);
+setInterval(persist,10000);
 
 function resize(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h,false);
   cam.aspect=w/h;cam.updateProjectionMatrix();}
@@ -376,8 +461,12 @@ window.game={
   talk:()=>{ if(Dialogue.active){Dialogue.advance();return 'advance';} edgeTalk=true; return 'talk'; },
   dialogue:()=>({active:Dialogue.active,near:nearNpc&&nearNpc.data.name||null}),
   disp:()=>({yW:+D.yW.toFixed(3),sx:+D.sx.toFixed(3),sy:+D.sy.toFixed(3),rot:+D.rot.toFixed(4)}),
-  reset:()=>{S=initState(world.collectibles);return 'reset';},
+  reset:()=>{Save.wipe();S=initState(world.collectibles);return 'reset';},
   pause:()=>{playing=false;return 'paused';},play:()=>{playing=true;return 'playing';},
+  start:(fresh)=>{beginGame(!!fresh);return started?'started':'no';},
+  save:()=>{persist();return 'saved';},
+  wipe:()=>{Save.wipe();return 'wiped';},
+  saveData:()=>Save.load(world),
 };
 build().catch(e=>{window.__err=String(e&&e.stack||e);console.error(e);
   const ld=document.getElementById('loader'); if(ld){ld.classList.add('err');
