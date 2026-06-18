@@ -13,9 +13,14 @@ const GRAV   = 30;
 const JUMP_V = 9.0;
 export const JOY_DUR = 1.6;
 const PICK_R = 0.85;
+const PLAYER_R = 0.42;          // player footprint for solid-prop collision
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const approach = (v, t, a) => (v < t ? Math.min(t, v + a) : v > t ? Math.max(t, v - a) : v);
+
+// solid props: [{x, z, r}, ...] — circles the player is pushed out of
+let COLLIDERS = [];
+export function setColliders(list) { COLLIDERS = (list || []).map(c => ({ x: c.x, z: c.z, r: c.r })); }
 
 export function setBounds(b) {
   if (!b) return;
@@ -53,6 +58,23 @@ export function step(s, input, dt) {
   s.x = clamp(s.x + s.vx * dt, WORLD.XMIN, WORLD.XMAX);
   s.z = clamp(s.z + s.vz * dt, WORLD.ZMIN, WORLD.ZMAX);
   if (mx) s.facing = Math.sign(mx);
+
+  // push out of solid props, then kill the velocity component heading into them (slide)
+  for (let i = 0; i < COLLIDERS.length; i++) {
+    const c = COLLIDERS[i];
+    let dx = s.x - c.x, dz = s.z - c.z;
+    const min = c.r + PLAYER_R;
+    let d = Math.hypot(dx, dz);
+    if (d < min) {
+      if (d < 1e-4) { dx = 1; dz = 0; d = 1; }   // exactly overlapping: pick a direction
+      const nx = dx / d, nz = dz / d;
+      s.x = c.x + nx * min; s.z = c.z + nz * min;
+      const into = s.vx * nx + s.vz * nz;
+      if (into < 0) { s.vx -= into * nx; s.vz -= into * nz; }
+    }
+  }
+  s.x = clamp(s.x, WORLD.XMIN, WORLD.XMAX);
+  s.z = clamp(s.z, WORLD.ZMIN, WORLD.ZMAX);
 
   if (input.jump && s.onGround) { s.vy = JUMP_V; s.onGround = false; }
   if (!s.onGround) {

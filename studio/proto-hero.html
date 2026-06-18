@@ -1,0 +1,118 @@
+<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  html,body{margin:0;height:100%;background:#e9f1ea;overflow:hidden;
+    font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#5a564e}
+  #c{display:block;position:fixed;inset:0;width:100vw;height:100vh}
+  #lab{position:fixed;left:0;right:0;top:8%;text-align:center}
+  #lab b{display:block;font-size:30px;letter-spacing:.01em}
+  #lab small{font-size:16px;color:#8a857c}
+</style>
+<script type="importmap">{"imports":{
+  "three":"https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}</script>
+</head><body>
+<canvas id="c"></canvas>
+<div id="lab"><b id="labT">…</b><small id="labS"></small></div>
+<script type="module">
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+
+const canvas=document.getElementById('c');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true,preserveDrawingBuffer:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+
+const scene=new THREE.Scene(); scene.background=new THREE.Color('#e9f1ea');
+const RW=1440, RH=900, HALFW=3.9;
+const cam=new THREE.OrthographicCamera(-HALFW,HALFW,HALFW*RH/RW,-HALFW*RH/RW,0.1,100);
+cam.position.set(6.4,7.2,11); cam.lookAt(0,0.9,0);
+
+scene.add(new THREE.HemisphereLight(0xffffff,0xdfe7d6,2.3));
+const sun=new THREE.DirectionalLight(0xfff6ea,2.1);
+sun.position.set(6,11,7); sun.castShadow=true; sun.shadow.mapSize.set(2048,2048);
+const sc=sun.shadow.camera; sc.left=-6;sc.right=6;sc.top=6;sc.bottom=-6;sc.near=1;sc.far=40;
+scene.add(sun);
+
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(60,60),
+  new THREE.MeshLambertMaterial({color:'#cfe1c2'}));
+ground.rotation.x=-Math.PI/2; ground.receiveShadow=true; scene.add(ground);
+
+const paper=hex=>new THREE.MeshLambertMaterial({color:new THREE.Color(hex),flatShading:true,
+  emissive:new THREE.Color(hex),emissiveIntensity:0.06});
+function pHouse(){
+  const g=new THREE.Group();
+  const body=new THREE.Mesh(new THREE.BoxGeometry(1.35,1.05,1.15),
+    new THREE.MeshLambertMaterial({color:'#f3e7d2'})); body.position.y=0.53; g.add(body);
+  const roof=new THREE.Mesh(new THREE.ConeGeometry(1.08,0.82,4),paper('#e4b3c1'));
+  roof.position.y=1.46; roof.rotation.y=Math.PI/4; g.add(roof);
+  const door=new THREE.Mesh(new THREE.BoxGeometry(0.34,0.56,0.08),
+    new THREE.MeshLambertMaterial({color:'#b98aa6'})); door.position.set(0,0.3,0.6); g.add(door);
+  g.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}}); return g;
+}
+function standeeHouse(tex,w,h){
+  const g=new THREE.Group();
+  const mat=new THREE.MeshLambertMaterial({map:tex,transparent:true,alphaTest:0.5,side:THREE.DoubleSide});
+  for(const ry of [0,Math.PI/2]){
+    const p=new THREE.Mesh(new THREE.PlaneGeometry(w,h),mat);
+    p.position.y=h/2; p.rotation.y=ry; p.castShadow=true; g.add(p);
+  } return g;
+}
+function shadowDisc(r){
+  const s=128,cv=document.createElement('canvas');cv.width=s;cv.height=s;
+  const x=cv.getContext('2d');const gr=x.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
+  gr.addColorStop(0,'rgba(60,52,40,.32)');gr.addColorStop(.6,'rgba(60,52,40,.13)');gr.addColorStop(1,'rgba(60,52,40,0)');
+  x.fillStyle=gr;x.fillRect(0,0,s,s);
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(r,r),
+    new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(cv),transparent:true,depthWrite:false}));
+  m.rotation.x=-Math.PI/2;m.position.y=0.02;return m;
+}
+function fit(obj,targetH){
+  obj.updateMatrixWorld(true);
+  const box=new THREE.Box3().setFromObject(obj);const size=new THREE.Vector3();box.getSize(size);
+  obj.scale.setScalar(targetH/size.y); obj.updateMatrixWorld(true);
+  const b2=new THREE.Box3().setFromObject(obj);const c=new THREE.Vector3();b2.getCenter(c);
+  obj.position.set(-c.x,-b2.min.y,-c.z);
+  obj.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;
+    if(o.material){o.material.metalness=0;o.material.roughness=1;o.material.side=THREE.DoubleSide;}}});
+  return obj;
+}
+
+const gltf=new GLTFLoader();
+const loadGLB=u=>new Promise((res,rej)=>gltf.load(u,g=>res(g.scene),undefined,rej));
+const loadTex=u=>new Promise(res=>new THREE.TextureLoader().load(u,t=>{t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=8;res(t);}));
+
+const stage=new THREE.Group(); scene.add(stage);
+let shadow=null;
+function setShadow(r){ if(shadow)scene.remove(shadow); shadow=shadowDisc(r); scene.add(shadow); }
+const nodes={}; let curDeg=28;
+const LABELS={
+  proc:['1 · Procedural low-poly paper','built from code — solid & correct from every angle'],
+  standee:['2 · Crossed-billboard standee','your flat PNG sprite, crossed at 90°'],
+  tripo:['3 · Image-to-3D (TripoSR)','AI mesh generated from the flat sprite'],
+};
+function show(key,deg){ if(deg!=null)curDeg=deg;
+  stage.clear(); stage.add(nodes[key].obj); setShadow(nodes[key].sr);
+  stage.rotation.y=curDeg*Math.PI/180;
+  document.getElementById('labT').textContent=LABELS[key][0];
+  document.getElementById('labS').textContent=LABELS[key][1];
+  renderer.render(scene,cam); return 'showing '+key+' @ '+curDeg+'°'; }
+window.__show=show;
+window.__render=d=>{curDeg=d;stage.rotation.y=d*Math.PI/180;renderer.render(scene,cam);return 'deg '+d;};
+
+async function build(){
+  const man=await (await fetch('out/sprites/manifest.json')).json();
+  nodes.proc={obj:pHouse(),sr:2.4};
+  const sp=man.house, h=1.95, w=h*(sp.w/sp.h);
+  nodes.standee={obj:standeeHouse(await loadTex(sp.file),w,h),sr:w*1.2};
+  nodes.tripo={obj:fit(await loadGLB('out/3d/house-triposr.glb'),1.8),sr:2.2};
+  renderer.setSize(RW,RH,false);
+  const P=new URLSearchParams(location.search);
+  const view=P.get('view')||'proc', deg=+(P.get('deg')||28);
+  window.__ready=true; show(view,deg);
+  // keepalive re-render so a headless --screenshot always catches a drawn frame
+  window.__keep=setInterval(()=>renderer.render(scene,cam),120);
+}
+build().catch(e=>{window.__err=String(e&&e.stack||e);console.error(e);});
+</script></body></html>

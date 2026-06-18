@@ -126,6 +126,26 @@ always `git fetch origin main` and check for peers before acting.
   git-ignored** (holds this worktree's unique port + absolute `studio/` path) — never
   commit it or hardcode a port.
 
+## Cameras — ALWAYS QA them (not optional)
+
+Whenever you add, move, or tune a camera/zone, you MUST run the camera QA as part of
+building it — it is part of "done", not a follow-up. Invoke the **`/zone-camera`** skill
+(`.claude/skills/zone-camera/`) and enforce its cardinal rule:
+
+> **Shen must be visible from every reachable spot and through every transition.**
+
+Two design rules: **one fixed camera per zone** (never vary the angle by travel
+direction — that flips the eye into a wall on reversal), and **contain the player** so
+every reachable spot is inside a zone.
+
+Workflow every time: author the camera → serve the worktree on localhost (never
+`file://`) → in the preview run `cameraQA.static()`, `cameraQA.transition([a],[b])` for
+cross-junction pairs, AND `cameraQA.path([...])` for **round-trips** (down a road and
+back, up the stairs and back — reversals hit transitions a one-way sweep misses) →
+`game.warp(x,z,true)` + screenshot any failure → fix → re-run until **0 failures**. A
+camera change with unrun or failing QA is not finished. Reference + harness:
+`studio/test-scene.html`.
+
 ## Status / next
 
 - DONE: character cutout + die-cut; walk + jump-for-joy; 6 environment moods;

@@ -1,0 +1,142 @@
+<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  html,body{margin:0;height:100%;background:#e9f1ea;overflow:hidden;
+    font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#5a564e}
+  #c{display:block;position:fixed;inset:0;width:100vw;height:100vh}
+  #lab{position:fixed;left:0;right:0;top:6%;text-align:center}
+  #lab b{display:block;font-size:26px}
+  #lab small{font-size:15px;color:#8a857c}
+</style>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}</script>
+</head><body>
+<canvas id="c"></canvas>
+<div id="lab"><b id="labT">…</b><small id="labS"></small></div>
+<script type="module">
+import * as THREE from 'three';
+
+const canvas=document.getElementById('c');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true,preserveDrawingBuffer:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+
+const P=new URLSearchParams(location.search);
+const STYLE=P.get('style')||'grain';       // flat | grain | toon
+const SUBJECT=P.get('subject')||'scene';   // scene | house
+const DEG=+(P.get('deg')||28);
+
+const scene=new THREE.Scene(); scene.background=new THREE.Color('#e9f1ea');
+const RW=1440, RH=900;
+const HALFW = SUBJECT==='house' ? 3.6 : 6.4;
+const cam=new THREE.OrthographicCamera(-HALFW,HALFW,HALFW*RH/RW,-HALFW*RH/RW,0.1,100);
+cam.position.set(6.6,7.4,11.2); cam.lookAt(0, SUBJECT==='house'?0.9:0.7, 0);
+
+scene.add(new THREE.HemisphereLight(0xffffff,0xdfe7d6,2.15));
+const sun=new THREE.DirectionalLight(0xfff6ea,2.0);
+sun.position.set(6,11,7); sun.castShadow=true; sun.shadow.mapSize.set(2048,2048);
+sun.shadow.bias=-0.0004;
+const sc=sun.shadow.camera; sc.left=-9;sc.right=9;sc.top=9;sc.bottom=-9;sc.near=1;sc.far=40;
+scene.add(sun);
+
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(60,60),
+  new THREE.MeshStandardMaterial({color:'#cfe1c2',roughness:1,metalness:0}));
+ground.rotation.x=-Math.PI/2; ground.receiveShadow=true; scene.add(ground);
+
+// ---- procedural paper grain: faint fibrous tooth as a bump map ----
+function grainTex(){
+  const s=512, cv=document.createElement('canvas'); cv.width=cv.height=s;
+  const x=cv.getContext('2d');
+  x.fillStyle='#808080'; x.fillRect(0,0,s,s);          // mid = no displacement
+  const img=x.getImageData(0,0,s,s), d=img.data;
+  for(let i=0;i<d.length;i+=4){ const n=(Math.random()-0.5)*46;     // fine speckle
+    d[i]=d[i+1]=d[i+2]=Math.max(0,Math.min(255,128+n)); }
+  x.putImageData(img,0,0);
+  x.globalAlpha=0.5;                                    // soft fiber streaks
+  for(let i=0;i<140;i++){ x.strokeStyle=Math.random()<.5?'#6f6f6f':'#909090';
+    x.lineWidth=Math.random()*1.2+0.3; x.beginPath();
+    const y=Math.random()*s, len=40+Math.random()*150, xx=Math.random()*s, ang=(Math.random()-.5)*0.5;
+    x.moveTo(xx,y); x.lineTo(xx+Math.cos(ang)*len, y+Math.sin(ang)*len); x.stroke(); }
+  const t=new THREE.CanvasTexture(cv);
+  t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(3,3); t.anisotropy=4;
+  return t;
+}
+const GRAIN=grainTex();
+function toonRamp(steps){
+  const cv=document.createElement('canvas'); cv.width=steps; cv.height=1;
+  const x=cv.getContext('2d');
+  for(let i=0;i<steps;i++){ const v=Math.round(60+ (195*i/(steps-1)) ); // 60..255
+    x.fillStyle=`rgb(${v},${v},${v})`; x.fillRect(i,0,1,1); }
+  const t=new THREE.CanvasTexture(cv); t.minFilter=t.magFilter=THREE.NearestFilter; return t;
+}
+const TOON=toonRamp(4);
+
+function paper(hex,opts={}){
+  const flat=opts.flat!==false;
+  if(STYLE==='toon')
+    return new THREE.MeshToonMaterial({color:new THREE.Color(hex),gradientMap:TOON});
+  if(STYLE==='flat')
+    return new THREE.MeshLambertMaterial({color:new THREE.Color(hex),flatShading:flat,
+      emissive:new THREE.Color(hex),emissiveIntensity:0.06});
+  // 'grain' — matte standard + paper tooth
+  return new THREE.MeshStandardMaterial({color:new THREE.Color(hex),roughness:0.98,metalness:0,
+    flatShading:flat, emissive:new THREE.Color(hex), emissiveIntensity:0.05,
+    bumpMap:GRAIN, bumpScale: opts.bump ?? 0.9});
+}
+function shade(g){g.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});return g;}
+
+function pHouse(){
+  const g=new THREE.Group();
+  const body=new THREE.Mesh(new THREE.BoxGeometry(1.35,1.05,1.15),paper('#f3e7d2',{flat:false}));
+  body.position.y=0.53; g.add(body);
+  const roof=new THREE.Mesh(new THREE.ConeGeometry(1.08,0.82,4),paper('#e4b3c1'));
+  roof.position.y=1.46; roof.rotation.y=Math.PI/4; g.add(roof);
+  const door=new THREE.Mesh(new THREE.BoxGeometry(0.34,0.56,0.08),paper('#b98aa6',{flat:false}));
+  door.position.set(0,0.3,0.6); g.add(door);
+  const win=new THREE.Mesh(new THREE.BoxGeometry(0.3,0.3,0.06),paper('#fbf5e6',{flat:false}));
+  win.position.set(-0.4,0.62,0.6); g.add(win);
+  return shade(g);
+}
+function pTree(){
+  const g=new THREE.Group();
+  const trunk=new THREE.Mesh(new THREE.CylinderGeometry(0.17,0.22,1.15,8),paper('#c7a279'));
+  trunk.position.y=0.57; g.add(trunk);
+  const c1=new THREE.Mesh(new THREE.IcosahedronGeometry(0.98,1),paper('#aed0b6'));
+  c1.position.y=1.9; c1.scale.set(1.05,0.92,1.05); g.add(c1);
+  const c2=new THREE.Mesh(new THREE.IcosahedronGeometry(0.62,1),paper('#cce6cf'));
+  c2.position.set(0.18,2.5,0.1); g.add(c2);
+  return shade(g);
+}
+function pRock(){
+  const g=new THREE.Group();
+  const r1=new THREE.Mesh(new THREE.DodecahedronGeometry(0.52,0),paper('#c8c5be'));
+  r1.position.y=0.3; r1.scale.set(1.15,0.72,0.98); r1.rotation.y=0.6; g.add(r1);
+  const r2=new THREE.Mesh(new THREE.DodecahedronGeometry(0.3,0),paper('#d4d1ca'));
+  r2.position.set(0.55,0.18,0.2); r2.scale.set(1.1,0.7,1); g.add(r2);
+  return shade(g);
+}
+function shadowDisc(r){
+  const s=128,cv=document.createElement('canvas');cv.width=s;cv.height=s;
+  const x=cv.getContext('2d');const gr=x.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
+  gr.addColorStop(0,'rgba(60,52,40,.3)');gr.addColorStop(.6,'rgba(60,52,40,.12)');gr.addColorStop(1,'rgba(60,52,40,0)');
+  x.fillStyle=gr;x.fillRect(0,0,s,s);
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(r,r),
+    new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(cv),transparent:true,depthWrite:false}));
+  m.rotation.x=-Math.PI/2;m.position.y=0.02;return m;}
+function place(node,x,z,r){node.position.x=x;node.position.z=z;scene.add(node);
+  const sh=shadowDisc(r);sh.position.set(x,0.02,z);scene.add(sh);}
+
+const SNAME={flat:'v1 · flat Lambert (current)',grain:'paper grain + matte',toon:'toon / cel paper'};
+function build(){
+  if(SUBJECT==='house'){ place(pHouse(),0,0,2.4); }
+  else { place(pTree(),-3.5,-0.3,2.6); place(pHouse(),0.2,0.2,2.4); place(pRock(),3.6,-0.1,1.7); }
+  renderer.setSize(RW,RH,false);
+  document.getElementById('labT').textContent=SNAME[STYLE]||STYLE;
+  document.getElementById('labS').textContent=SUBJECT==='house'?'single house · drag deg= to rotate':'tree · house · rock';
+  scene.userData.deg=DEG; render();
+  window.__ready=true; window.__keep=setInterval(render,140);
+}
+function render(){ renderer.render(scene,cam); }
+window.__render=()=>render();
+build();
+</script></body></html>
