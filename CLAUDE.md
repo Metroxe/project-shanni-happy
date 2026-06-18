@@ -278,6 +278,13 @@ camera change with unrun or failing QA is not finished. Reference + harness:
   - **Sounds** (all procedural, `audio.js`): `squeak` (hamster), `quest`/`questStep`/`questDone`,
     `book`/`bookClose`/`flip`. Verified in preview: full lifecycle (accept→auto-track→complete),
     real dialogue acceptance for both NPCs, journal DOM + page-flip, save round-trip, **camera QA 0 fails**.
+- IN FLIGHT: **Premium look overhaul** (make it less "web-ish"). Working brief + A–Z of style
+  directions + concerns + method: **`studio/PREMIUM_LOOK.md`** — READ IT before doing visual work.
+  Two pieces already exist: (1) a post-processing finishing lens `studio/js/fx.js` (`EffectComposer`
+  presets `off|minimal|diorama|full`, toggle `window.__fx('diorama')`; **diorama accepted as the final
+  10% lens**; SSAO parked — billboard halo); (2) the **`papercraft-texture`** skill that fixes the
+  blurry/stretched surfaces (256px fixed-`repeat` → crisp seamless tiles + world-space UVs). The brief
+  says the real win is in the **bones** (palette, textures, toon, UI skin, character rim), not the lens.
 - NEXT (ideas): more NPCs/quests (drop-in: add art + a `world.json` npc/quest); conversation state
   (remember choices) — persist into the reserved `npcs:{}` slot already in the save blob; more zones/goals;
   per-mood music loops (6 palettes in `specs/all.json`); idle polish. NOTE: photos in the macOS **Photos library** are unreadable from bash

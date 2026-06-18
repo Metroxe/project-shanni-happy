@@ -186,7 +186,10 @@
   .tbtn[hidden]{display:none}
   #buildTag{margin-top:14px;font-size:11px;color:#bcb4a6;letter-spacing:.3px}
 </style>
-<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}</script>
+<script type="importmap">{"imports":{
+  "three":"https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"
+}}</script>
 </head><body>
 <div id="loader">
   <div id="loadStage">
@@ -275,6 +278,7 @@ import * as Save from './js/save.js';
 import { Sound } from './js/audio.js';
 import { Quests } from './js/quests.js';
 import { Sky } from './js/sky.js';
+import { FX } from './js/fx.js';
 
 const canvas=document.getElementById('c');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
@@ -485,9 +489,14 @@ async function build(){
   SCENE=world; RAMPS=world.ramps||[]; ZONES=world.zones||[];
   setBounds(world.bounds);
   // sky + lighting: the day/night cycle owns the gradient skydome, arcing sun + moon,
-  // drifting paper clouds, soft stars, and BOTH lights (directional sun/moon + hemisphere
-  // fill). Driven by a single day phase on a wall clock. See studio/js/sky.js.
+  // drifting paper clouds, soft stars, dynamic background/fog, and BOTH lights (directional
+  // sun/moon + hemisphere fill). Driven by a single day phase on a wall clock. See sky.js.
   Sky.build(scene, Object.assign({fog:world.fog}, world.sky||{}));
+  // optional post-processing finishing pass (off|minimal|diorama|full). Degrades to plain
+  // render if the composer can't build. window.__fx(name) switches live. Sky.update reasserts
+  // scene.background each frame, so the day/night sky wins over FX's static gradient.
+  FX.init({renderer,scene,camera:cam,skyColor:'cfe0f2',groundColor:world.ground});
+  window.__fx=(name)=>{const p=FX.setPreset(name);resize();return p;};
   // base ground + raised plateau + stairs + paper-box buildings (+ collider chains)
   const ground=new THREE.Mesh(new THREE.PlaneGeometry(200,200),
     new THREE.MeshStandardMaterial({color:hex(world.ground),roughness:1,metalness:0}));
@@ -577,7 +586,7 @@ function updateClock(){
 
 function draw(dt){
   Sky.update(dt,cam);                       // advance day/night (wall clock — runs even while paused)
-  if(!mesh){renderer.render(scene,cam);return;}
+  if(!mesh){FX.render();return;}
   if(talkCooldown>0)talkCooldown-=dt;
   if(playing)Dialogue.tick(dt);
   cameraFrame(S,dt);
@@ -636,7 +645,7 @@ function draw(dt){
   bTalk.hidden=!talkable; bTalk.classList.toggle('near',talkable);
 
   updateClock();
-  renderer.render(scene,cam);
+  FX.render();
 }
 
 // ---------- audio: map sim-state transitions to one-shot SFX ----------
@@ -874,7 +883,7 @@ addEventListener('pagehide',persist);
 setInterval(persist,10000);
 
 function resize(){const w=innerWidth||1280,h=innerHeight||800;renderer.setSize(w,h,false);
-  cam.aspect=w/h;cam.updateProjectionMatrix();}
+  cam.aspect=w/h;cam.updateProjectionMatrix();FX.setSize(w,h);}
 addEventListener('resize',resize);
 
 // ---------- AI / debug control surface ----------

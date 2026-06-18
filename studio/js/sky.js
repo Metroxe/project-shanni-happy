@@ -125,7 +125,7 @@ export const Sky = {
   stars:null, clouds:[], dir:null, hemi:null, _scene:null, _broke:false, _arc:null,
   _pal:{top:new THREE.Color(),hor:new THREE.Color(),dir:new THREE.Color(),
         hs:new THREE.Color(),hg:new THREE.Color(),ct:new THREE.Color(),hi:2,co:1,st:0},
-  _tmpDir:new THREE.Vector3(), _tmpDir2:new THREE.Vector3(), _tmpTgt:new THREE.Vector3(),
+  _tmpDir:new THREE.Vector3(), _tmpDir2:new THREE.Vector3(), _tmpTgt:new THREE.Vector3(), _bg:new THREE.Color(),
 
   build(scene, cfg={}){
     try{
@@ -228,7 +228,9 @@ export const Sky = {
     const P=samplePalette(this.phase, this._pal);
     // dome + fog + background
     if(this.dome){ this.dome.material.uniforms.top.value.copy(P.top); this.dome.material.uniforms.hor.value.copy(P.hor); }
-    if(this._scene){ this._scene.background.copy(P.hor); if(this._scene.fog)this._scene.fog.color.copy(P.hor); }
+    // reassign (don't copy-into): the FX post-processing lens may swap scene.background
+    // for a texture when a preset is active — we always reset it to our time-of-day colour.
+    if(this._scene){ this._scene.background=this._bg.copy(P.hor); if(this._scene.fog)this._scene.fog.color.copy(P.hor); }
     // hemisphere fill
     if(this.hemi){ this.hemi.color.copy(P.hs); this.hemi.groundColor.copy(P.hg); this.hemi.intensity=P.hi; }
 
