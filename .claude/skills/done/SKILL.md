@@ -1,14 +1,15 @@
 ---
 name: done
-description: Finish a git worktree work session — resolve any pending work, confirm it landed on main via its PR, stop this worktree's dev server, sync the primary checkout, then clean up the worktree. Pairs with /deploy. Use when the user says they're done / wrap up / finalize / close out / finish the current worktree, or runs /done.
+description: Finish a git worktree work session — resolve any pending work, confirm it landed on main via its PR, stop this session's serve + Claude preview (this worktree only, never other sessions'), sync the primary checkout, then clean up the worktree. Pairs with /deploy. Use when the user says they're done / wrap up / finalize / close out / finish the current worktree, or runs /done.
 ---
 
 # /done — finish a worktree work session
 
 Close out the current **worktree** session: resolve any pending work, confirm it landed
 on `main` **through its PR** (`main` is branch-protected — nothing reaches it by direct
-push), stop this worktree's dev server, sync the primary checkout, then tear down the
-worktree. Pairs with `/deploy` (which ships).
+push), stop **this session's** serve + Claude preview (this worktree only — never other
+concurrent sessions'), sync the primary checkout, then tear down the worktree. Pairs with
+`/deploy` (which ships).
 
 NEVER auto-commit, force-push, push to `main` directly, or discard unmerged work without
 explicit confirmation. If anything isn't safe, stop and report.
@@ -59,11 +60,39 @@ git -C "$MAIN" merge --ff-only origin/main 2>&1 || echo "skip: main checkout not
 ```
 Skip with a note if it isn't on `main` or can't fast-forward — don't force.
 
-## Step 5 — Stop this worktree's dev server
-- This project serves the game per-worktree on its own localhost port (see CLAUDE.md
-  "Showing the user something"). Tear it down so the port is freed and the generated
-  config is removed: `.claude/serve.sh stop`.
-- Also call the harness **preview_stop** for any preview server you started this session.
+## Step 5 — Stop ONLY this session's serve + Claude preview
+
+> ⚠️ **Cardinal guard — scope to THIS worktree, never a blanket stop.** Many sessions
+> run concurrently, each with its own serve + its own Claude preview. Identify this
+> session's resources by **this worktree's absolute path / its own port**, and stop
+> *only* those. A blanket `preview_stop` of everything, or running `serve.sh stop` /
+> killing a port that isn't this worktree's, kills someone else's live session. Do NOT
+> do that. When in doubt, leave it running and report it instead of stopping it.
+
+Run this **before** the teardown (Step 6), while we're still inside the worktree.
+
+1. **Dev server (localhost serve).** `.claude/serve.sh stop` is per-worktree by design —
+   it reads *this* worktree's own `.claude/launch.json` (its unique port + pid) and only
+   stops that one. Run it from inside the worktree:
+   ```sh
+   WT=$(git rev-parse --show-toplevel)        # this worktree's absolute path
+   .claude/serve.sh stop                       # frees THIS worktree's port, removes its launch.json
+   ```
+2. **Claude preview.** The harness can hold previews from many worktrees at once, so you
+   must filter:
+   - Call **preview_list** — it returns `{serverId, cwd, port}` per running preview.
+   - For each entry whose **`cwd` exactly equals `$WT`**, call **preview_stop** with that
+     `serverId`. That is this session's preview.
+   - **Leave every other entry running** — those belong to other sessions/worktrees (and
+     possibly other projects entirely). If *no* entry matches `$WT`, there is nothing to
+     stop (already gone) — stop nothing.
+3. **Verify (optional, read-only).** Confirm this worktree's port has no listener and the
+   preview is gone, without touching anything else:
+   ```sh
+   PORT=$(sed -n 's/.*"port"[: ]*\([0-9]*\).*/\1/p' .claude/launch.json 2>/dev/null)
+   [ -n "$PORT" ] && (lsof -nP -iTCP:$PORT -sTCP:LISTEN >/dev/null 2>&1 && echo "!! still up on $PORT" || echo "OK: $PORT down")
+   ```
+   Then re-run **preview_list** and confirm no entry's `cwd` is `$WT`.
 
 ## Step 6 — Remove the worktree (only if `REMOVE`)
 If `REMOVE` is false (user chose "Keep it"), skip to Step 7.
@@ -78,8 +107,9 @@ If `REMOVE` is false (user chose "Keep it"), skip to Step 7.
    …or tell the user to close it from their worktree UI.
 
 ## Step 7 — Report
-The branch + sha that landed on `main`, whether the main checkout synced, that the dev
-server was stopped, and the worktree's final state (removed / kept / left for the user to close).
+The branch + sha that landed on `main`, whether the main checkout synced, that **this
+session's** serve + Claude preview were stopped (and that other sessions' servers/previews
+were left running), and the worktree's final state (removed / kept / left for the user to close).
 
 ## Notes
 - Project-local skill (lives beside `/deploy`). Copy to `~/.claude/skills/done/` to make
