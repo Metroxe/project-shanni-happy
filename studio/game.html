@@ -44,9 +44,49 @@
     font-weight:600;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .15s;
     z-index:15;box-shadow:0 3px 10px rgba(90,80,60,.16)}
   #talkPrompt.on{opacity:1}
+  /* loading screen — pure CSS papercraft flower, no assets to wait on */
+  #loader{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;background:#e9f1ea;gap:0;
+    transition:opacity .55s ease}
+  #loader.done{opacity:0;pointer-events:none}
+  #loadStage{position:relative;width:150px;height:230px}
+  .shen{position:absolute;left:50%;bottom:40px;height:122px;width:auto;margin-left:-28px;
+    transform-origin:50% 100%;animation:hop 1.15s cubic-bezier(.5,0,.5,1) infinite;will-change:transform}
+  .lshadow{position:absolute;left:50%;bottom:34px;width:58px;height:14px;margin-left:-29px;border-radius:50%;
+    background:radial-gradient(ellipse at center,rgba(90,80,60,.32),rgba(90,80,60,0) 70%);
+    transform-origin:50% 50%;animation:lshadow 1.15s cubic-bezier(.5,0,.5,1) infinite}
+  .spark{position:absolute;width:9px;height:9px;border-radius:50%;opacity:0;
+    box-shadow:0 0 6px currentColor;animation:twinkle 1.15s ease-in-out infinite}
+  .spark.s1{left:36px;top:54px;color:#f3b6c3;background:#f3b6c3}
+  .spark.s2{right:34px;top:40px;color:#bcd9c4;background:#bcd9c4;animation-delay:.08s}
+  .spark.s3{left:70px;top:24px;color:#d7c3e0;background:#d7c3e0;animation-delay:.04s}
+  #loadText{margin-top:2px;color:#c27d8b;font-weight:600;font-size:16px;letter-spacing:.4px}
+  #loadText::after{content:'';animation:dots 1.5s steps(1,end) infinite}
+  #loader.err #loadStage{animation:none;opacity:.5}
+  @keyframes hop{
+    0%  {transform:translateY(0)     scaleX(1.1)  scaleY(.9)  rotate(0deg)}
+    14% {transform:translateY(-10px) scaleX(.93)  scaleY(1.1) rotate(-2deg)}
+    40% {transform:translateY(-58px) scaleX(1)    scaleY(1)   rotate(5deg)}
+    50% {transform:translateY(-62px) scaleX(1)    scaleY(1)   rotate(-4deg)}
+    60% {transform:translateY(-58px) scaleX(1)    scaleY(1)   rotate(5deg)}
+    86% {transform:translateY(-10px) scaleX(.96)  scaleY(1.05) rotate(2deg)}
+    100%{transform:translateY(0)     scaleX(1.1)  scaleY(.9)  rotate(0deg)}}
+  @keyframes lshadow{0%,100%{transform:scaleX(1) scaleY(1);opacity:.55}
+    50%{transform:scaleX(.46) scaleY(.46);opacity:.22}}
+  @keyframes twinkle{0%,34%{opacity:0;transform:scale(.4)}
+    50%{opacity:.95;transform:scale(1)}66%,100%{opacity:0;transform:scale(.4)}}
+  @keyframes dots{0%{content:''}25%{content:'.'}50%{content:'..'}75%{content:'...'}}
 </style>
 <script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}</script>
 </head><body>
+<div id="loader">
+  <div id="loadStage">
+    <div class="spark s1"></div><div class="spark s2"></div><div class="spark s3"></div>
+    <img class="shen" src="out/shen-paper.png" alt="">
+    <div class="lshadow"></div>
+  </div>
+  <div id="loadText">shenning</div>
+</div>
 <canvas id="c"></canvas>
 <div class="panel" id="hud">flowers <b id="score">0</b> / <span id="total">6</span></div>
 <div class="panel" id="hint">arrows / WASD move · space hop · J joy · E talk</div>
@@ -195,6 +235,8 @@ async function build(){
 
   S=initState(world.collectibles);
   window.__ready=true; resize(); startAuto();
+  const ld=document.getElementById('loader');
+  if(ld){ld.classList.add('done'); setTimeout(()=>ld.remove(),600);}
 }
 
 const SP_OFF=[[-.55,1.9],[.6,2.2],[-.35,2.6],[.45,1.6],[.15,2.4]];
@@ -325,5 +367,7 @@ window.game={
   reset:()=>{S=initState(world.collectibles);return 'reset';},
   pause:()=>{playing=false;return 'paused';},play:()=>{playing=true;return 'playing';},
 };
-build().catch(e=>{window.__err=String(e&&e.stack||e);console.error(e);});
+build().catch(e=>{window.__err=String(e&&e.stack||e);console.error(e);
+  const ld=document.getElementById('loader'); if(ld){ld.classList.add('err');
+    const t=document.getElementById('loadText'); if(t)t.textContent='couldn’t load ✗';}});
 </script></body></html>
