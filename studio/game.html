@@ -859,7 +859,10 @@ function onNew(){
 }
 function beginGame(fresh){
   Sound.resume();                           // first gesture — unlock audio
-  Sound.startMusic('out/music/calm.ogg');   // looping ambient (gated by shen.music)
+  // Auto-loop the ambient track only on a real deploy (build.json present → BUILD
+  // is a git sha). In a local dev worktree (no build.json → BUILD==='dev') it's
+  // armed but silent; the music slider still starts it if you want it.
+  Sound.startMusic('out/music/calm.ogg', BUILD!=='dev');
   if(fresh){Save.wipe(); S=initState(world.collectibles);
     Quests.init(world.quests,null,Quests.ctx); listDirty=true;}   // New Game resets quests too
   started=true; titleEl.classList.add('off');

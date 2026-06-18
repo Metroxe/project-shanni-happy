@@ -65,9 +65,13 @@ OGG (`out/music/calm.ogg`), because real-time music synthesis isn't practical. I
   revealed glyph (fired from `Dialogue.onReveal`). A new speaker gets its timbre in `VOICES`.
 - **Gesture gate:** browsers block audio until a user gesture — `Sound.resume()` is already
   wired to the title **Start** / first key / first tap, so new triggers don't handle it.
-- **Background music:** `Sound.startMusic('out/music/calm.ogg')` (called from `beginGame()`,
+- **Background music:** `Sound.startMusic(url, autoplay=true)` (called from `beginGame()`,
   after the gesture) fetches+decodes once and loops a single `AudioBufferSourceNode` (gapless —
-  NOT an `<audio>` element) through the music sub-bus. `Sound.stopMusic()` /
+  NOT an `<audio>` element) through the music sub-bus. **Auto-plays only on a real deploy:**
+  `beginGame` passes `BUILD!=='dev'`, so the loop starts itself on GitHub Pages (where `build.json`
+  exists → `BUILD` is a git sha) but stays **silent in a local dev worktree** (no `build.json` →
+  `BUILD==='dev'`). `autoplay=false` only *arms* the track (sets URL + preloads); the music slider
+  (`setMusicVolume`) still starts it on demand, so it isn't a dead control in dev. `Sound.stopMusic()` /
   `Sound.setMusicVolume(0..1)` (0 = off) / `Sound.toggleMusic()`; the **music** pause-menu slider
   drives it, persisted to `shen.musicvol` (own key — NOT in the save blob). Decode failure degrades
   to "no music", never a crash.

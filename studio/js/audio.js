@@ -309,15 +309,18 @@ export const Sound = {
     sfx: sfxGain ? sfxGain.gain.value : null, music: musicGain ? musicGain.gain.value : null }; },
 
   // Begin the looping background track. Call AFTER a user gesture (the title
-  // Start/Continue press) — never autoplay. Fetch+decode happens once; the
-  // buffer is cached so a later level-up is instant. Decode failure (e.g. a
+  // Start/Continue press) — never browser-autoplay. Fetch+decode happens once;
+  // the buffer is cached so a later level-up is instant. Decode failure (e.g. a
   // browser that can't read OGG) degrades to "no music", never a crash.
-  startMusic(url) {
+  //   autoplay=false → "arm" only: set the URL + preload, but don't start the
+  //   loop. The music slider (setMusicVolume) still starts it on demand. Used in
+  //   dev so the track stays silent until you ask for it; prod passes true.
+  startMusic(url, autoplay = true) {
     if (!ensure()) return;
     if (ctx.state === 'suspended') ctx.resume();
     if (url) musicURL = url;
     musicStarted = true;
-    loadMusicBuffer().then(buf => { if (buf && musicVol > 0 && musicStarted) playMusic(true); });
+    loadMusicBuffer().then(buf => { if (buf && autoplay && musicVol > 0 && musicStarted) playMusic(true); });
   },
 
   stopMusic() { stopMusicNode(0.5); },
