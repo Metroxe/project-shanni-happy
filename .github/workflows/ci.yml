@@ -30,9 +30,16 @@ jobs:
           node-version: 20
 
       - name: Install Playwright + Chromium
+        # No --with-deps: that apt-installs system fonts/libs, and a slow Ubuntu
+        # apt mirror has hung this step for ~10 min (PR #6). ubuntu-latest already
+        # ships Chromium's required shared libs, and smoke.mjs is a headless
+        # boot/no-error check that asserts nothing about font rendering — so the
+        # apt step is unnecessary. The short step timeout makes any future network
+        # hang (npm / browser-binary CDN) fail fast instead of eating the job budget.
+        timeout-minutes: 5
         run: |
           npm install
-          npx playwright install --with-deps chromium
+          npx playwright install chromium
 
       - name: Smoke test — game boots with no errors
         run: node test/smoke.mjs _site
