@@ -3,6 +3,9 @@
 <style>
   html,body{margin:0;height:100%;background:#e9f1ea;overflow:hidden;
     font-family:-apple-system,Segoe UI,Roboto,sans-serif;touch-action:none}
+  /* nothing in the game is text-selectable — it's a game, not a document */
+  *{-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;
+    -webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
   #c{display:block;position:fixed;inset:0;width:100vw;height:100vh}
   .panel{position:fixed;background:rgba(255,255,255,.74);border:1px solid #d6c9b2;
     border-radius:11px;padding:6px 11px;color:#5a564e;font-size:14px}
