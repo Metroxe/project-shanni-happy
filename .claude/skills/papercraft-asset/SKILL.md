@@ -14,14 +14,37 @@ All tooling lives in `studio/` and uses the venv at `studio/.venv`. First run:
 
 ## 1. New character cutout
 
-1. Generate a standing chibi in Gemini/Imagen on a FLAT solid background (kawaii, the
-   locked outfit; phrase prompts to avoid minor-safety filters — "petite young woman /
-   chibi mascot doll"). Save into `studio/refs/`. The Gemini key comes from 1Password
-   (`set -a; source ~/.secrets.env; set +a`) — never commit it.
-2. Cut it out + add the die-cut border:
-   `studio/.venv/bin/python studio/cutout.py studio/refs/<name>.png`
-   → writes `studio/out/shen-cut.png` (transparent) + `studio/out/shen-paper.png`
+1. Generate a standing chibi on a FLAT solid background (kawaii mascot doll; full body,
+   feet visible; phrase prompts to avoid minor-safety filters — "petite young woman" /
+   "chibi mascot doll" / "adult man as a cute mascot doll"). Pass `shen-chibi-4.png` as a
+   `--ref` so the new character matches Shen's exact style/line-weight/palette/mint-bg.
+   Use `studio/gen_image.py` (writes into `studio/refs/`):
+   ```sh
+   set -a; source ~/.secrets.env; set +a   # OP_SERVICE_ACCOUNT_TOKEN
+   export GEMINI_API_KEY="$(op item get s66drdsfeobdn5brqel5kvdtta \
+       --vault Christopher-Macbook-CLI --fields label='API Key' --reveal)"
+   studio/.venv/bin/python studio/gen_image.py -o studio/refs/<name>-1.png \
+       -p "<prompt>" --ref studio/refs/shen-chibi-4.png --aspect 3:4
+   ```
+   Default model `gemini-3-pro-image`. Fan out a few variants (parallel calls to different
+   `-o` paths) and pick the cleanest, buffest/cutest, feet-flat one. Never commit the key.
+2. Cut it out + add the die-cut border (optional 2nd arg = output name, defaults `shen`):
+   `studio/.venv/bin/python studio/cutout.py studio/refs/<name>-1.png <name>`
+   → writes `studio/out/<name>-cut.png` (transparent) + `studio/out/<name>-paper.png`
    (cream border). Prints aspect + foot-baseline ratio — note these for placement.
+
+   NOTE: a reference photo inside the macOS Photos library can't be read from bash (TCC
+   blocks `cp`/`sips`/`qlmanage`). Ask the user to drag it into chat or export it to
+   `studio/refs/`; then pass it as an extra `--ref` for a closer likeness.
+
+### NPC + dialogue
+
+Drop a new NPC into `studio/specs/world.json` under `npcs[]`:
+`{name, tex:"out/<name>-paper.png", x, z, h, dialogue}`. The dialogue is a node graph
+`{start, nodes:{id:{text, speaker?, next?, choices:[{label,next}]}}}` — `speaker` defaults
+to the NPC name (use the player's name "Shen" for player lines); a node with `choices`
+opens a menu, else `next` advances, else the line ends the conversation. The engine
+(`studio/js/dialogue.js`) + `game.html` handle proximity, the box, and input.
 
 ## 2. Environment scene
 

@@ -9,6 +9,34 @@
   #hud{left:14px;top:12px}
   #hud b{color:#c27d8b}
   #hint{right:14px;top:12px;color:#7a756c;font-size:12px;background:rgba(255,255,255,.6)}
+  #bMenu{position:fixed;right:14px;top:44px;font-size:16px;padding:4px 11px;line-height:1.2;z-index:21}
+  /* pause menu */
+  #menu{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;
+    background:rgba(70,64,52,.28);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
+  #menu.on{display:flex}
+  #menuPanel{background:rgba(255,253,248,.97);border:1px solid #d6c9b2;border-radius:18px;
+    padding:20px 22px 18px;width:300px;max-width:calc(100vw - 36px);color:#5a564e;
+    box-shadow:0 12px 36px rgba(90,80,60,.26)}
+  #menuTitle{font-weight:700;color:#c27d8b;font-size:18px;letter-spacing:.5px;text-align:center;margin-bottom:16px}
+  #menu .row{display:flex;align-items:center;gap:11px;margin:10px 0;font-size:14px}
+  #menu .row>span:first-child{width:52px;color:#7a756c}
+  #volVal{width:38px;text-align:right;color:#b76b7d;font-variant-numeric:tabular-nums}
+  #menu input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:6px;border-radius:4px;
+    background:#ece2d0;outline:none;cursor:pointer}
+  #menu input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;
+    background:#e6b9c6;border:2px solid #fffdf8;box-shadow:0 1px 4px rgba(90,80,60,.3);cursor:pointer}
+  #menu input[type=range]::-moz-range-thumb{width:18px;height:18px;border:2px solid #fffdf8;border-radius:50%;
+    background:#e6b9c6;box-shadow:0 1px 4px rgba(90,80,60,.3);cursor:pointer}
+  .mrow{display:flex;justify-content:space-between;align-items:center;width:100%;box-sizing:border-box;
+    margin:8px 0 2px;padding:9px 13px;border:1px solid #e0d4bf;border-radius:11px;
+    background:rgba(255,255,255,.6);color:#6a655c;font:inherit;font-size:14px;cursor:pointer}
+  .mrow #muteState{font-weight:700;color:#7aa37e}
+  .mrow.off{opacity:.75}
+  .mrow.off #muteState{color:#c08a8a}
+  .menuHint{margin:14px 2px 4px;font-size:11.5px;color:#8a8579;text-align:center;line-height:1.6}
+  .menuBtns{display:flex;gap:10px;margin-top:14px}
+  .menuBtns .btn{flex:1;padding:11px 0;font-size:14px}
+  .menuBtns .primary{background:#f6e7ea;border-color:#e6b9c6;color:#b76b7d;font-weight:600}
   #win{left:50%;top:24%;transform:translateX(-50%);opacity:0;transition:opacity .4s;
     border-color:#e6c3cf;color:#c27d8b;font-size:18px;font-weight:600}
   #dpad{position:fixed;left:18px;bottom:18px;display:grid;gap:6px;
@@ -21,12 +49,98 @@
   #dpad .btn{font-size:20px}
   #bU{grid-area:u}#bD{grid-area:d}#bL{grid-area:l}#bR{grid-area:r}
   #acts .btn{font-size:16px;padding:12px 18px}
+  #bTalk.near{background:#f6e7ea;border-color:#e6b9c6;color:#b76b7d}
+  /* dialogue */
+  #dlg{position:fixed;left:50%;bottom:18px;transform:translateX(-50%) translateY(14px);
+    width:min(680px,calc(100vw - 32px));box-sizing:border-box;
+    background:rgba(255,253,248,.95);border:1px solid #d6c9b2;border-radius:16px;
+    padding:14px 18px 18px;color:#5a564e;box-shadow:0 6px 22px rgba(90,80,60,.18);
+    opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;z-index:20}
+  #dlg.on{opacity:1;pointer-events:auto;transform:translateX(-50%) translateY(0)}
+  #dlgName{font-weight:700;color:#c27d8b;font-size:14px;margin-bottom:5px;letter-spacing:.3px}
+  #dlgName.player{color:#7d9bbf}
+  #dlgText{font-size:17px;line-height:1.42;min-height:2.84em}
+  #dlgChoices{display:none;flex-direction:column;gap:7px;margin-top:11px}
+  .dlgChoice{border:1px solid #e0d4bf;border-radius:10px;padding:8px 13px;font-size:15px;
+    background:rgba(255,255,255,.6);cursor:pointer;color:#6a655c;transition:.12s}
+  .dlgChoice.sel{background:#f6e7ea;border-color:#e6b9c6;color:#b76b7d;box-shadow:inset 0 0 0 1px #e6b9c6}
+  #dlgNext{position:absolute;right:16px;bottom:9px;color:#c8a98e;font-size:15px;
+    animation:bob 1s ease-in-out infinite;visibility:hidden}
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(3px)}}
+  #talkPrompt{position:fixed;transform:translate(-50%,-110%);background:rgba(255,255,255,.92);
+    border:1px solid #e6c3cf;border-radius:20px;padding:5px 12px;color:#c27d8b;font-size:13px;
+    font-weight:600;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .15s;
+    z-index:15;box-shadow:0 3px 10px rgba(90,80,60,.16)}
+  #talkPrompt.on{opacity:1}
+  /* loading screen — pure CSS papercraft flower, no assets to wait on */
+  #loader{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;background:#e9f1ea;gap:0;
+    transition:opacity .55s ease}
+  #loader.done{opacity:0;pointer-events:none}
+  #loadStage{position:relative;width:150px;height:230px}
+  .shen{position:absolute;left:50%;bottom:40px;height:122px;width:auto;margin-left:-28px;
+    transform-origin:50% 100%;animation:hop 1.15s cubic-bezier(.5,0,.5,1) infinite;will-change:transform}
+  .lshadow{position:absolute;left:50%;bottom:34px;width:58px;height:14px;margin-left:-29px;border-radius:50%;
+    background:radial-gradient(ellipse at center,rgba(90,80,60,.32),rgba(90,80,60,0) 70%);
+    transform-origin:50% 50%;animation:lshadow 1.15s cubic-bezier(.5,0,.5,1) infinite}
+  .spark{position:absolute;width:9px;height:9px;border-radius:50%;opacity:0;
+    box-shadow:0 0 6px currentColor;animation:twinkle 1.15s ease-in-out infinite}
+  .spark.s1{left:36px;top:54px;color:#f3b6c3;background:#f3b6c3}
+  .spark.s2{right:34px;top:40px;color:#bcd9c4;background:#bcd9c4;animation-delay:.08s}
+  .spark.s3{left:70px;top:24px;color:#d7c3e0;background:#d7c3e0;animation-delay:.04s}
+  #loadText{margin-top:2px;color:#c27d8b;font-weight:600;font-size:16px;letter-spacing:.4px}
+  #loadText::after{content:'';animation:dots 1.5s steps(1,end) infinite}
+  #loader.err #loadStage{animation:none;opacity:.5}
+  @keyframes hop{
+    0%  {transform:translateY(0)     scaleX(1.1)  scaleY(.9)  rotate(0deg)}
+    14% {transform:translateY(-10px) scaleX(.93)  scaleY(1.1) rotate(-2deg)}
+    40% {transform:translateY(-58px) scaleX(1)    scaleY(1)   rotate(5deg)}
+    50% {transform:translateY(-62px) scaleX(1)    scaleY(1)   rotate(-4deg)}
+    60% {transform:translateY(-58px) scaleX(1)    scaleY(1)   rotate(5deg)}
+    86% {transform:translateY(-10px) scaleX(.96)  scaleY(1.05) rotate(2deg)}
+    100%{transform:translateY(0)     scaleX(1.1)  scaleY(.9)  rotate(0deg)}}
+  @keyframes lshadow{0%,100%{transform:scaleX(1) scaleY(1);opacity:.55}
+    50%{transform:scaleX(.46) scaleY(.46);opacity:.22}}
+  @keyframes twinkle{0%,34%{opacity:0;transform:scale(.4)}
+    50%{opacity:.95;transform:scale(1)}66%,100%{opacity:0;transform:scale(.4)}}
+  @keyframes dots{0%{content:''}25%{content:'.'}50%{content:'..'}75%{content:'...'}}
+  /* title / continue screen */
+  #title{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(120% 120% at 50% 30%,rgba(233,241,234,.55),rgba(233,241,234,.9));
+    opacity:1;transition:opacity .5s}
+  #title.off{opacity:0;pointer-events:none}
+  #title .card{display:flex;flex-direction:column;align-items:center;gap:4px;
+    background:rgba(255,253,248,.96);border:1px solid #d6c9b2;border-radius:22px;
+    padding:30px 40px 26px;box-shadow:0 10px 36px rgba(90,80,60,.18);text-align:center;
+    min-width:min(330px,calc(100vw - 48px))}
+  #title .mark{font-size:40px;color:#c27d8b;line-height:1}
+  #title h1{margin:6px 0 0;font-size:26px;font-weight:700;color:#5a564e;letter-spacing:.4px}
+  #title .sub{margin:2px 0 18px;font-size:13px;color:#9a948a}
+  #title .menu{display:flex;flex-direction:column;gap:9px;width:100%}
+  .tbtn{font:inherit;font-size:16px;border-radius:13px;border:1px solid #d6c9b2;
+    background:rgba(255,255,255,.85);color:#5a564e;padding:12px 22px;cursor:pointer;
+    user-select:none;touch-action:none;transition:.12s}
+  .tbtn:active{transform:scale(.97)}
+  .tbtn.primary{background:#f6e7ea;border-color:#e6b9c6;color:#b76b7d;font-weight:600}
+  .tbtn.sel{box-shadow:0 0 0 2px #e6b9c6,0 4px 12px rgba(183,107,125,.18)}
+  .tbtn.danger{background:#f7e3e3;border-color:#e6b9b9;color:#b76b6b}
+  .tbtn[hidden]{display:none}
+  #buildTag{margin-top:14px;font-size:11px;color:#bcb4a6;letter-spacing:.3px}
 </style>
 <script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}</script>
 </head><body>
+<div id="loader">
+  <div id="loadStage">
+    <div class="spark s1"></div><div class="spark s2"></div><div class="spark s3"></div>
+    <img class="shen" src="out/shen-paper.png" alt="">
+    <div class="lshadow"></div>
+  </div>
+  <div id="loadText">shenning</div>
+</div>
 <canvas id="c"></canvas>
 <div class="panel" id="hud">flowers <b id="score">0</b> / <span id="total">6</span></div>
-<div class="panel" id="hint">arrows / WASD move · space hop · J joy</div>
+<div class="panel" id="hint">arrows / WASD move · space hop · J joy · E talk · Esc menu</div>
+<button class="btn" id="bMenu" aria-label="menu" title="menu (Esc)">☰</button>
 <div class="panel" id="win">all flowers! ✿</div>
 <div id="dpad">
   <button class="btn" id="bU" aria-label="up">▲</button>
@@ -35,12 +149,47 @@
   <button class="btn" id="bD" aria-label="down">▼</button>
 </div>
 <div id="acts">
+  <button class="btn" id="bTalk">talk 💬</button>
   <button class="btn" id="bHop">hop</button>
   <button class="btn" id="bJoy">joy ✿</button>
+</div>
+<div id="dlg">
+  <div id="dlgName"></div>
+  <div id="dlgText"></div>
+  <div id="dlgChoices"></div>
+  <div id="dlgNext">▾</div>
+</div>
+<div id="talkPrompt"></div>
+<div id="title">
+  <div class="card">
+    <div class="mark">✿</div>
+    <h1>Shen</h1>
+    <div class="sub">a little papercraft game</div>
+    <div class="menu">
+      <button class="tbtn" id="btnContinue" hidden>Continue</button>
+      <button class="tbtn" id="btnNew">New Game</button>
+    </div>
+    <div id="buildTag"></div>
+  </div>
+</div>
+<div id="menu">
+  <div id="menuPanel">
+    <div id="menuTitle">paused</div>
+    <div class="row"><span>volume</span><input type="range" id="vol" min="0" max="100" value="70"><span id="volVal">70%</span></div>
+    <button class="mrow" id="muteRow"><span>sound</span><span id="muteState">on</span></button>
+    <div class="menuHint">arrows / WASD move · space hop · J joy<br>E talk · Esc menu · M mute</div>
+    <div class="menuBtns">
+      <button class="btn" id="restartBtn">restart ✿</button>
+      <button class="btn primary" id="resumeBtn">resume</button>
+    </div>
+  </div>
 </div>
 <script type="module">
 import * as THREE from 'three';
 import { WORLD, initState, step, setBounds } from './js/sim.js';
+import { Dialogue } from './js/dialogue.js';
+import * as Save from './js/save.js';
+import { Sound } from './js/audio.js';
 
 const canvas=document.getElementById('c');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
@@ -51,6 +200,7 @@ const CAM_Y=5.0, CAM_D=10.6, CAM_LOOK_Y=1.7;
 
 const SHEN_H=3.0, SHEN_W=SHEN_H*0.4634, GROUND_EPS=0.01;
 const WALK_HOP=0.36, JOY_H=2.2;
+const TALK_R=2.4; const _tv=new THREE.Vector3();
 
 const loader=new THREE.TextureLoader();
 const tx=u=>new Promise(res=>loader.load(u,t=>{t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;
@@ -79,10 +229,18 @@ function blobTex(col){return softCanvasTex((x,s)=>{x.fillStyle=col;
     x.beginPath();x.ellipse(a*s,b*s,r*s,r*s*.8,0,0,7);x.fill();});});}
 
 let world, S, shen, mesh=null, shadow, sparkles=[], flowers=[], propsMesh=[], burst, burstT=-1, burstPos=new THREE.Vector3();
+let npcs=[], nearNpc=null, talkCooldown=0;
+let started=false, BUILD='dev';
 
 const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
 const smooth=t=>t<=0?0:t>=1?1:t*t*(3-2*t);
 const ease=(a,b,t)=>a+(b-a)*smooth(t);
+// framerate-independent exponential smoothing toward a target (tau in seconds).
+const damp=(cur,tgt,tau,dt)=>tgt+(cur-tgt)*Math.exp(-dt/Math.max(tau,1e-4));
+// smoothed display pose: tweens between animation states so rapid direction
+// flips / start-stop / mode changes ease instead of snapping. Height stays
+// crisp (jumps feel responsive); lean & squash ease a touch more.
+const D={yW:0,sx:1,sy:1,rot:0}; let Dinit=false;
 function joyPose(u){let y=0,sx=1,sy=1,rot=0,spark=0;
   if(u<0.2){const p=u/0.2;sy=ease(1,0.78,p);sx=ease(1,1.14,p);}
   else if(u<0.95){const p=(u-0.2)/0.75;y=Math.sin(p*Math.PI)*JOY_H;
@@ -128,6 +286,25 @@ async function build(){
     m.position.set(c.x,fh/2,c.z); m.userData={x:c.x,z:c.z}; scene.add(m); flowers.push(m);});
   document.getElementById('total').textContent=world.collectibles.length;
 
+  // NPCs (talk targets) — billboard + grounded group + contact shadow
+  for(const nd of (world.npcs||[])){
+    const ntex=await tx(nd.tex);
+    const nw=nd.h*(ntex.image.width/ntex.image.height);
+    const g=new THREE.Group(); g.position.set(nd.x,0,nd.z);
+    const m=billboard(ntex,nw,nd.h); m.position.y=nd.h/2; g.add(m); scene.add(g);
+    const sh=new THREE.Mesh(new THREE.PlaneGeometry(nw*1.4,nw*1.4),
+      new THREE.MeshBasicMaterial({map:shadowTex,transparent:true,depthWrite:false}));
+    sh.rotation.x=-Math.PI/2; sh.position.set(nd.x,GROUND_EPS,nd.z); sh.renderOrder=1; scene.add(sh);
+    npcs.push({data:nd,group:g,mesh:m,h:nd.h,phase:Math.random()*6.28,greet:0});
+  }
+  Dialogue.init();
+  Dialogue.onEnd=()=>{ talkCooldown=0.3; };
+  Dialogue.onLine=(speaker)=>Sound.newLine();
+  Dialogue.onReveal=(ch,speaker)=>Sound.blip(ch,speaker);
+  Dialogue.onChoiceOpen=()=>Sound.sfx('move');
+  Dialogue.onChoiceMove=()=>Sound.sfx('move');
+  Dialogue.onChoicePick=()=>Sound.sfx('select');
+
   // shadow + shen + sparkles + burst
   shadow=new THREE.Mesh(new THREE.PlaneGeometry(SHEN_W*1.5,SHEN_W*1.5),
     new THREE.MeshBasicMaterial({map:shadowTex,transparent:true,depthWrite:false}));
@@ -146,52 +323,150 @@ async function build(){
     1,1,{soft:true}); burst.visible=false;burst.renderOrder=3;scene.add(burst);
 
   S=initState(world.collectibles);
+  try{const r=await fetch('build.json',{cache:'no-store'});if(r.ok){const j=await r.json();BUILD=j.sha||'dev';}}catch{}
+  const saved=Save.load(world);
+  if(saved)Save.apply(S,saved);          // preview at the saved spot behind the title
+  setupTitle(!!saved);
   window.__ready=true; resize(); startAuto();
+  const ld=document.getElementById('loader');
+  if(ld){ld.classList.add('done'); setTimeout(()=>ld.remove(),600);}
 }
 
 const SP_OFF=[[-.55,1.9],[.6,2.2],[-.35,2.6],[.45,1.6],[.15,2.4]];
 function draw(dt){
   if(!mesh){renderer.render(scene,cam);return;}
+  if(talkCooldown>0)talkCooldown-=dt;
+  if(playing)Dialogue.tick(dt);
   const q=pose(S);
+  if(!Dinit){D.yW=q.yW;D.sx=q.sx;D.sy=q.sy;D.rot=q.rot;Dinit=true;}
+  D.yW =damp(D.yW, q.yW, 0.035,dt);   // height: snappy so jumps stay responsive
+  D.sx =damp(D.sx, q.sx, 0.05, dt);   // squash/stretch: light easing
+  D.sy =damp(D.sy, q.sy, 0.05, dt);
+  D.rot=damp(D.rot,q.rot,0.09, dt);   // lean: eased most → direction flips swing
   shen.position.set(S.x,GROUND_EPS,S.z);
-  mesh.position.y=SHEN_H/2+q.yW; shen.scale.set(q.sx,q.sy,1); shen.rotation.z=q.rot;
-  const k=clamp(q.yW/2.0,0,1);
+  mesh.position.y=SHEN_H/2+D.yW; shen.scale.set(D.sx,D.sy,1); shen.rotation.z=D.rot;
+  const k=clamp(D.yW/2.0,0,1);
   shadow.position.set(S.x,GROUND_EPS,S.z); const ss=1-0.5*k; shadow.scale.set(ss,ss,1);
   shadow.material.opacity=(1-0.55*k);
   sparkles.forEach((sp,i)=>{ if(q.spark<=0){sp.visible=false;return;} sp.visible=true;
-    const[ox,oy]=SP_OFF[i]; sp.position.set(S.x+ox*0.7,SHEN_H/2+q.yW+oy*0.7+q.spark*0.5,S.z+0.3);
+    const[ox,oy]=SP_OFF[i]; sp.position.set(S.x+ox*0.7,SHEN_H/2+D.yW+oy*0.7+q.spark*0.5,S.z+0.3);
     const sc=0.55+0.5*Math.sin(q.spark*Math.PI);sp.scale.set(sc,sc,1);
     sp.material.opacity=Math.sin(q.spark*Math.PI);});
   flowers.forEach((f,i)=>{const c=S.collectibles[i]; f.visible=!c.got;
     f.position.y=1.15/2+0.08*Math.sin(S.animClock*3+i);});
-  if(S.justGot>=0){const c=S.collectibles[S.justGot];burstPos.set(c.x,1.0,c.z);burstT=0;}
+  if(S.justGot>=0){const c=S.collectibles[S.justGot];burstPos.set(c.x,1.0,c.z);burstT=0;persist();}
   if(burstT>=0){burstT+=dt;const p=burstT/0.45;burst.visible=p<1;burst.position.copy(burstPos);
     const sc=0.6+p*2.4;burst.scale.set(sc,sc,1);burst.material.opacity=(1-p)*0.8;if(p>=1)burstT=-1;}
+  // NPCs: gentle paper breathing + greet hop
+  npcs.forEach(o=>{
+    const t=S.animClock+o.phase;
+    let sy=1+0.02*Math.sin(t*2.0), yW=0;
+    if(o.greet>0){o.greet=Math.max(0,o.greet-dt);const p=1-o.greet/0.5;
+      yW=Math.sin(p*Math.PI)*0.5; sy=1+0.06*Math.sin(p*Math.PI);}
+    o.group.scale.set(1/Math.sqrt(sy),sy,1);
+    o.group.rotation.z=0.012*Math.sin(t*1.3);
+    o.mesh.position.y=o.h/2+yW;
+  });
+
   // follow camera (keeps Shen centred)
   cam.position.set(S.x,CAM_Y,S.z+CAM_D); cam.lookAt(S.x,CAM_LOOK_Y,S.z);
+
+  // proximity → nearest talkable NPC + floating prompt
+  nearNpc=null;
+  if(!Dialogue.active && talkCooldown<=0){let best=1e9;
+    npcs.forEach(o=>{const dx=o.data.x-S.x,dz=o.data.z-S.z,d=dx*dx+dz*dz;
+      if(d<TALK_R*TALK_R&&d<best){best=d;nearNpc=o;}});}
+  const tp=document.getElementById('talkPrompt');
+  if(nearNpc){cam.updateMatrixWorld();
+    _tv.set(nearNpc.data.x,nearNpc.h+0.5,nearNpc.data.z).project(cam);
+    tp.style.left=((_tv.x*0.5+0.5)*innerWidth)+'px';
+    tp.style.top=((-_tv.y*0.5+0.5)*innerHeight)+'px';
+    tp.textContent='💬 Talk to '+nearNpc.data.name;
+    tp.classList.add('on');
+  } else tp.classList.remove('on');
+  document.getElementById('bTalk').classList.toggle('near',!!nearNpc||Dialogue.active);
+
   document.getElementById('score').textContent=S.score;
   if(S.event==='win'){const w=document.getElementById('win');w.style.opacity=1;setTimeout(()=>w.style.opacity=0,2400);}
   renderer.render(scene,cam);
 }
 
+// ---------- audio: map sim-state transitions to one-shot SFX ----------
+const aprev={onGround:true,mode:'idle',walkSeg:0};
+function audioStep(s){
+  if(s.event==='win')Sound.sfx('win');
+  else if(s.event==='collect'||s.justGot>=0)Sound.sfx('collect');
+  if(aprev.onGround&&!s.onGround)Sound.sfx('hop');           // jump launch
+  if(!aprev.onGround&&s.onGround)Sound.sfx('land');          // touchdown
+  if(s.mode==='joy'&&aprev.mode!=='joy'&&s.justGot<0)Sound.sfx('joy'); // joy (not via pickup)
+  const seg=Math.floor(s.walkPhase/Math.PI);                 // walk contact = each half-cycle
+  if(s.mode==='walk'&&seg!==aprev.walkSeg)Sound.sfx('step');
+  aprev.onGround=s.onGround; aprev.mode=s.mode; aprev.walkSeg=seg;
+}
+
 // ---------- input (human + AI share one path) ----------
-const held={up:false,down:false,left:false,right:false}; let edgeJump=false,edgeJoy=false;
+const held={up:false,down:false,left:false,right:false}; let edgeJump=false,edgeJoy=false,edgeTalk=false;
 let aiMove=null, aiTarget=null, aiJump=false, aiJoy=false;
 addEventListener('keydown',e=>{const k=e.key.toLowerCase();
+  if(!started)return;                        // title screen owns input until play begins
+  Sound.resume();                            // browsers gate audio behind a gesture
+  if(k==='escape'&&!e.repeat){e.preventDefault();toggleMenu();return;}
+  if(k==='m'&&!e.repeat){Sound.toggle();syncMenu();return;}
+  if(menuOpen())return;                      // paused menu eats other keys
+  if(Dialogue.active){                       // dialogue captures all input
+    if(k==='arrowup'||k==='w')Dialogue.move(-1);
+    else if(k==='arrowdown'||k==='s')Dialogue.move(1);
+    else if(k===' '||k==='enter'||k==='e')Dialogue.advance();
+    if(['arrowup','arrowdown','arrowleft','arrowright',' ','enter'].includes(k))e.preventDefault();
+    return;
+  }
   if(k==='arrowup'||k==='w')held.up=true; else if(k==='arrowdown'||k==='s')held.down=true;
   else if(k==='arrowleft'||k==='a')held.left=true; else if(k==='arrowright'||k==='d')held.right=true;
-  else if((k===' ')&&!e.repeat)edgeJump=true; else if((k==='j'||k==='enter')&&!e.repeat)edgeJoy=true;
+  else if((k===' ')&&!e.repeat)edgeJump=true;
+  else if((k==='e'||k==='enter')&&!e.repeat)edgeTalk=true;
+  else if((k==='j')&&!e.repeat)edgeJoy=true;
   if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k))e.preventDefault();});
 addEventListener('keyup',e=>{const k=e.key.toLowerCase();
   if(k==='arrowup'||k==='w')held.up=false; else if(k==='arrowdown'||k==='s')held.down=false;
   else if(k==='arrowleft'||k==='a')held.left=false; else if(k==='arrowright'||k==='d')held.right=false;});
+// resume audio on the first touch/click too (mobile has no keydown)
+addEventListener('pointerdown',()=>Sound.resume(),{passive:true});
+
+// ---------- pause menu (volume slider + mute + controls) ----------
+const menu=document.getElementById('menu'), vol=document.getElementById('vol'), muteRow=document.getElementById('muteRow');
+const menuOpen=()=>menu.classList.contains('on');
+function paintVol(){const v=+vol.value; vol.style.background=`linear-gradient(90deg,#e6b9c6 ${v}%,#ece2d0 ${v}%)`;}
+function syncMenu(){const v=Math.round(Sound.volume*100);
+  vol.value=v; document.getElementById('volVal').textContent=v+'%'; paintVol();
+  document.getElementById('muteState').textContent=Sound.muted?'off':'on';
+  muteRow.classList.toggle('off',Sound.muted);}
+function openMenu(){Sound.resume(); playing=false; held.up=held.down=held.left=held.right=false;
+  menu.classList.add('on'); syncMenu();}
+function closeMenu(){menu.classList.remove('on'); edgeJump=edgeJoy=edgeTalk=false; last=null; playing=true;}
+function toggleMenu(){Sound.resume(); menuOpen()?closeMenu():openMenu();}
+vol.addEventListener('input',()=>{Sound.resume();Sound.setVolume(+vol.value/100);syncMenu();});
+vol.addEventListener('change',()=>Sound.sfx('select'));  // preview the level on release
+muteRow.addEventListener('click',e=>{e.preventDefault();Sound.resume();Sound.toggle();syncMenu();});
+document.getElementById('resumeBtn').addEventListener('click',e=>{e.preventDefault();closeMenu();});
+document.getElementById('restartBtn').addEventListener('click',e=>{e.preventDefault();Save.wipe();S=initState(world.collectibles);persist();Sound.sfx('move');closeMenu();});
+document.getElementById('bMenu').addEventListener('click',e=>{e.preventDefault();toggleMenu();});
+menu.addEventListener('pointerdown',e=>{if(e.target===menu)closeMenu();}); // backdrop closes
+syncMenu();
 function holdBtn(id,set){const b=document.getElementById(id);
   b.addEventListener('pointerdown',e=>{e.preventDefault();set(true);});
   ['pointerup','pointerleave','pointercancel'].forEach(ev=>b.addEventListener(ev,()=>set(false)));}
-holdBtn('bU',v=>held.up=v);holdBtn('bD',v=>held.down=v);holdBtn('bL',v=>held.left=v);holdBtn('bR',v=>held.right=v);
-document.getElementById('bHop').addEventListener('click',()=>edgeJump=true);
-document.getElementById('bJoy').addEventListener('click',()=>edgeJoy=true);
+// up/down double as choice navigation while talking
+function navBtn(id,dir,set){const b=document.getElementById(id);
+  b.addEventListener('pointerdown',e=>{e.preventDefault(); if(Dialogue.active)Dialogue.move(dir); else set(true);});
+  ['pointerup','pointerleave','pointercancel'].forEach(ev=>b.addEventListener(ev,()=>set(false)));}
+navBtn('bU',-1,v=>held.up=v); navBtn('bD',1,v=>held.down=v);
+holdBtn('bL',v=>held.left=v);holdBtn('bR',v=>held.right=v);
+document.getElementById('bHop').addEventListener('click',()=>{if(!Dialogue.active)edgeJump=true;});
+document.getElementById('bJoy').addEventListener('click',()=>{if(!Dialogue.active)edgeJoy=true;});
+document.getElementById('bTalk').addEventListener('click',()=>{
+  if(Dialogue.active)Dialogue.advance(); else edgeTalk=true;});
 function resolveInput(){
+  if(!started||Dialogue.active) return {moveX:0,moveZ:0,jump:false,joy:false};
   let mx=(held.right?1:0)-(held.left?1:0), mz=(held.down?1:0)-(held.up?1:0);
   if(mx===0&&mz===0){
     if(aiMove){mx=aiMove.x;mz=aiMove.z;}
@@ -205,11 +480,57 @@ function resolveInput(){
 const FIXED=1/60; let playing=true,timer=null,last=null,acc=0;
 function frame(){const now=performance.now();if(last===null)last=now;
   let e=(now-last)/1000;last=now; if(e>0.5)e=0.5;
-  if(playing){acc+=e;let n=0;while(acc>=FIXED&&n<40){S=step(S,resolveInput(),FIXED);acc-=FIXED;n++;}}
+  if(started&&edgeTalk){edgeTalk=false; if(playing&&!Dialogue.active&&nearNpc){nearNpc.greet=0.5; Sound.sfx('talk'); Dialogue.start(nearNpc.data);}}
+  if(playing){acc+=e;let n=0;while(acc>=FIXED&&n<40){S=step(S,resolveInput(),FIXED);audioStep(S);acc-=FIXED;n++;}}
   draw(e);}
 function startAuto(){if(!timer){last=null;acc=0;timer=setInterval(frame,16);}}
 window.__stopAuto=()=>{if(timer){clearInterval(timer);timer=null;}};
 window.__startAuto=startAuto;
+
+// ---------- title / continue screen + autosave ----------
+const titleEl=document.getElementById('title');
+const btnContinue=document.getElementById('btnContinue');
+const btnNew=document.getElementById('btnNew');
+let titleBtns=[], titleSel=0, confirmNew=false, hasSaved=false;
+function setupTitle(saveExists){
+  hasSaved=saveExists;
+  document.getElementById('buildTag').textContent='build '+BUILD;
+  if(saveExists){btnContinue.hidden=false;btnContinue.classList.add('primary');btnNew.classList.remove('primary');}
+  else{btnContinue.hidden=true;btnNew.classList.add('primary');}
+  titleBtns=saveExists?[btnContinue,btnNew]:[btnNew];
+  titleSel=0; renderTitleSel();
+  btnContinue.onclick=()=>beginGame(false);
+  btnNew.onclick=()=>onNew();
+}
+function renderTitleSel(){titleBtns.forEach((b,i)=>b.classList.toggle('sel',i===titleSel));}
+function titleMove(d){if(!titleBtns.length)return;titleSel=(titleSel+d+titleBtns.length)%titleBtns.length;renderTitleSel();}
+function titleConfirm(){const b=titleBtns[titleSel]; if(b===btnContinue)beginGame(false); else onNew();}
+function onNew(){
+  if(hasSaved&&!confirmNew){               // one guard click before erasing real progress
+    confirmNew=true; btnNew.textContent='Erase save?'; btnNew.classList.add('danger');
+    titleSel=titleBtns.indexOf(btnNew); renderTitleSel(); return;
+  }
+  beginGame(true);
+}
+function beginGame(fresh){
+  Sound.resume();                           // first gesture — unlock audio
+  if(fresh){Save.wipe(); S=initState(world.collectibles);}
+  started=true; titleEl.classList.add('off');
+  persist();                                // stamp a save the moment play begins
+}
+addEventListener('keydown',e=>{
+  if(started)return;                        // only steer the menu before play
+  const k=e.key.toLowerCase();
+  if(k==='arrowup'||k==='w'){titleMove(-1);e.preventDefault();}
+  else if(k==='arrowdown'||k==='s'){titleMove(1);e.preventDefault();}
+  else if(k===' '||k==='enter'){titleConfirm();e.preventDefault();}
+});
+
+// autosave: on hide / pagehide (true "exit any time") + a 10s crash backstop.
+function persist(){if(!started)return;try{Save.write(S,world,BUILD);}catch{}}
+addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')persist();});
+addEventListener('pagehide',persist);
+setInterval(persist,10000);
 
 function resize(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h,false);
   cam.aspect=w/h;cam.updateProjectionMatrix();}
@@ -225,8 +546,23 @@ window.game={
   stop:()=>{aiTarget=null;aiMove=null;return 'stop';},
   jump:()=>{aiJump=true;return 'jump';},
   joy:()=>{aiJoy=true;return 'joy';},
-  reset:()=>{S=initState(world.collectibles);return 'reset';},
+  talk:()=>{ if(Dialogue.active){Dialogue.advance();return 'advance';} edgeTalk=true; return 'talk'; },
+  dialogue:()=>({active:Dialogue.active,near:nearNpc&&nearNpc.data.name||null}),
+  disp:()=>({yW:+D.yW.toFixed(3),sx:+D.sx.toFixed(3),sy:+D.sy.toFixed(3),rot:+D.rot.toFixed(4)}),
+  reset:()=>{Save.wipe();S=initState(world.collectibles);return 'reset';},
   pause:()=>{playing=false;return 'paused';},play:()=>{playing=true;return 'playing';},
+  start:(fresh)=>{beginGame(!!fresh);return started?'started':'no';},
+  save:()=>{persist();return 'saved';},
+  wipe:()=>{Save.wipe();return 'wiped';},
+  saveData:()=>Save.load(world),
+  // audio debug surface
+  audio:()=>({ready:Sound.ready,muted:Sound.muted}),
+  sfx:(n)=>{Sound.resume();return Sound.sfx(n)||('sfx '+n);},
+  say:(t='Hello there, friend!',who='Chrees')=>{Sound.resume();Sound.newLine();
+    [...String(t)].forEach((c,i)=>setTimeout(()=>Sound.blip(c,who),i*60));return 'say';},
 };
-build().catch(e=>{window.__err=String(e&&e.stack||e);console.error(e);});
+window.audio=Sound;
+build().catch(e=>{window.__err=String(e&&e.stack||e);console.error(e);
+  const ld=document.getElementById('loader'); if(ld){ld.classList.add('err');
+    const t=document.getElementById('loadText'); if(t)t.textContent='couldn’t load ✗';}});
 </script></body></html>

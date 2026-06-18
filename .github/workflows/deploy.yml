@@ -30,6 +30,14 @@ jobs:
           rm -rf _site/.venv _site/__pycache__ _site/refs
           rm -f _site/*.py _site/*.mjs _site/requirements.txt
           ls -la _site
+      - name: Stamp build version
+        shell: bash
+        run: |
+          # Records which deploy a save file was written by (debug aid only —
+          # the game reads build.json into saves; it never gates loading on it).
+          SHA="$(git rev-parse --short HEAD)"
+          printf '{"sha":"%s"}\n' "$SHA" > _site/build.json
+          cat _site/build.json
       - uses: actions/configure-pages@v5
         with:
           enablement: true

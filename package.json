@@ -7,9 +7,11 @@
     "preview": "python3 -m http.server 8723 --directory studio",
     "render:demo": "studio/.venv/bin/python studio/env_render.py --demo",
     "render:sheet": "studio/.venv/bin/python studio/env_sheet.py",
-    "cutout": "studio/.venv/bin/python studio/cutout.py"
+    "cutout": "studio/.venv/bin/python studio/cutout.py",
+    "test:smoke": "node test/smoke.mjs _site"
   },
   "devDependencies": {
+    "playwright": "^1.49.0",
     "playwright-core": "^1.44.0"
   }
 }

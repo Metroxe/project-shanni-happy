@@ -33,7 +33,7 @@ export function initState(collectibles) {
     onGround: true, facing: 1,
     walkPhase: 0, animClock: 0,
     mode: 'idle', joyT: 0, score: 0,
-    collectibles: (collectibles || []).map(c => ({ x: c.x, z: c.z, got: false })),
+    collectibles: (collectibles || []).map(c => ({ id: c.id, x: c.x, z: c.z, got: false })),
     justGot: -1, event: null,
   };
 }

@@ -28,7 +28,33 @@
     { "sprite": "tree_b", "x": 9, "z": 3, "h": 4.4 }
   ],
   "collectibles": [
-    { "x": -4, "z": -6 }, { "x": 2, "z": -7 }, { "x": 7, "z": -2 },
-    { "x": -8, "z": 1 }, { "x": 0, "z": 3 }, { "x": 5, "z": -4 }
+    { "id": "f1", "x": -4, "z": -6 }, { "id": "f2", "x": 2, "z": -7 }, { "id": "f3", "x": 7, "z": -2 },
+    { "id": "f4", "x": -8, "z": 1 }, { "id": "f5", "x": 0, "z": 3 }, { "id": "f6", "x": 5, "z": -4 }
+  ],
+  "npcs": [
+    {
+      "name": "Chrees",
+      "tex": "out/chrees-paper.png",
+      "x": -4, "z": -1, "h": 3.9,
+      "dialogue": {
+        "start": "g1",
+        "nodes": {
+          "g1":   { "text": "Hey! You're the one bouncing around picking flowers, huh?", "next": "g2" },
+          "g2":   { "text": "Name's Chrees. I get my reps in out here — soft hills, good air.", "next": "g3" },
+          "g3":   { "speaker": "Shen", "text": "Nice to meet you, Chrees!", "next": "menu" },
+          "menu": { "text": "So — what's on your mind?", "choices": [
+            { "label": "Got any training tips?",   "next": "t1" },
+            { "label": "Seen any flowers around?", "next": "f1" },
+            { "label": "Just saying hi.",          "next": "h1" },
+            { "label": "I'd better get going.",    "next": "bye" }
+          ] },
+          "t1":   { "text": "Easy — jump for joy after every win. Celebrating IS the rep.", "next": "t2" },
+          "t2":   { "text": "Squash down low, then launch. Your whole body remembers the bounce.", "next": "menu" },
+          "f1":   { "text": "Pink ones bloom by the big tree, last I looked. Go get 'em, champ!", "next": "menu" },
+          "h1":   { "text": "Hi yourself! Always good to see a friendly face out here.", "next": "menu" },
+          "bye":  { "text": "Catch you later. Stay bouncy! ✿" }
+        }
+      }
+    }
   ]
 }
