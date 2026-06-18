@@ -11,9 +11,10 @@ clutter, no clashing colours, no stray lines/artifacts, calm negative space.
 
 - One static graphic per NPC (chibi, generated in Gemini). The texture NEVER changes.
 - ALL animation = the paper cutout physically moving: hop-walk (squash on contact,
-  stretch in air, slight lean), jump-for-joy (crouch → launch → airborne apex with
-  tilt-wiggle + pastel sparkles → fall → big squash → rebound), contact shadow that
-  shrinks/fades with height. Personality is in the motion, not the texture.
+  stretch in air, slight lean), jump (squash → launch → airborne → land squash),
+  contact shadow that shrinks/fades with height. Personality is in the motion, not
+  the texture. (The old "jump-for-joy" celebration + pastel sparkles were removed at
+  the user's request — do NOT re-add them.)
 - Character **Shen** = `studio/refs/shen-chibi-4.png` (pink bucket hat, round glasses,
   dark braids, dusty-rose jacket over gray tee, cream floral skirt).
 - Environments use the same flat pastel paper set (flat bands, soft rounded hills,
@@ -54,9 +55,9 @@ OGG (`out/music/calm.ogg`), because real-time music synthesis isn't practical. I
 - **Add a new SFX:** write a tiny synth fn in the `SFX` map in `audio.js` (use the `note()`
   and `noise()` helpers; set its level in `CFG.sfx`), then trigger it with `Sound.sfx('name')`.
 - **Trigger it — two patterns, pick by where the event lives:**
-  1. **Sim-driven** (emerges from the deterministic sim/physics: footsteps, jump, land, joy,
-     collect, win) → detect the **state transition** in `audioStep(s)` in `game.html`, comparing
-     against `aprev` (mode / onGround / walkPhase / score). It runs every fixed step, so fire on
+  1. **Sim-driven** (emerges from the deterministic sim/physics: footsteps, jump, land,
+     hamster pickup `squeak`) → detect the **state transition** in `audioStep(s)` in `game.html`,
+     comparing against `aprev` (mode / onGround / walkPhase). It runs every fixed step, so fire on
      the *edge* (changed-since-last), never every frame.
   2. **Discrete UI/events** (menus, buttons, dialogue, transitions) → call `Sound.sfx('name')`
      right at the event site, or wire a `Dialogue.on*` hook (`onReveal`, `onChoiceOpen/Move/Pick`,
@@ -175,12 +176,18 @@ camera change with unrun or failing QA is not finished. Reference + harness:
 
 ## Status / next
 
-- DONE: character cutout + die-cut; walk + jump-for-joy; 6 environment moods;
+- DONE: character cutout + die-cut; walk + jump (hop); 6 environment moods;
   pipeline migrated into the repo; **3D Paper-Mario game loop** (`studio/game.html`
   + `studio/js/sim.js`) — perspective follow-camera (Shen always centred),
   full-window responsive, 2D ground movement, depth-sorted billboard props
-  (walk behind/in front), d-pad + keyboard, 6 collectible flowers; `/deploy` skill
+  (walk behind/in front), d-pad + keyboard; `/deploy` skill
   + GitHub Pages. **Live: https://metroxe.github.io/project-shanni-happy/**
+- DONE: **Removed flower collecting + jump-for-joy** (user request). No more flower
+  collectibles, no score/win HUD, no joy mode/button/`J` key/sound. The only
+  collectibles are hamsters (Adrian's quest). The **Talk** action button is now
+  contextual (shows only when beside an NPC); **hop** is always shown. Chrees kept as
+  a flavour NPC with rewritten (non-flower, non-quest) dialogue. No `SAVE_VERSION`
+  bump (removed ids drop via sanitize; the removed `q_chrees` is ignored on load).
 - DONE: **NPC dialogue system** (`studio/js/dialogue.js`) — walk-up proximity prompt
   over the NPC, bottom dialogue box with typewriter reveal, advance-on-button, and
   branching **choice menus** (↑/↓ or d-pad to pick; Talk/Enter/Space/click to confirm);
@@ -266,8 +273,8 @@ camera change with unrun or failing QA is not finished. Reference + harness:
     Quest milestones show a `#qtoast` + a badge dot on the 📖 button when closed.
   - **Content (Rocky-themed town)**: **Adrian** the shy pet-shop clerk (`out/adrian-paper.png`, Gemini
     chibi → `cutout.py`) gives **Hamster Roundup** — find 5 escaped **hamsters** (`out/hamster-paper.png`,
-    new collectible `kind:"hamster"`, scattered, **not** counted in the flower HUD/score/win) and
-    return them. **Chrees** now also gives **Bloom the Block** (collect the 3 flowers → return).
+    collectible `kind:"hamster"`, scattered) and return them. This is now the **only** quest —
+    **Chrees** is a flavour-only NPC (his "Bloom the Block" flower quest was removed with flowers).
   - **Sounds** (all procedural, `audio.js`): `squeak` (hamster), `quest`/`questStep`/`questDone`,
     `book`/`bookClose`/`flip`. Verified in preview: full lifecycle (accept→auto-track→complete),
     real dialogue acceptance for both NPCs, journal DOM + page-flip, save round-trip, **camera QA 0 fails**.

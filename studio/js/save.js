@@ -9,8 +9,8 @@
 //      genuinely breaks old saves (see migrate() for what bumping does). Most
 //      updates don't need a bump — the defensive load below absorbs them.
 //   2. Stable collectible ids — guard CONTENT. Progress is stored as a SET of
-//      collected flower ids, NEVER array indices, so editing world.json
-//      (moving / adding / removing flowers) can't silently mis-map progress:
+//      collected pickup ids, NEVER array indices, so editing world.json
+//      (moving / adding / removing collectibles) can't silently mis-map progress:
 //      a removed id drops out, a new id defaults to uncollected, a moved id
 //      stays collected.
 // Under both, sanitize() clamps & defaults every field and the whole load path
@@ -129,13 +129,11 @@ function sanitize(raw, world) {
   return { player, collected, quests };
 }
 
-// Apply a sanitized save onto a fresh sim state (mutates S). Score is RECOMPUTED
-// from the merged set — the collected-id set is the single source of truth.
+// Apply a sanitized save onto a fresh sim state (mutates S). The collected-id
+// set is the single source of truth; quest progress is re-derived from it.
 export function apply(S, saved) {
   if (!saved) return S;
   S.x = saved.player.x; S.z = saved.player.z; S.facing = saved.player.facing;
   for (const c of S.collectibles) c.got = saved.collected.has(c.id);
-  // score is the FLOWER count only (hamsters are a quest collection, not score)
-  S.score = S.collectibles.filter(c => c.got && c.kind !== 'hamster').length;
   return S;
 }
