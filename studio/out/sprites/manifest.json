@@ -1,0 +1,37 @@
+{
+ "tree_a": {
+  "file": "out/sprites/tree_a.png",
+  "w": 216,
+  "h": 222
+ },
+ "tree_b": {
+  "file": "out/sprites/tree_b.png",
+  "w": 198,
+  "h": 203
+ },
+ "tree_pink": {
+  "file": "out/sprites/tree_pink.png",
+  "w": 198,
+  "h": 203
+ },
+ "bush": {
+  "file": "out/sprites/bush.png",
+  "w": 154,
+  "h": 95
+ },
+ "rock": {
+  "file": "out/sprites/rock.png",
+  "w": 77,
+  "h": 47
+ },
+ "house": {
+  "file": "out/sprites/house.png",
+  "w": 206,
+  "h": 194
+ },
+ "flower": {
+  "file": "out/sprites/flower.png",
+  "w": 72,
+  "h": 107
+ }
+}

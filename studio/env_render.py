@@ -188,6 +188,19 @@ def render(spec, out, draw_shen=True):
     print("rendered", spec.get('name', '?'), "->", out)
 
 
+def render_prop(p, out, canvas=(700, 640)):
+    """Render a single prop on a transparent canvas (for use as a 3D billboard)."""
+    img = Image.new('RGBA', canvas, (0, 0, 0, 0))
+    d = ImageDraw.Draw(img, 'RGBA')
+    DRAW[p['type']](d, canvas[0] / 2, canvas[1] - 14, p.get('scale', 1.0),
+                    p.get('color'), p.get('color2'))
+    bbox = img.getbbox()
+    if bbox:
+        img = img.crop(bbox)
+    img.save(out)
+    return img.size
+
+
 if __name__ == "__main__":
     arg = sys.argv[1] if len(sys.argv) > 1 else '--demo'
     out = sys.argv[2] if len(sys.argv) > 2 else os.path.join(BASE, "out", "env-demo.png")

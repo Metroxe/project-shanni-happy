@@ -1,0 +1,232 @@
+<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<style>
+  html,body{margin:0;height:100%;background:#e9f1ea;overflow:hidden;
+    font-family:-apple-system,Segoe UI,Roboto,sans-serif;touch-action:none}
+  #c{display:block;position:fixed;inset:0;width:100vw;height:100vh}
+  .panel{position:fixed;background:rgba(255,255,255,.74);border:1px solid #d6c9b2;
+    border-radius:11px;padding:6px 11px;color:#5a564e;font-size:14px}
+  #hud{left:14px;top:12px}
+  #hud b{color:#c27d8b}
+  #hint{right:14px;top:12px;color:#7a756c;font-size:12px;background:rgba(255,255,255,.6)}
+  #win{left:50%;top:24%;transform:translateX(-50%);opacity:0;transition:opacity .4s;
+    border-color:#e6c3cf;color:#c27d8b;font-size:18px;font-weight:600}
+  #dpad{position:fixed;left:18px;bottom:18px;display:grid;gap:6px;
+    grid-template-columns:repeat(3,50px);grid-template-rows:repeat(3,50px);
+    grid-template-areas:". u ." "l m r" ". d .";}
+  #acts{position:fixed;right:18px;bottom:22px;display:flex;gap:10px}
+  button.btn{font:inherit;border-radius:12px;border:1px solid #d6c9b2;
+    background:rgba(255,255,255,.85);color:#5a564e;cursor:pointer;user-select:none;touch-action:none}
+  button.btn:active{background:#f0e6d8;transform:scale(.95)}
+  #dpad .btn{font-size:20px}
+  #bU{grid-area:u}#bD{grid-area:d}#bL{grid-area:l}#bR{grid-area:r}
+  #acts .btn{font-size:16px;padding:12px 18px}
+</style>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}</script>
+</head><body>
+<canvas id="c"></canvas>
+<div class="panel" id="hud">flowers <b id="score">0</b> / <span id="total">6</span></div>
+<div class="panel" id="hint">arrows / WASD move · space hop · J joy</div>
+<div class="panel" id="win">all flowers! ✿</div>
+<div id="dpad">
+  <button class="btn" id="bU" aria-label="up">▲</button>
+  <button class="btn" id="bL" aria-label="left">◀</button>
+  <button class="btn" id="bR" aria-label="right">▶</button>
+  <button class="btn" id="bD" aria-label="down">▼</button>
+</div>
+<div id="acts">
+  <button class="btn" id="bHop">hop</button>
+  <button class="btn" id="bJoy">joy ✿</button>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { WORLD, initState, step, setBounds } from './js/sim.js';
+
+const canvas=document.getElementById('c');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.outputColorSpace=THREE.SRGBColorSpace;
+const scene=new THREE.Scene();
+const cam=new THREE.PerspectiveCamera(42,1,0.1,200);
+const CAM_Y=5.0, CAM_D=10.6, CAM_LOOK_Y=1.7;
+
+const SHEN_H=3.0, SHEN_W=SHEN_H*0.4634, GROUND_EPS=0.01;
+const WALK_HOP=0.36, JOY_H=2.2;
+
+const loader=new THREE.TextureLoader();
+const tx=u=>new Promise(res=>loader.load(u,t=>{t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;
+  t.minFilter=THREE.LinearMipmapLinearFilter;t.magFilter=THREE.LinearFilter;res(t);}));
+const hex=h=>new THREE.Color('#'+h);
+
+function billboard(tex,w,h,opts={}){
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),
+    new THREE.MeshBasicMaterial({map:tex,transparent:opts.soft?true:false,
+      alphaTest:opts.soft?0:0.5,depthWrite:opts.soft?false:true,
+      opacity:opts.opacity??1, color:opts.tint?new THREE.Color(opts.tint):0xffffff}));
+  return m;
+}
+function softCanvasTex(draw){const s=128,c=document.createElement('canvas');c.width=s;c.height=s;
+  draw(c.getContext('2d'),s);return new THREE.CanvasTexture(c);}
+
+// sparkle + shadow + cloud + hill canvas textures
+const sparkTex=softCanvasTex((x,s)=>{x.translate(s/2,s/2);const g=x.createRadialGradient(0,0,0,0,0,s/2);
+  g.addColorStop(0,'rgba(255,255,255,.95)');g.addColorStop(.4,'rgba(255,255,255,.5)');g.addColorStop(1,'rgba(255,255,255,0)');
+  for(let i=0;i<4;i++){x.rotate(Math.PI/2);x.fillStyle=g;x.beginPath();x.moveTo(0,0);x.lineTo(4,-s/2);x.lineTo(-4,-s/2);x.fill();}});
+const shadowTex=softCanvasTex((x,s)=>{const g=x.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
+  g.addColorStop(0,'rgba(60,52,40,.5)');g.addColorStop(.6,'rgba(60,52,40,.2)');g.addColorStop(1,'rgba(60,52,40,0)');
+  x.fillStyle=g;x.fillRect(0,0,s,s);});
+function blobTex(col){return softCanvasTex((x,s)=>{x.fillStyle=col;
+  [[.5,.55,.34],[.32,.6,.24],[.68,.6,.24],[.42,.42,.2],[.6,.42,.2]].forEach(([a,b,r])=>{
+    x.beginPath();x.ellipse(a*s,b*s,r*s,r*s*.8,0,0,7);x.fill();});});}
+
+let world, S, shen, mesh=null, shadow, sparkles=[], flowers=[], propsMesh=[], burst, burstT=-1, burstPos=new THREE.Vector3();
+
+const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
+const smooth=t=>t<=0?0:t>=1?1:t*t*(3-2*t);
+const ease=(a,b,t)=>a+(b-a)*smooth(t);
+function joyPose(u){let y=0,sx=1,sy=1,rot=0,spark=0;
+  if(u<0.2){const p=u/0.2;sy=ease(1,0.78,p);sx=ease(1,1.14,p);}
+  else if(u<0.95){const p=(u-0.2)/0.75;y=Math.sin(p*Math.PI)*JOY_H;
+    sy=ease(1.22,1,smooth((u-0.2)/0.18));sx=1/Math.sqrt(Math.max(sy,.3));
+    rot=Math.sin((u-0.2)*9)*0.07*smooth(p);const l=(u-0.35)/0.5;spark=(l>0&&l<1)?l:0;}
+  else if(u<1.15){const p=(u-0.95)/0.2;sy=ease(1,0.72,p);sx=1/Math.sqrt(sy);}
+  else if(u<1.4){const p=(u-1.15)/0.25;y=Math.sin(p*Math.PI)*0.6;sy=ease(0.72,1.08,smooth(p));sx=1/Math.sqrt(sy);}
+  else{const p=clamp((u-1.4)/0.2,0,1);sy=ease(1.08,1,p);sx=1/Math.sqrt(sy);}
+  return {yW:y,sx,sy,rot,spark};}
+function pose(s){
+  if(s.mode==='joy')return joyPose(s.joyT);
+  if(s.mode==='air'){const sy=1+clamp(s.vy*0.022,-0.12,0.2);return{yW:s.y,sx:1/Math.sqrt(Math.max(sy,.4)),sy,rot:0,spark:0};}
+  if(s.mode==='walk'){const h=Math.abs(Math.sin(s.walkPhase));const sy=1+h*0.07-(1-h)*0.06;
+    return{yW:h*WALK_HOP,sx:1/Math.sqrt(sy),sy,rot:-0.04*s.facing,spark:0};}
+  const br=Math.sin(s.animClock*2.2);const sy=1+0.018*br;
+  return{yW:0,sx:1/Math.sqrt(sy),sy,rot:0.012*Math.sin(s.animClock*1.4),spark:0};}
+
+async function build(){
+  world=await (await fetch('specs/world.json')).json();
+  setBounds(world.bounds);
+  scene.background=hex(world.sky);
+  scene.fog=new THREE.Fog(hex(world.sky),world.fog[0],world.fog[1]);
+
+  const ground=new THREE.Mesh(new THREE.PlaneGeometry(120,120),
+    new THREE.MeshBasicMaterial({color:hex(world.ground)}));
+  ground.rotation.x=-Math.PI/2; scene.add(ground);
+
+  (world.hills||[]).forEach(h=>{const m=billboard(blobTex('#'+h.color),h.w,h.h,{soft:true});
+    m.position.set(h.x,h.h*0.32,h.z); m.renderOrder=-2; scene.add(m);});
+  (world.clouds||[]).forEach(c=>{const m=billboard(blobTex('#ffffff'),c.s*2.4,c.s,{soft:true,opacity:.9});
+    m.position.set(c.x,c.y,c.z); m.renderOrder=-1; scene.add(m);});
+
+  const man=await (await fetch('out/sprites/manifest.json')).json();
+  const texCache={};
+  for(const p of world.props){const sp=man[p.sprite];
+    if(!texCache[p.sprite])texCache[p.sprite]=await tx(sp.file);
+    const w=p.h*(sp.w/sp.h); const m=billboard(texCache[p.sprite],w,p.h);
+    m.position.set(p.x,p.h/2,p.z); scene.add(m); propsMesh.push(m);}
+
+  // collectible flowers
+  const fsp=man.flower; const ftex=await tx(fsp.file); const fh=1.15, fw=fh*(fsp.w/fsp.h);
+  world.collectibles.forEach(c=>{const m=billboard(ftex,fw,fh);
+    m.position.set(c.x,fh/2,c.z); m.userData={x:c.x,z:c.z}; scene.add(m); flowers.push(m);});
+  document.getElementById('total').textContent=world.collectibles.length;
+
+  // shadow + shen + sparkles + burst
+  shadow=new THREE.Mesh(new THREE.PlaneGeometry(SHEN_W*1.5,SHEN_W*1.5),
+    new THREE.MeshBasicMaterial({map:shadowTex,transparent:true,depthWrite:false}));
+  shadow.rotation.x=-Math.PI/2; shadow.position.y=GROUND_EPS; shadow.renderOrder=1; scene.add(shadow);
+
+  shen=new THREE.Group(); scene.add(shen);
+  const st=await tx('out/shen-paper.png');
+  mesh=billboard(st,SHEN_W,SHEN_H); mesh.position.y=SHEN_H/2; shen.add(mesh);
+
+  const SP=['#f3b6c3','#bcd9c4','#f4e2b8','#d7c3e0','#f3b6c3'];
+  for(let i=0;i<5;i++){const sp=billboard(sparkTex,0.55,0.55,{soft:true,tint:SP[i]});
+    sp.visible=false;sp.renderOrder=3;scene.add(sp);sparkles.push(sp);}
+  burst=billboard(softCanvasTex((x,s)=>{const g=x.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
+    g.addColorStop(0,'rgba(255,255,255,0)');g.addColorStop(.7,'rgba(243,182,195,.5)');
+    g.addColorStop(.85,'rgba(243,182,195,.7)');g.addColorStop(1,'rgba(243,182,195,0)');x.fillStyle=g;x.fillRect(0,0,s,s);}),
+    1,1,{soft:true}); burst.visible=false;burst.renderOrder=3;scene.add(burst);
+
+  S=initState(world.collectibles);
+  window.__ready=true; resize(); startAuto();
+}
+
+const SP_OFF=[[-.55,1.9],[.6,2.2],[-.35,2.6],[.45,1.6],[.15,2.4]];
+function draw(dt){
+  if(!mesh){renderer.render(scene,cam);return;}
+  const q=pose(S);
+  shen.position.set(S.x,GROUND_EPS,S.z);
+  mesh.position.y=SHEN_H/2+q.yW; shen.scale.set(q.sx,q.sy,1); shen.rotation.z=q.rot;
+  const k=clamp(q.yW/2.0,0,1);
+  shadow.position.set(S.x,GROUND_EPS,S.z); const ss=1-0.5*k; shadow.scale.set(ss,ss,1);
+  shadow.material.opacity=(1-0.55*k);
+  sparkles.forEach((sp,i)=>{ if(q.spark<=0){sp.visible=false;return;} sp.visible=true;
+    const[ox,oy]=SP_OFF[i]; sp.position.set(S.x+ox*0.7,SHEN_H/2+q.yW+oy*0.7+q.spark*0.5,S.z+0.3);
+    const sc=0.55+0.5*Math.sin(q.spark*Math.PI);sp.scale.set(sc,sc,1);
+    sp.material.opacity=Math.sin(q.spark*Math.PI);});
+  flowers.forEach((f,i)=>{const c=S.collectibles[i]; f.visible=!c.got;
+    f.position.y=1.15/2+0.08*Math.sin(S.animClock*3+i);});
+  if(S.justGot>=0){const c=S.collectibles[S.justGot];burstPos.set(c.x,1.0,c.z);burstT=0;}
+  if(burstT>=0){burstT+=dt;const p=burstT/0.45;burst.visible=p<1;burst.position.copy(burstPos);
+    const sc=0.6+p*2.4;burst.scale.set(sc,sc,1);burst.material.opacity=(1-p)*0.8;if(p>=1)burstT=-1;}
+  // follow camera (keeps Shen centred)
+  cam.position.set(S.x,CAM_Y,S.z+CAM_D); cam.lookAt(S.x,CAM_LOOK_Y,S.z);
+  document.getElementById('score').textContent=S.score;
+  if(S.event==='win'){const w=document.getElementById('win');w.style.opacity=1;setTimeout(()=>w.style.opacity=0,2400);}
+  renderer.render(scene,cam);
+}
+
+// ---------- input (human + AI share one path) ----------
+const held={up:false,down:false,left:false,right:false}; let edgeJump=false,edgeJoy=false;
+let aiMove=null, aiTarget=null, aiJump=false, aiJoy=false;
+addEventListener('keydown',e=>{const k=e.key.toLowerCase();
+  if(k==='arrowup'||k==='w')held.up=true; else if(k==='arrowdown'||k==='s')held.down=true;
+  else if(k==='arrowleft'||k==='a')held.left=true; else if(k==='arrowright'||k==='d')held.right=true;
+  else if((k===' ')&&!e.repeat)edgeJump=true; else if((k==='j'||k==='enter')&&!e.repeat)edgeJoy=true;
+  if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k))e.preventDefault();});
+addEventListener('keyup',e=>{const k=e.key.toLowerCase();
+  if(k==='arrowup'||k==='w')held.up=false; else if(k==='arrowdown'||k==='s')held.down=false;
+  else if(k==='arrowleft'||k==='a')held.left=false; else if(k==='arrowright'||k==='d')held.right=false;});
+function holdBtn(id,set){const b=document.getElementById(id);
+  b.addEventListener('pointerdown',e=>{e.preventDefault();set(true);});
+  ['pointerup','pointerleave','pointercancel'].forEach(ev=>b.addEventListener(ev,()=>set(false)));}
+holdBtn('bU',v=>held.up=v);holdBtn('bD',v=>held.down=v);holdBtn('bL',v=>held.left=v);holdBtn('bR',v=>held.right=v);
+document.getElementById('bHop').addEventListener('click',()=>edgeJump=true);
+document.getElementById('bJoy').addEventListener('click',()=>edgeJoy=true);
+function resolveInput(){
+  let mx=(held.right?1:0)-(held.left?1:0), mz=(held.down?1:0)-(held.up?1:0);
+  if(mx===0&&mz===0){
+    if(aiMove){mx=aiMove.x;mz=aiMove.z;}
+    else if(aiTarget){const dx=aiTarget.x-S.x,dz=aiTarget.z-S.z,d=Math.hypot(dx,dz);
+      if(d<0.18)aiTarget=null; else{mx=dx/d;mz=dz/d;}}}
+  const jump=edgeJump||aiJump; edgeJump=false;aiJump=false;
+  const joy=edgeJoy||aiJoy; edgeJoy=false;aiJoy=false;
+  return {moveX:mx,moveZ:mz,jump,joy};}
+
+// ---------- loop: fixed-timestep accumulator ----------
+const FIXED=1/60; let playing=true,timer=null,last=null,acc=0;
+function frame(){const now=performance.now();if(last===null)last=now;
+  let e=(now-last)/1000;last=now; if(e>0.5)e=0.5;
+  if(playing){acc+=e;let n=0;while(acc>=FIXED&&n<40){S=step(S,resolveInput(),FIXED);acc-=FIXED;n++;}}
+  draw(e);}
+function startAuto(){if(!timer){last=null;acc=0;timer=setInterval(frame,16);}}
+window.__stopAuto=()=>{if(timer){clearInterval(timer);timer=null;}};
+window.__startAuto=startAuto;
+
+function resize(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h,false);
+  cam.aspect=w/h;cam.updateProjectionMatrix();}
+addEventListener('resize',resize);
+
+// ---------- AI / debug control surface ----------
+window.game={
+  state:()=>({x:+S.x.toFixed(2),z:+S.z.toFixed(2),y:+S.y.toFixed(2),mode:S.mode,
+    onGround:S.onGround,score:S.score,joyT:+S.joyT.toFixed(2),target:aiTarget,
+    collectibles:S.collectibles.map(c=>({x:c.x,z:c.z,got:c.got})),world:WORLD}),
+  goTo:(x,z)=>{aiTarget={x:+x,z:+z};return 'goTo '+x+','+z;},
+  setMove:(x,z)=>{aiMove={x:Math.sign(x||0),z:Math.sign(z||0)};return 'move';},
+  stop:()=>{aiTarget=null;aiMove=null;return 'stop';},
+  jump:()=>{aiJump=true;return 'jump';},
+  joy:()=>{aiJoy=true;return 'joy';},
+  reset:()=>{S=initState(world.collectibles);return 'reset';},
+  pause:()=>{playing=false;return 'paused';},play:()=>{playing=true;return 'playing';},
+};
+build().catch(e=>{window.__err=String(e&&e.stack||e);console.error(e);});
+</script></body></html>
