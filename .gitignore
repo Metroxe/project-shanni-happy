@@ -15,6 +15,9 @@ test-results/
 # machine-specific chrome path cache for playwright capture
 studio/.exec
 
+# build stamp — written by the Pages deploy, not committed (local dev = "dev")
+studio/build.json
+
 # secrets — NEVER commit
 *.gkey
 .gkey
