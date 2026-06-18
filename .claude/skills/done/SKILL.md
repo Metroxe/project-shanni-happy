@@ -37,7 +37,13 @@ isn't safe, stop and report rather than forcing it.
   `git -C <main-path> merge --ff-only origin/main`.
 - Skip with a note if it isn't on `main` or can't fast-forward — don't force.
 
-## 5. Exit the worktree
+## 5. Stop this worktree's dev server
+- This project serves the game per-worktree on its own localhost port (see CLAUDE.md
+  "Showing the user something"). Tear it down so the port is freed and the generated
+  config is removed: `.claude/serve.sh stop`.
+- Also call the harness **preview_stop** for any preview server you started this session.
+
+## 6. Exit the worktree
 - Call the harness **ExitWorktree** tool with `action: "remove"`. It refuses unless the
   work is committed + merged; only pass `discard_changes: true` with explicit user
   confirmation.
@@ -47,9 +53,9 @@ isn't safe, stop and report rather than forcing it.
   branch is landed and `main` synced, and the user can close/discard the worktree from
   their worktree UI.
 
-## 6. Report
-- The branch + sha that landed on `main`, whether the main checkout synced, and the
-  worktree's final state (removed, or left for the user to close).
+## 7. Report
+- The branch + sha that landed on `main`, whether the main checkout synced, the dev
+  server was stopped, and the worktree's final state (removed, or left for the user to close).
 
 ## Notes
 - Project-local skill (lives beside `/deploy`). Copy to `~/.claude/skills/done/` to make

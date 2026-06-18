@@ -37,10 +37,28 @@ scripts call `__stopAuto()` then `__render(t)` for deterministic capture.
 
 ```sh
 python3 -m venv studio/.venv && studio/.venv/bin/pip install -r studio/requirements.txt
-python3 -m http.server 8723 --directory studio   # or the `shen-refs` launch config
+.claude/serve.sh            # prints http://localhost:<port>/game.html for THIS worktree
 ```
-Preview: `http://localhost:8723/env-live.html`. The asset pipeline is the
-`papercraft-asset` skill (`.claude/skills/papercraft-asset/`).
+Then `preview_start` the **`game`** config and open the printed URL (e.g.
+`/game.html` or `/env-live.html`). The asset pipeline is the `papercraft-asset`
+skill (`.claude/skills/papercraft-asset/`).
+
+### Showing the user something — ALWAYS via per-worktree localhost, never `file://`
+
+Christopher works in **git worktrees** and needs to view *this* worktree's version of
+the game, not the main checkout's. A raw `file://` path also can't actually run the
+game (ES modules + `fetch` are CORS-blocked off `file://`). So whenever you want him to
+look at the game (or any `studio/` page):
+
+1. Run `.claude/serve.sh` — it writes a **git-ignored** `.claude/launch.json` pointed at
+   *this* worktree's `studio/` and prints the URL. Each worktree gets its **own
+   deterministic port** (base derived from the worktree path, first free port up), so
+   multiple worktrees serve their own game side-by-side; the URL is stable once chosen.
+2. `preview_start` the **`game`** config (this is also what you use to verify changes).
+3. Give him the full `http://localhost:<port>/game.html` link — and **repeat that exact
+   link every time** you point him at something, so he never has to scroll back for it.
+
+`/done` tears the server down (`.claude/serve.sh stop` + `preview_stop`).
 
 ## Conventions
 
@@ -49,6 +67,9 @@ Preview: `http://localhost:8723/env-live.html`. The asset pipeline is the
   `shen-paper`, `env-bg`, concept sheets); intermediate frame dirs are git-ignored.
 - Secrets: image gen uses the Gemini key from 1Password; **never commit keys**.
   `studio/.exec` is a machine-specific chrome path (git-ignored).
+- `.claude/launch.json` is **generated per-worktree by `.claude/serve.sh` and
+  git-ignored** (holds this worktree's unique port + absolute `studio/` path) — never
+  commit it or hardcode a port.
 
 ## Status / next
 
