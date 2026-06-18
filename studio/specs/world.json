@@ -49,7 +49,33 @@
   ],
 
   "collectibles": [
-    { "id": "c1", "x": 0, "z": -12 }, { "id": "c2", "x": -18, "z": -29 }, { "id": "c3", "x": 18, "z": -29 }
+    { "id": "c1", "kind": "flower",  "x": 0,   "z": -12 },
+    { "id": "c2", "kind": "flower",  "x": -18, "z": -29 },
+    { "id": "c3", "kind": "flower",  "x": 18,  "z": -29 },
+    { "id": "h1", "kind": "hamster", "x": 3,   "z": 1 },
+    { "id": "h2", "kind": "hamster", "x": -3,  "z": -6 },
+    { "id": "h3", "kind": "hamster", "x": 2,   "z": -16 },
+    { "id": "h4", "kind": "hamster", "x": -20, "z": -30 },
+    { "id": "h5", "kind": "hamster", "x": 20,  "z": -30 }
+  ],
+
+  "quests": [
+    {
+      "id": "q_chrees", "name": "Bloom the Block", "giver": "Chrees",
+      "summary": "Chrees wants the whole block bursting with colour.",
+      "steps": [
+        { "desc": "Collect all 3 flowers around the block.", "goal": { "type": "collect", "kind": "flower", "count": 3 } },
+        { "desc": "Tell Chrees the block's in bloom.", "goal": { "type": "talk", "npc": "Chrees" } }
+      ]
+    },
+    {
+      "id": "q_hamsters", "name": "Hamster Roundup", "giver": "Adrian",
+      "summary": "Five of Adrian's pet-shop hamsters escaped their cage and scattered across town.",
+      "steps": [
+        { "desc": "Round up all 5 runaway hamsters.", "goal": { "type": "collect", "kind": "hamster", "count": 5 } },
+        { "desc": "Bring the hamsters home to Adrian.", "goal": { "type": "talk", "npc": "Adrian" } }
+      ]
+    }
   ],
 
   "npcs": [
@@ -57,6 +83,7 @@
       "name": "Chrees",
       "tex": "out/chrees-paper.png",
       "x": -12, "z": -29, "h": 2.4,
+      "quest": "q_chrees",
       "dialogue": {
         "start": "g1",
         "nodes": {
@@ -64,16 +91,64 @@
           "g2":   { "text": "Name's Chrees. I get my reps in down this street — good shade between the towers.", "next": "g3" },
           "g3":   { "speaker": "Shen", "text": "Nice to meet you, Chrees!", "next": "menu" },
           "menu": { "text": "So — what's on your mind?", "choices": [
-            { "label": "Got any training tips?",     "next": "t1" },
+            { "label": "Need a hand with anything?",  "next": "job" },
+            { "label": "Got any training tips?",      "next": "t1" },
             { "label": "Seen any flowers around?",    "next": "f1" },
-            { "label": "Just saying hi.",             "next": "h1" },
             { "label": "I'd better get going.",       "next": "bye" }
           ] },
+          "job":  { "text": "Funny you ask. This block's looking a little grey — but there's flowers tucked all around it.", "next": "job2" },
+          "job2": { "text": "Pluck all three — up the steps, down each road — and the whole place'll feel alive. You in, champ?", "choices": [
+            { "label": "I'm on it!",     "next": "jobAccept" },
+            { "label": "Maybe later.",   "next": "jobLater" }
+          ] },
+          "jobAccept": { "text": "That's the spirit! Three flowers. Come tell me when the block's in bloom.", "action": "start:q_chrees", "next": "menu" },
+          "jobLater":  { "text": "No rush. The block's not going anywhere.", "next": "menu" },
           "t1":   { "text": "Easy — jump for joy after every win. Celebrating IS the rep.", "next": "t2" },
           "t2":   { "text": "Squash down low, then launch. Your whole body remembers the bounce.", "next": "menu" },
           "f1":   { "text": "Saw a pink one back up the stairs, and one down each road. Go get 'em, champ!", "next": "menu" },
-          "h1":   { "text": "Hi yourself! Always good to see a friendly face down here.", "next": "menu" },
-          "bye":  { "text": "Catch you later. Stay bouncy! ✿" }
+          "bye":  { "text": "Catch you later. Stay bouncy! ✿" },
+          "progress": { "text": "How's the bloom coming? Found those flowers yet?", "choices": [
+            { "label": "Still picking!",      "next": "progAck" },
+            { "label": "Remind me where?",    "next": "hint" },
+            { "label": "See you, Chrees.",    "next": "bye" }
+          ] },
+          "progAck": { "text": "Keep at it — every flower counts. The block's counting on you.", "next": "bye" },
+          "hint":    { "text": "Up the stairs, and one down each side street. Go on, champ!", "next": "bye" },
+          "ready":   { "text": "Whoa — would you look at that. The whole block's in BLOOM!", "next": "ready2" },
+          "ready2":  { "speaker": "Shen", "text": "All three flowers, picked with love!", "next": "ready3" },
+          "ready3":  { "text": "This street's never looked better. Respect, champ. ✿" },
+          "done":    { "text": "Every time I look around, more colour. Thanks for the bloom, champ. ✿" }
+        }
+      }
+    },
+    {
+      "name": "Adrian",
+      "tex": "out/adrian-paper.png",
+      "x": 12, "z": -29, "h": 2.3,
+      "quest": "q_hamsters",
+      "dialogue": {
+        "start": "intro",
+        "nodes": {
+          "intro":  { "text": "Oh! Hello there. I'm Adrian — I mind the little pet shop just here.", "next": "intro2" },
+          "intro2": { "text": "I'm in a bit of a flap, honestly. I left the hamster cage open and... well.", "next": "intro3" },
+          "intro3": { "text": "Five of my hamsters slipped out and scattered all over town. I can't chase them myself.", "next": "offer" },
+          "offer":  { "text": "You're so quick on your feet — would you help me round up my five little ones?", "choices": [
+            { "label": "Of course I'll help!", "next": "accept" },
+            { "label": "Where might they be?", "next": "hint" },
+            { "label": "Maybe later.",         "next": "later" }
+          ] },
+          "accept": { "text": "Oh, thank you, truly! Bring each one back to me — gently, they're shy little things.", "action": "start:q_hamsters", "next": "hint" },
+          "hint":   { "text": "They love warm corners — try the steps, and down both side streets. Listen for tiny squeaks!" },
+          "later":  { "text": "That's alright. I'll be right here if you change your mind." },
+          "progress": { "text": "Any luck with my little escapees? They're awfully quick, I know.", "choices": [
+            { "label": "Still looking!", "next": "progAck" },
+            { "label": "Where again?",   "next": "hint" }
+          ] },
+          "progAck": { "text": "Thank you for trying. Every one you bring back is a weight off my heart." },
+          "ready":   { "text": "You found them ALL? Oh — come here, you fuzzy little troublemakers!", "next": "ready2" },
+          "ready2":  { "speaker": "Shen", "text": "Every last hamster, safe and sound!", "next": "ready3" },
+          "ready3":  { "text": "I can't thank you enough. The shop feels whole again — you're always welcome here. ✿" },
+          "done":    { "text": "There you are! The hamsters keep squeaking for you. Thank you again, friend. ✿" }
         }
       }
     }

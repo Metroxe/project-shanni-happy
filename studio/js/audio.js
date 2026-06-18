@@ -14,7 +14,8 @@
 // requestAnimationFrame, so it plays fine even in the suspended preview tab.
 
 const CFG = {
-  sfx: { collect: 0.5, win: 0.5, hop: 0.34, land: 0.42, joy: 0.5, step: 0.09, move: 0.3, talk: 0.42, select: 0.42 },
+  sfx: { collect: 0.5, win: 0.5, hop: 0.34, land: 0.42, joy: 0.5, step: 0.09, move: 0.3, talk: 0.42, select: 0.42,
+         squeak: 0.34, quest: 0.42, questStep: 0.44, questDone: 0.5, book: 0.4, bookClose: 0.36, flip: 0.3 },
   blip: 0.17,
 };
 
@@ -175,6 +176,43 @@ const SFX = {
   select(v) {
     note({ type: 'triangle', f: semi(7), dur: 0.09, gain: v });
     note({ type: 'triangle', f: semi(12), t0: 0.06, dur: 0.12, gain: v * 0.8 });
+  },
+  // tiny "eep" — a found hamster (two quick bright chirps, soft)
+  squeak(v) {
+    note({ type: 'triangle', f: semi(19), f2: semi(26), dur: 0.10, gain: v * 0.8, atk: 0.005 });
+    note({ type: 'sine', f: semi(24), f2: semi(31), t0: 0.06, dur: 0.12, gain: v * 0.5 });
+  },
+  // accepting a new quest — a warm rounded ascending arpeggio
+  quest(v) {
+    [0, 4, 7].forEach((s, i) => note({ type: 'sine', f: semi(s + 7), t0: i * 0.08, dur: 0.3, gain: v * 0.5 }));
+    note({ type: 'triangle', f: semi(19), t0: 0.16, dur: 0.34, gain: v * 0.4 });
+  },
+  // a task within a quest ticked off — bright little rise, sub-celebration
+  questStep(v) {
+    [0, 5, 9].forEach((s, i) => note({ type: 'triangle', f: semi(s + 12), t0: i * 0.06, dur: 0.2, gain: v * 0.55 }));
+  },
+  // a whole quest finished — a gentle warm fanfare (softer than `win`)
+  questDone(v) {
+    const seq = [0, 4, 7, 11, 14];
+    seq.forEach((s, i) => {
+      note({ type: 'triangle', f: semi(s + 7), t0: i * 0.1, dur: 0.3, gain: v * 0.5 });
+      if (i === seq.length - 1) note({ type: 'sine', f: semi(s + 14), t0: i * 0.1, dur: 0.5, gain: v * 0.35 });
+    });
+  },
+  // opening the journal — a soft paper "whff" + low warm note
+  book(v) {
+    noise({ dur: 0.16, gain: v * 0.45, freq: 520, q: 0.5 });
+    note({ type: 'sine', f: semi(-5), f2: semi(0), dur: 0.2, gain: v * 0.35 });
+  },
+  // closing the journal — softer thunk, falling
+  bookClose(v) {
+    noise({ dur: 0.14, gain: v * 0.4, freq: 420, q: 0.5 });
+    note({ type: 'sine', f: semi(0), f2: semi(-7), dur: 0.18, gain: v * 0.32 });
+  },
+  // turning a page (tab switch) — a quick paper swish (bright → soft)
+  flip(v) {
+    noise({ dur: 0.11, gain: v * 0.4, freq: 2600, q: 0.7, type: 'bandpass' });
+    noise({ t0: 0.025, dur: 0.10, gain: v * 0.3, freq: 1500, q: 0.6 });
   },
 };
 
