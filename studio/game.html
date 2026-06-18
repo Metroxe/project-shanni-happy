@@ -6,8 +6,6 @@
   #c{display:block;position:fixed;inset:0;width:100vw;height:100vh}
   .panel{position:fixed;background:rgba(255,255,255,.74);border:1px solid #d6c9b2;
     border-radius:11px;padding:6px 11px;color:#5a564e;font-size:14px}
-  #hud{left:14px;top:12px}
-  #hud b{color:#c27d8b}
   #hint{right:14px;top:12px;color:#7a756c;font-size:12px;background:rgba(255,255,255,.6)}
   #bMenu{position:fixed;right:14px;top:44px;font-size:16px;padding:4px 11px;line-height:1.2;z-index:21}
   /* journal (book) — replaces the pause menu */
@@ -93,8 +91,6 @@
     color:#b76b7d;font-size:13px;font-weight:600;white-space:nowrap;pointer-events:none;
     opacity:0;transition:opacity .25s,transform .25s;box-shadow:0 4px 14px rgba(90,80,60,.16)}
   #qtoast.on{opacity:1;transform:translateX(-50%) translateY(0)}
-  #win{left:50%;top:24%;transform:translateX(-50%);opacity:0;transition:opacity .4s;
-    border-color:#e6c3cf;color:#c27d8b;font-size:18px;font-weight:600}
   #dpad{position:fixed;left:18px;bottom:18px;display:grid;gap:6px;
     grid-template-columns:repeat(3,50px);grid-template-rows:repeat(3,50px);
     grid-template-areas:". u ." "l m r" ". d .";}
@@ -194,10 +190,8 @@
   <div id="loadText">shenning</div>
 </div>
 <canvas id="c"></canvas>
-<div class="panel" id="hud">flowers <b id="score">0</b> / <span id="total">6</span></div>
-<div class="panel" id="hint">arrows / WASD move · space hop · J joy · E talk · Esc journal</div>
+<div class="panel" id="hint">arrows / WASD move · space hop · E talk · Esc journal</div>
 <button class="btn" id="bMenu" aria-label="journal" title="journal (Esc)">📖</button>
-<div class="panel" id="win">all flowers! ✿</div>
 <div id="dpad">
   <button class="btn" id="bU" aria-label="up">▲</button>
   <button class="btn" id="bL" aria-label="left">◀</button>
@@ -205,9 +199,8 @@
   <button class="btn" id="bD" aria-label="down">▼</button>
 </div>
 <div id="acts">
-  <button class="btn" id="bTalk">talk 💬</button>
+  <button class="btn" id="bTalk" hidden>talk 💬</button>
   <button class="btn" id="bHop">hop</button>
-  <button class="btn" id="bJoy">joy ✿</button>
 </div>
 <div id="dlg">
   <div id="dlgName"></div>
@@ -247,7 +240,7 @@
           <div class="srow"><span>effects</span><input type="range" id="sfxvol" min="0" max="100" value="100"><span id="sfxVal" class="sval">100%</span></div>
           <div class="srow"><span>music</span><input type="range" id="musicvol" min="0" max="100" value="42"><span id="musicVal" class="sval">42%</span></div>
           <button class="mrow" id="muteRow"><span>sound</span><span id="muteState">on</span></button>
-          <div class="jhint">arrows / WASD move · space hop · J joy<br>E talk · Esc journal · M mute</div>
+          <div class="jhint">arrows / WASD move · space hop<br>E talk · Esc journal · M mute</div>
           <div class="menuBtns">
             <button class="btn" id="restartBtn">restart ✿</button>
             <button class="btn primary" id="resumeBtn">resume</button>
@@ -274,7 +267,7 @@ const scene=new THREE.Scene();
 const cam=new THREE.PerspectiveCamera(40,1,0.1,300);
 
 const SHEN_H=1.9, SHEN_W=SHEN_H*0.4634, GROUND_EPS=0.02;
-const WALK_HOP=0.24, JOY_H=1.5, FH=0.95, PLAYER_R=0.42;
+const WALK_HOP=0.24, MAX_LIFT=1.5, FH=0.95, PLAYER_R=0.42;
 const TALK_R=2.4; const _tv=new THREE.Vector3();
 
 const loader=new THREE.TextureLoader();
@@ -292,10 +285,7 @@ function billboard(tex,w,h,opts={}){
 function softCanvasTex(draw){const s=128,c=document.createElement('canvas');c.width=s;c.height=s;
   draw(c.getContext('2d'),s);return new THREE.CanvasTexture(c);}
 
-// sparkle + shadow + cloud + hill canvas textures
-const sparkTex=softCanvasTex((x,s)=>{x.translate(s/2,s/2);const g=x.createRadialGradient(0,0,0,0,0,s/2);
-  g.addColorStop(0,'rgba(255,255,255,.95)');g.addColorStop(.4,'rgba(255,255,255,.5)');g.addColorStop(1,'rgba(255,255,255,0)');
-  for(let i=0;i<4;i++){x.rotate(Math.PI/2);x.fillStyle=g;x.beginPath();x.moveTo(0,0);x.lineTo(4,-s/2);x.lineTo(-4,-s/2);x.fill();}});
+// shadow + cloud + hill canvas textures
 const shadowTex=softCanvasTex((x,s)=>{const g=x.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
   g.addColorStop(0,'rgba(60,52,40,.5)');g.addColorStop(.6,'rgba(60,52,40,.2)');g.addColorStop(1,'rgba(60,52,40,0)');
   x.fillStyle=g;x.fillRect(0,0,s,s);});
@@ -303,7 +293,7 @@ function blobTex(col){return softCanvasTex((x,s)=>{x.fillStyle=col;
   [[.5,.55,.34],[.32,.6,.24],[.68,.6,.24],[.42,.42,.2],[.6,.42,.2]].forEach(([a,b,r])=>{
     x.beginPath();x.ellipse(a*s,b*s,r*s,r*s*.8,0,0,7);x.fill();});});}
 
-let world, S, shen, mesh=null, shadow, sparkles=[], flowers=[], propsMesh=[], burst, burstT=-1, burstPos=new THREE.Vector3();
+let world, S, shen, mesh=null, shadow, pickups=[], propsMesh=[], burst, burstT=-1, burstPos=new THREE.Vector3();
 let npcs=[], nearNpc=null, talkCooldown=0;
 let started=false, BUILD='dev';
 
@@ -316,22 +306,12 @@ const damp=(cur,tgt,tau,dt)=>tgt+(cur-tgt)*Math.exp(-dt/Math.max(tau,1e-4));
 // flips / start-stop / mode changes ease instead of snapping. Height stays
 // crisp (jumps feel responsive); lean & squash ease a touch more.
 const D={yW:0,sx:1,sy:1,rot:0}; let Dinit=false;
-function joyPose(u){let y=0,sx=1,sy=1,rot=0,spark=0;
-  if(u<0.2){const p=u/0.2;sy=ease(1,0.78,p);sx=ease(1,1.14,p);}
-  else if(u<0.95){const p=(u-0.2)/0.75;y=Math.sin(p*Math.PI)*JOY_H;
-    sy=ease(1.22,1,smooth((u-0.2)/0.18));sx=1/Math.sqrt(Math.max(sy,.3));
-    rot=Math.sin((u-0.2)*9)*0.07*smooth(p);const l=(u-0.35)/0.5;spark=(l>0&&l<1)?l:0;}
-  else if(u<1.15){const p=(u-0.95)/0.2;sy=ease(1,0.72,p);sx=1/Math.sqrt(sy);}
-  else if(u<1.4){const p=(u-1.15)/0.25;y=Math.sin(p*Math.PI)*0.6;sy=ease(0.72,1.08,smooth(p));sx=1/Math.sqrt(sy);}
-  else{const p=clamp((u-1.4)/0.2,0,1);sy=ease(1.08,1,p);sx=1/Math.sqrt(sy);}
-  return {yW:y,sx,sy,rot,spark};}
 function pose(s){
-  if(s.mode==='joy')return joyPose(s.joyT);
-  if(s.mode==='air'){const sy=1+clamp(s.vy*0.022,-0.12,0.2);return{yW:s.y,sx:1/Math.sqrt(Math.max(sy,.4)),sy,rot:0,spark:0};}
+  if(s.mode==='air'){const sy=1+clamp(s.vy*0.022,-0.12,0.2);return{yW:s.y,sx:1/Math.sqrt(Math.max(sy,.4)),sy,rot:0};}
   if(s.mode==='walk'){const h=Math.abs(Math.sin(s.walkPhase));const sy=1+h*0.07-(1-h)*0.06;
-    return{yW:h*WALK_HOP,sx:1/Math.sqrt(sy),sy,rot:-0.04*s.facing,spark:0};}
+    return{yW:h*WALK_HOP,sx:1/Math.sqrt(sy),sy,rot:-0.04*s.facing};}
   const br=Math.sin(s.animClock*2.2);const sy=1+0.018*br;
-  return{yW:0,sx:1/Math.sqrt(sy),sy,rot:0.012*Math.sin(s.animClock*1.4),spark:0};}
+  return{yW:0,sx:1/Math.sqrt(sy),sy,rot:0.012*Math.sin(s.animClock*1.4)};}
 
 // ===== zone camera + terrain + paper material + QA (city scene) =====
 const clampn=clamp, lerp=(a,b,t)=>a+(b-a)*t;
@@ -501,18 +481,14 @@ async function build(){
   ground.rotation.x=-Math.PI/2; ground.receiveShadow=true; scene.add(ground);
   buildTerrain();
 
-  // collectible pickups (billboard sprites, grounded): flowers (the base game) +
-  // hamsters (Adrian's quest). One mesh per collectible, kept index-aligned to
-  // S.collectibles so the draw loop pairs them. Per-mesh half-height in userData.hh.
-  const man=await (await fetch('out/sprites/manifest.json')).json();
-  const fsp=man.flower; const ftex=await tx(fsp.file); const fw=FH*(fsp.w/fsp.h);
+  // collectible pickups (billboard sprites, grounded): hamsters for Adrian's
+  // quest. One mesh per collectible, kept index-aligned to S.collectibles so the
+  // draw loop pairs them. Per-mesh half-height in userData.hh.
   const htex=await tx('out/hamster-paper.png'); const HAM_H=0.62; const hw=HAM_H*(htex.image.width/htex.image.height);
-  world.collectibles.forEach(c=>{const ham=(c.kind==='hamster');
-    const tex=ham?htex:ftex, w=ham?hw:fw, h=ham?HAM_H:FH;
-    const m=billboard(tex,w,h);
-    m.position.set(c.x,groundHeight(c.x,c.z)+h/2,c.z);
-    m.userData={x:c.x,z:c.z,hh:h/2,kind:c.kind||'flower'}; scene.add(m); flowers.push(m); billboards.push(m);});
-  document.getElementById('total').textContent=world.collectibles.filter(c=>(c.kind||'flower')!=='hamster').length;
+  world.collectibles.forEach(c=>{
+    const m=billboard(htex,hw,HAM_H);
+    m.position.set(c.x,groundHeight(c.x,c.z)+HAM_H/2,c.z);
+    m.userData={x:c.x,z:c.z,hh:HAM_H/2,kind:c.kind||'hamster'}; scene.add(m); pickups.push(m); billboards.push(m);});
 
   // NPCs (talk targets) — billboard + grounded group + contact shadow
   for(const nd of (world.npcs||[])){
@@ -538,7 +514,7 @@ async function build(){
     if(verb==='start')Quests.start(arg); else if(verb==='complete')Quests.complete(arg); else if(verb==='advance')Quests.advance(arg);
     persist(); };
 
-  // shadow + shen + sparkles + burst
+  // shadow + shen + burst
   shadow=new THREE.Mesh(new THREE.PlaneGeometry(SHEN_W*1.5,SHEN_W*1.5),
     new THREE.MeshBasicMaterial({map:shadowTex,transparent:true,depthWrite:false}));
   shadow.rotation.x=-Math.PI/2; shadow.position.y=GROUND_EPS; shadow.renderOrder=1; scene.add(shadow);
@@ -547,9 +523,6 @@ async function build(){
   const st=await tx('out/shen-paper.png');
   mesh=billboard(st,SHEN_W,SHEN_H); mesh.position.y=SHEN_H/2; shen.add(mesh);
 
-  const SP=['#f3b6c3','#bcd9c4','#f4e2b8','#d7c3e0','#f3b6c3'];
-  for(let i=0;i<5;i++){const sp=billboard(sparkTex,0.55,0.55,{soft:true,tint:SP[i]});
-    sp.visible=false;sp.renderOrder=3;scene.add(sp);sparkles.push(sp);}
   burst=billboard(softCanvasTex((x,s)=>{const g=x.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
     g.addColorStop(0,'rgba(255,255,255,0)');g.addColorStop(.7,'rgba(243,182,195,.5)');
     g.addColorStop(.85,'rgba(243,182,195,.7)');g.addColorStop(1,'rgba(243,182,195,0)');x.fillStyle=g;x.fillRect(0,0,s,s);}),
@@ -575,7 +548,6 @@ async function build(){
   if(ld){ld.classList.add('done'); setTimeout(()=>ld.remove(),600);}
 }
 
-const SP_OFF=[[-.55,1.9],[.6,2.2],[-.35,2.6],[.45,1.6],[.15,2.4]];
 function draw(dt){
   if(!mesh){renderer.render(scene,cam);return;}
   if(talkCooldown>0)talkCooldown-=dt;
@@ -590,15 +562,10 @@ function draw(dt){
   const gy=groundHeight(S.x,S.z);
   shen.position.set(S.x,gy+GROUND_EPS,S.z); faceYaw(shen);
   mesh.position.y=SHEN_H/2+D.yW; shen.scale.set(D.sx,D.sy,1); shen.rotation.z=D.rot;
-  const k=clamp(D.yW/JOY_H,0,1);
+  const k=clamp(D.yW/MAX_LIFT,0,1);
   shadow.position.set(S.x,gy+GROUND_EPS,S.z); const ss=1-0.5*k; shadow.scale.set(ss,ss,1);
   shadow.material.opacity=(1-0.55*k);
-  sparkles.forEach((sp,i)=>{ if(q.spark<=0){sp.visible=false;return;} sp.visible=true;
-    const[ox,oy]=SP_OFF[i]; sp.position.set(S.x+ox*0.5,gy+SHEN_H/2+D.yW+oy*0.5+q.spark*0.4,S.z+0.2);
-    sp.quaternion.copy(cam.quaternion);
-    const sc=0.4+0.4*Math.sin(q.spark*Math.PI);sp.scale.set(sc,sc,1);
-    sp.material.opacity=Math.sin(q.spark*Math.PI);});
-  flowers.forEach((f,i)=>{const c=S.collectibles[i]; f.visible=!c.got;
+  pickups.forEach((f,i)=>{const c=S.collectibles[i]; f.visible=!c.got;
     const hh=(f.userData&&f.userData.hh)||FH/2;
     f.position.y=groundHeight(c.x,c.z)+hh+0.08*Math.sin(S.animClock*3+i);});
   if(S.justGot>=0){const c=S.collectibles[S.justGot];burstPos.set(c.x,groundHeight(c.x,c.z)+0.7,c.z);burstT=0;
@@ -621,7 +588,7 @@ function draw(dt){
     o.group.rotation.z=0.012*Math.sin(t*1.3);
     o.mesh.position.y=o.h/2+yW;
   });
-  billboards.forEach(faceYaw);   // flowers yaw to the rotating camera
+  billboards.forEach(faceYaw);   // pickups + NPCs yaw to the rotating camera
 
   // proximity → nearest talkable NPC + floating prompt
   nearNpc=null;
@@ -636,29 +603,27 @@ function draw(dt){
     tp.textContent='💬 Talk to '+nearNpc.data.name;
     tp.classList.add('on');
   } else tp.classList.remove('on');
-  document.getElementById('bTalk').classList.toggle('near',!!nearNpc||Dialogue.active);
+  // the Talk action button only appears when you're beside someone to talk to
+  const talkable=!!nearNpc||Dialogue.active, bTalk=document.getElementById('bTalk');
+  bTalk.hidden=!talkable; bTalk.classList.toggle('near',talkable);
 
-  document.getElementById('score').textContent=S.score;
-  if(S.event==='win'){const w=document.getElementById('win');w.style.opacity=1;setTimeout(()=>w.style.opacity=0,2400);}
   renderer.render(scene,cam);
 }
 
 // ---------- audio: map sim-state transitions to one-shot SFX ----------
 const aprev={onGround:true,mode:'idle',walkSeg:0};
 function audioStep(s){
-  if(s.event==='win')Sound.sfx('win');
-  else if(s.justGot>=0){const c=s.collectibles[s.justGot];Sound.sfx(c&&c.kind==='hamster'?'squeak':'collect');}
+  if(s.justGot>=0)Sound.sfx('squeak');                       // picked up a hamster
   if(aprev.onGround&&!s.onGround)Sound.sfx('hop');           // jump launch
   if(!aprev.onGround&&s.onGround)Sound.sfx('land');          // touchdown
-  if(s.mode==='joy'&&aprev.mode!=='joy'&&s.justGot<0)Sound.sfx('joy'); // joy (not via pickup)
   const seg=Math.floor(s.walkPhase/Math.PI);                 // walk contact = each half-cycle
   if(s.mode==='walk'&&seg!==aprev.walkSeg)Sound.sfx('step');
   aprev.onGround=s.onGround; aprev.mode=s.mode; aprev.walkSeg=seg;
 }
 
 // ---------- input (human + AI share one path) ----------
-const held={up:false,down:false,left:false,right:false}; let edgeJump=false,edgeJoy=false,edgeTalk=false;
-let aiMove=null, aiTarget=null, aiJump=false, aiJoy=false;
+const held={up:false,down:false,left:false,right:false}; let edgeJump=false,edgeTalk=false;
+let aiMove=null, aiTarget=null, aiJump=false;
 addEventListener('keydown',e=>{const k=e.key.toLowerCase();
   if(!started)return;                        // title screen owns input until play begins
   Sound.resume();                            // browsers gate audio behind a gesture
@@ -676,7 +641,6 @@ addEventListener('keydown',e=>{const k=e.key.toLowerCase();
   else if(k==='arrowleft'||k==='a')held.left=true; else if(k==='arrowright'||k==='d')held.right=true;
   else if((k===' ')&&!e.repeat)edgeJump=true;
   else if((k==='e'||k==='enter')&&!e.repeat)edgeTalk=true;
-  else if((k==='j')&&!e.repeat)edgeJoy=true;
   if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k))e.preventDefault();});
 addEventListener('keyup',e=>{const k=e.key.toLowerCase();
   if(k==='arrowup'||k==='w')held.up=false; else if(k==='arrowdown'||k==='s')held.down=false;
@@ -759,7 +723,7 @@ function openJournal(tab){Sound.resume(); playing=false; held.up=held.down=held.
   pagesEl.classList.remove('flipping'); listDirty=true; showPage(name);
   document.getElementById('bMenu').classList.remove('badge');
   journal.classList.add('on'); Sound.sfx('book');}
-function closeJournal(){journal.classList.remove('on'); edgeJump=edgeJoy=edgeTalk=false; last=null; playing=true; Sound.sfx('bookClose');}
+function closeJournal(){journal.classList.remove('on'); edgeJump=edgeTalk=false; last=null; playing=true; Sound.sfx('bookClose');}
 function toggleJournal(){Sound.resume(); journalOpen()?closeJournal():openJournal();}
 
 // --- quest toast (milestones + hamster count) ---
@@ -803,11 +767,10 @@ function navBtn(id,dir,set){const b=document.getElementById(id);
 navBtn('bU',-1,v=>held.up=v); navBtn('bD',1,v=>held.down=v);
 holdBtn('bL',v=>held.left=v);holdBtn('bR',v=>held.right=v);
 document.getElementById('bHop').addEventListener('click',()=>{if(!Dialogue.active)edgeJump=true;});
-document.getElementById('bJoy').addEventListener('click',()=>{if(!Dialogue.active)edgeJoy=true;});
 document.getElementById('bTalk').addEventListener('click',()=>{
   if(Dialogue.active)Dialogue.advance(); else edgeTalk=true;});
 function resolveInput(){
-  if(!started||Dialogue.active) return {moveX:0,moveZ:0,jump:false,joy:false};
+  if(!started||Dialogue.active) return {moveX:0,moveZ:0,jump:false};
   // camera-relative: UP = into the screen (where the camera looks), LEFT/RIGHT = screen-relative
   const fwd=(held.up?1:0)-(held.down?1:0), stf=(held.right?1:0)-(held.left?1:0);
   let mx=0,mz=0;
@@ -816,8 +779,7 @@ function resolveInput(){
   else if(aiTarget){const dx=aiTarget.x-S.x,dz=aiTarget.z-S.z,d=Math.hypot(dx,dz);
     if(d<0.18)aiTarget=null; else{mx=dx/d;mz=dz/d;}}
   const jump=edgeJump||aiJump; edgeJump=false;aiJump=false;
-  const joy=edgeJoy||aiJoy; edgeJoy=false;aiJoy=false;
-  return {moveX:mx,moveZ:mz,jump,joy};}
+  return {moveX:mx,moveZ:mz,jump};}
 
 // ---------- loop: fixed-timestep accumulator ----------
 const FIXED=1/60; let playing=true,timer=null,last=null,acc=0;
@@ -889,13 +851,12 @@ addEventListener('resize',resize);
 // ---------- AI / debug control surface ----------
 window.game={
   state:()=>({x:+S.x.toFixed(2),z:+S.z.toFixed(2),y:+S.y.toFixed(2),mode:S.mode,
-    onGround:S.onGround,score:S.score,joyT:+S.joyT.toFixed(2),target:aiTarget,
+    onGround:S.onGround,target:aiTarget,
     collectibles:S.collectibles.map(c=>({x:c.x,z:c.z,got:c.got})),world:WORLD}),
   goTo:(x,z)=>{aiTarget={x:+x,z:+z};return 'goTo '+x+','+z;},
   setMove:(x,z)=>{aiMove={x:Math.sign(x||0),z:Math.sign(z||0)};return 'move';},
   stop:()=>{aiTarget=null;aiMove=null;return 'stop';},
   jump:()=>{aiJump=true;return 'jump';},
-  joy:()=>{aiJoy=true;return 'joy';},
   talk:()=>{ if(Dialogue.active){Dialogue.advance();return 'advance';} edgeTalk=true; return 'talk'; },
   dialogue:()=>({active:Dialogue.active,near:nearNpc&&nearNpc.data.name||null}),
   disp:()=>({yW:+D.yW.toFixed(3),sx:+D.sx.toFixed(3),sy:+D.sy.toFixed(3),rot:+D.rot.toFixed(4)}),
