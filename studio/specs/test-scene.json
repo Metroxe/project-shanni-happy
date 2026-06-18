@@ -49,33 +49,6 @@
   ],
 
   "collectibles": [
-    { "id": "c1", "x": 0, "z": -12 }, { "id": "c2", "x": -18, "z": -29 }, { "id": "c3", "x": 18, "z": -29 }
-  ],
-
-  "npcs": [
-    {
-      "name": "Chrees",
-      "tex": "out/chrees-paper.png",
-      "x": -12, "z": -29, "h": 2.4,
-      "dialogue": {
-        "start": "g1",
-        "nodes": {
-          "g1":   { "text": "Hey! You're the one bouncing around this block, huh?", "next": "g2" },
-          "g2":   { "text": "Name's Chrees. I get my reps in down this street — good shade between the towers.", "next": "g3" },
-          "g3":   { "speaker": "Shen", "text": "Nice to meet you, Chrees!", "next": "menu" },
-          "menu": { "text": "So — what's on your mind?", "choices": [
-            { "label": "Got any training tips?",     "next": "t1" },
-            { "label": "Seen any flowers around?",    "next": "f1" },
-            { "label": "Just saying hi.",             "next": "h1" },
-            { "label": "I'd better get going.",       "next": "bye" }
-          ] },
-          "t1":   { "text": "Easy — jump for joy after every win. Celebrating IS the rep.", "next": "t2" },
-          "t2":   { "text": "Squash down low, then launch. Your whole body remembers the bounce.", "next": "menu" },
-          "f1":   { "text": "Saw a pink one back up the stairs, and one down each road. Go get 'em, champ!", "next": "menu" },
-          "h1":   { "text": "Hi yourself! Always good to see a friendly face down here.", "next": "menu" },
-          "bye":  { "text": "Catch you later. Stay bouncy! ✿" }
-        }
-      }
-    }
+    { "x": 0, "z": -12 }, { "x": -18, "z": -29 }, { "x": 18, "z": -29 }
   ]
 }

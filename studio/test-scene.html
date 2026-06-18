@@ -1,0 +1,470 @@
+<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<style>
+  html,body{margin:0;height:100%;background:#e7edf2;overflow:hidden;
+    font-family:-apple-system,Segoe UI,Roboto,sans-serif;touch-action:none}
+  #c{display:block;position:fixed;inset:0;width:100vw;height:100vh}
+  .panel{position:fixed;background:rgba(255,255,255,.74);border:1px solid #cdd3da;
+    border-radius:11px;padding:6px 11px;color:#545a63;font-size:13px}
+  #hud{left:14px;top:12px}
+  #hud b{color:#7c8aa3}
+  #hint{right:14px;top:12px;color:#7a818c;font-size:12px;background:rgba(255,255,255,.6)}
+  #zone{left:14px;top:46px;color:#7a818c;font-size:12px}
+  #dpad{position:fixed;left:18px;bottom:18px;display:grid;gap:6px;
+    grid-template-columns:repeat(3,50px);grid-template-rows:repeat(3,50px);
+    grid-template-areas:". u ." "l m r" ". d .";}
+  #acts{position:fixed;right:18px;bottom:22px;display:flex;gap:10px}
+  button.btn{font:inherit;border-radius:12px;border:1px solid #cdd3da;
+    background:rgba(255,255,255,.85);color:#545a63;cursor:pointer;user-select:none;touch-action:none}
+  button.btn:active{background:#e7ecf2;transform:scale(.95)}
+  #dpad .btn{font-size:20px}
+  #bU{grid-area:u}#bD{grid-area:d}#bL{grid-area:l}#bR{grid-area:r}
+  #acts .btn{font-size:16px;padding:12px 18px}
+</style>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}</script>
+</head><body>
+<canvas id="c"></canvas>
+<div class="panel" id="hud">flowers <b id="score">0</b> / <span id="total">3</span></div>
+<div class="panel" id="hint">arrows / WASD (camera-relative) · ↑ = into the screen · climb, then turn down a street</div>
+<div class="panel" id="zone">zone: <span id="zoneName">…</span></div>
+<div id="dpad">
+  <button class="btn" id="bU" aria-label="up">▲</button>
+  <button class="btn" id="bL" aria-label="left">◀</button>
+  <button class="btn" id="bR" aria-label="right">▶</button>
+  <button class="btn" id="bD" aria-label="down">▼</button>
+</div>
+<div id="acts">
+  <button class="btn" id="bHop">hop</button>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { WORLD, initState, step, setBounds, setColliders } from './js/sim.js';
+
+const canvas=document.getElementById('c');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+const scene=new THREE.Scene();
+const cam=new THREE.PerspectiveCamera(40,1,0.1,300);
+
+const SHEN_H=1.9, SHEN_W=SHEN_H*0.4634, GROUND_EPS=0.02;
+const WALK_HOP=0.24, JOY_H=1.5, FH=0.95, PLAYER_R=0.42;
+
+// ---------- math helpers ----------
+const TAU=Math.PI*2;
+const clampn=(v,a,b)=>Math.min(b,Math.max(a,v));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const smooth=t=>t<=0?0:t>=1?1:t*t*(3-2*t);
+const easeInOutCubic=u=>u<0.5?4*u*u*u:1-Math.pow(-2*u+2,3)/2;
+const expK=(dt,k)=>1-Math.exp(-k*dt);
+function angDelta(a,b){let d=(b-a)%TAU;if(d>Math.PI)d-=TAU;if(d<=-Math.PI)d+=TAU;return d;}
+const hex=h=>new THREE.Color('#'+h);
+
+// ---------- texture / material (bold-matte paper) ----------
+const loader=new THREE.TextureLoader();
+const tx=u=>new Promise(res=>loader.load(u,t=>{t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;
+  t.minFilter=THREE.LinearMipmapLinearFilter;t.magFilter=THREE.LinearFilter;res(t);}));
+function billboard(tex,w,h,opts={}){
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),
+    new THREE.MeshBasicMaterial({map:tex,transparent:opts.soft?true:false,
+      alphaTest:opts.soft?0:0.5,depthWrite:opts.soft?false:true,
+      opacity:opts.opacity??1,color:opts.tint?new THREE.Color(opts.tint):0xffffff}));
+  return m;
+}
+function softCanvasTex(draw){const s=128,c=document.createElement('canvas');c.width=s;c.height=s;
+  draw(c.getContext('2d'),s);return new THREE.CanvasTexture(c);}
+const sparkTex=softCanvasTex((x,s)=>{x.translate(s/2,s/2);const g=x.createRadialGradient(0,0,0,0,0,s/2);
+  g.addColorStop(0,'rgba(255,255,255,.95)');g.addColorStop(.4,'rgba(255,255,255,.5)');g.addColorStop(1,'rgba(255,255,255,0)');
+  for(let i=0;i<4;i++){x.rotate(Math.PI/2);x.fillStyle=g;x.beginPath();x.moveTo(0,0);x.lineTo(4,-s/2);x.lineTo(-4,-s/2);x.fill();}});
+const shadowTex=softCanvasTex((x,s)=>{const g=x.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
+  g.addColorStop(0,'rgba(50,52,60,.5)');g.addColorStop(.6,'rgba(50,52,60,.2)');g.addColorStop(1,'rgba(50,52,60,0)');
+  x.fillStyle=g;x.fillRect(0,0,s,s);});
+
+const GRAIN=0.62, texCache={};
+function paperTex(h){ if(texCache[h])return texCache[h];
+  const s=256,cv=document.createElement('canvas');cv.width=cv.height=s;const x=cv.getContext('2d');
+  const c=new THREE.Color(h),R=c.r*255,G=c.g*255,B=c.b*255;
+  x.fillStyle='#'+c.getHexString();x.fillRect(0,0,s,s);
+  const amp=26*GRAIN,img=x.getImageData(0,0,s,s),d=img.data;
+  for(let i=0;i<d.length;i+=4){const n=(Math.random()-0.5)*amp*1.4;
+    d[i]=clampn(d[i]+n,0,255);d[i+1]=clampn(d[i+1]+n,0,255);d[i+2]=clampn(d[i+2]+n,0,255);}
+  x.putImageData(img,0,0);
+  x.globalAlpha=0.20*GRAIN;
+  for(let i=0;i<200;i++){const lt=Math.random()<.5;
+    x.strokeStyle=`rgb(${clampn(R+(lt?30:-30),0,255)},${clampn(G+(lt?30:-30),0,255)},${clampn(B+(lt?30:-30),0,255)})`;
+    x.lineWidth=Math.random()*1.4+0.4;x.beginPath();
+    const y=Math.random()*s,len=30+Math.random()*120,xx=Math.random()*s,ang=(Math.random()-.5)*0.4;
+    x.moveTo(xx,y);x.lineTo(xx+Math.cos(ang)*len,y+Math.sin(ang)*len);x.stroke();}
+  x.globalAlpha=1;
+  const t=new THREE.CanvasTexture(cv);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(1.6,1.6);
+  t.anisotropy=4;t.colorSpace=THREE.SRGBColorSpace;texCache[h]=t;return t;}
+function paperMat(h,flat){const t=paperTex(h);
+  return new THREE.MeshStandardMaterial({color:new THREE.Color(h),roughness:0.97,metalness:0,
+    flatShading:flat!==false,emissive:new THREE.Color(h),emissiveIntensity:0.05,map:t,bumpMap:t,bumpScale:1.4});}
+const EDGEMAT=new THREE.LineBasicMaterial({color:'#fbf7f0'});
+function M(geo,col,flat,edge){const m=new THREE.Mesh(geo,paperMat(col,flat));
+  m.castShadow=true;m.receiveShadow=true;
+  if(edge===true)m.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo,38),EDGEMAT));
+  return m;}
+
+// ---------- terrain height (view-layer; sim stays pure) ----------
+let SCENE,RAMPS=[],SCENE_COLLIDERS=[],BUILDING_MESHES=[];
+function groundHeight(x,z){
+  let y=0;
+  for(const r of RAMPS){
+    if(r.axis!=='z')continue;
+    if(z<=r.z1){ y=Math.max(y,r.yHi); continue; }   // plateau (north of ramp top): full height
+    if(z>=r.z0) continue;                            // start area (south of ramp): base
+    if(x<r.x0||x>r.x1) continue;                     // off-corridor flank: base (no floating)
+    const t=(z-r.z0)/(r.z1-r.z0);                    // corridor ramp
+    y=Math.max(y,r.yLo+(r.yHi-r.yLo)*smooth(t));
+  }
+  return y;
+}
+
+// ---------- zone camera ----------
+function zoneAxis(z){const a=z.axisDeg*Math.PI/180;return {fx:Math.sin(a),fz:-Math.cos(a)};}
+function zoneLocal(z,x,zc){const {fx,fz}=zoneAxis(z);const dx=x-z.center[0],dz=zc-z.center[1];
+  return {along:dx*fx+dz*fz,across:dx*(-fz)+dz*fx,fx,fz};}
+function pointInZone(z,x,zc){const {along,across}=zoneLocal(z,x,zc);
+  return Math.abs(along)<=z.halfLen&&Math.abs(across)<=z.halfWid;}
+
+let ZONES=[],activeZone=null;
+const CAMRIG={pos:new THREE.Vector3(),tgt:new THREE.Vector3(),fov:40,pitch:0};
+let blend=null;                 // {fromZone, pos(eye snapshot), fov, pitch, t, dur}
+
+// ONE fixed camera per zone: the eye always sits behind the zone's axis and looks along it,
+// regardless of travel direction. (No dirSign — descending the stairs keeps the look-up-the-
+// stairs angle; you just walk toward the camera. Prevents the flip-into-a-wall on reversal.)
+function rigFor(zone,S){
+  const {fx,fz}=zoneAxis(zone);
+  const along=zoneLocal(zone,S.x,S.z).along;
+  const a=clampn(along,-zone.halfLen,zone.halfLen);
+  const cpx=zone.center[0]+fx*a, cpz=zone.center[1]+fz*a;
+  const gyCam=groundHeight(cpx,cpz), gyP=groundHeight(S.x,S.z);
+  const latx=-fz, latz=fx;
+  return {
+    pos:new THREE.Vector3(cpx-fx*zone.back+latx*zone.side, gyCam+zone.height, cpz-fz*zone.back+latz*zone.side),
+    tgt:new THREE.Vector3(S.x+fx*zone.lookAhead, gyP+zone.lookY, S.z+fz*zone.lookAhead),
+    fov:zone.fov, pitch:zone.pitchBias };
+}
+function pickZone(x,zc){
+  const SKIRT=0.8;
+  if(activeZone){
+    const {along,across}=zoneLocal(activeZone,x,zc);
+    if(Math.abs(along)<=activeZone.halfLen+SKIRT&&Math.abs(across)<=activeZone.halfWid+SKIRT){
+      for(const z of ZONES){if(z===activeZone)break;if(pointInZone(z,x,zc))return z;}
+      return activeZone;
+    }
+  }
+  for(const z of ZONES)if(pointInZone(z,x,zc))return z;
+  return activeZone||ZONES[0];
+}
+const _eye=new THREE.Vector3(),_tgt=new THREE.Vector3(),_dir=new THREE.Vector3();
+const WORLD_UP=new THREE.Vector3(0,1,0),_right=new THREE.Vector3(),_up=new THREE.Vector3();
+function applyCamera(){
+  _eye.copy(CAMRIG.pos); _tgt.copy(CAMRIG.tgt); _dir.copy(_tgt).sub(_eye);
+  if(_dir.lengthSq()<1e-6){const {fx,fz}=zoneAxis(activeZone);
+    _dir.set(fx,-0.25,fz); _tgt.copy(_eye).add(_dir);}
+  let up=WORLD_UP;
+  if(Math.abs(_dir.clone().normalize().y)>0.99){const {fx,fz}=zoneAxis(activeZone);
+    _right.set(-fz,0,fx); _up.crossVectors(_dir,_right).normalize(); up=_up;}
+  cam.position.copy(_eye); cam.up.copy(up); cam.lookAt(_tgt);
+  if(CAMRIG.pitch)cam.rotateX(CAMRIG.pitch);
+  if(Math.abs(cam.fov-CAMRIG.fov)>1e-3){cam.fov=CAMRIG.fov;cam.updateProjectionMatrix();}
+}
+function cameraFrame(S,dt){
+  dt=Math.min(dt,0.05);
+  const next=pickZone(S.x,S.z);
+  if(activeZone&&next!==activeZone){
+    // snapshot only the EYE/fov/pitch (smooth position swing, no seam wobble), but keep the
+    // from-zone reference so the look-TARGET tracks the live player through the swing — the
+    // camera always aims near Shen, so she never drops off-screen mid-transition
+    blend={fromZone:activeZone,pos:CAMRIG.pos.clone(),fov:CAMRIG.fov,pitch:CAMRIG.pitch,t:0,dur:next.blendIn};
+  }
+  activeZone=next;
+  let want;
+  if(blend){
+    blend.t+=dt; const u=easeInOutCubic(clampn(blend.t/blend.dur,0,1));
+    const A=rigFor(blend.fromZone,S), B=rigFor(activeZone,S);
+    want={pos:blend.pos.clone().lerp(B.pos,u), tgt:A.tgt.clone().lerp(B.tgt,u),
+      fov:lerp(blend.fov,B.fov,u), pitch:lerp(blend.pitch,B.pitch,u)};
+    if(blend.t>=blend.dur)blend=null;
+  } else want=rigFor(activeZone,S);
+  const k=expK(dt,activeZone.follow);
+  CAMRIG.pos.lerp(want.pos,k); CAMRIG.tgt.lerp(want.tgt,k);
+  CAMRIG.fov+=(want.fov-CAMRIG.fov)*k; CAMRIG.pitch+=(want.pitch-CAMRIG.pitch)*k;
+  applyCamera();
+}
+
+// ---------- pose (paper character motion) ----------
+const ease=(a,b,t)=>a+(b-a)*smooth(t);
+function joyPose(u){let y=0,sx=1,sy=1,rot=0,spark=0;
+  if(u<0.2){const p=u/0.2;sy=ease(1,0.78,p);sx=ease(1,1.14,p);}
+  else if(u<0.95){const p=(u-0.2)/0.75;y=Math.sin(p*Math.PI)*JOY_H;
+    sy=ease(1.22,1,smooth((u-0.2)/0.18));sx=1/Math.sqrt(Math.max(sy,.3));
+    rot=Math.sin((u-0.2)*9)*0.07*smooth(p);const l=(u-0.35)/0.5;spark=(l>0&&l<1)?l:0;}
+  else if(u<1.15){const p=(u-0.95)/0.2;sy=ease(1,0.72,p);sx=1/Math.sqrt(sy);}
+  else if(u<1.4){const p=(u-1.15)/0.25;y=Math.sin(p*Math.PI)*0.6;sy=ease(0.72,1.08,smooth(p));sx=1/Math.sqrt(sy);}
+  else{const p=clampn((u-1.4)/0.2,0,1);sy=ease(1.08,1,p);sx=1/Math.sqrt(sy);}
+  return {yW:y,sx,sy,rot,spark};}
+function pose(s){
+  if(s.mode==='joy')return joyPose(s.joyT);
+  if(s.mode==='air'){const sy=1+clampn(s.vy*0.022,-0.12,0.2);return{yW:s.y,sx:1/Math.sqrt(Math.max(sy,.4)),sy,rot:0,spark:0};}
+  if(s.mode==='walk'){const h=Math.abs(Math.sin(s.walkPhase));const sy=1+h*0.07-(1-h)*0.06;
+    return{yW:h*WALK_HOP,sx:1/Math.sqrt(sy),sy,rot:-0.04*s.facing,spark:0};}
+  const br=Math.sin(s.animClock*2.2);const sy=1+0.018*br;
+  return{yW:0,sx:1/Math.sqrt(sy),sy,rot:0.012*Math.sin(s.animClock*1.4),spark:0};}
+
+// ---------- scene build ----------
+let S,shen,poseG,mesh=null,shadow,sparkles=[],flowers=[],billboards=[],burst,burstT=-1,burstPos=new THREE.Vector3();
+function faceYaw(o){o.rotation.y=Math.atan2(cam.position.x-o.position.x,cam.position.z-o.position.z);}
+
+async function build(){
+  SCENE=await (await fetch('specs/test-scene.json')).json();
+  RAMPS=SCENE.ramps||[]; ZONES=SCENE.zones;
+  setBounds(SCENE.bounds);
+  scene.background=hex(SCENE.sky);
+  scene.fog=new THREE.Fog(hex(SCENE.sky),SCENE.fog[0],SCENE.fog[1]);
+
+  scene.add(new THREE.HemisphereLight(0xffffff,0xd9dde6,2.0));
+  const sun=new THREE.DirectionalLight(0xfff4ea,2.0);
+  sun.position.set(10,20,12);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.bias=-0.0004;
+  const sc=sun.shadow.camera;sc.left=-40;sc.right=40;sc.top=40;sc.bottom=-40;sc.near=1;sc.far=100;scene.add(sun);
+
+  // base ground (lowest level)
+  const ground=new THREE.Mesh(new THREE.PlaneGeometry(200,200),
+    new THREE.MeshStandardMaterial({color:hex(SCENE.ground),roughness:1,metalness:0}));
+  ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);
+
+  // raised road plateau (top of the stairs); top face at yHi
+  const ramp=RAMPS[0];
+  if(ramp){
+    const yHi=ramp.yHi, zTop=ramp.z1, b=SCENE.bounds;
+    const pw=(b.xmax-b.xmin), pd=(zTop-b.zmin);
+    const plat=M(new THREE.BoxGeometry(pw,yHi,pd),'#'+(SCENE.plateau?SCENE.plateau.color:'dcd6cb'),false,false);
+    plat.position.set((b.xmin+b.xmax)/2, yHi/2, (zTop+b.zmin)/2); scene.add(plat);
+    // staircase: solid step boxes rising base->plateau through the ramp band
+    const N=ramp.treads||16, x0=ramp.x0, x1=ramp.x1, w=(x1-x0);
+    for(let i=0;i<N;i++){
+      const zc=ramp.z0+(i+0.5)*(ramp.z1-ramp.z0)/N;
+      const topY=groundHeight((x0+x1)/2,zc);
+      const depth=Math.abs((ramp.z1-ramp.z0)/N)*1.04;
+      const st=M(new THREE.BoxGeometry(w,Math.max(topY,0.2),depth),'#'+ramp.color,false,true);
+      st.position.set((x0+x1)/2, Math.max(topY,0.2)/2, zc); scene.add(st);
+    }
+  }
+
+  // buildings (paper boxes) + colliders
+  const colliders=[];
+  (SCENE.buildings||[]).forEach(bd=>{
+    const base=bd.base||0, top=base+bd.h, bottom=-2, hgt=top-bottom;
+    const m=M(new THREE.BoxGeometry(bd.w,hgt,bd.d),'#'+bd.color,false,true);
+    m.position.set(bd.x,(bottom+top)/2,bd.z); scene.add(m); BUILDING_MESHES.push(m);
+    // footprint collider: overlapping circle chain along the long edge (covers the whole box,
+    // not just a central disc — corners stay solid)
+    const long=bd.w>=bd.d?'x':'z', len=Math.max(bd.w,bd.d), r=0.5*Math.min(bd.w,bd.d);
+    const stp=1.3*r, n=Math.max(1,Math.ceil(len/stp));
+    for(let i=0;i<=n;i++){const t=i/n;
+      if(long==='x')colliders.push({x:bd.x-bd.w/2+t*bd.w,z:bd.z,r});
+      else colliders.push({x:bd.x,z:bd.z-bd.d/2+t*bd.d,r});}
+  });
+  SCENE_COLLIDERS=colliders; setColliders(colliders);
+
+  // collectible flowers (billboard sprites, lifted onto terrain)
+  const man=await (await fetch('out/sprites/manifest.json')).json();
+  const fsp=man.flower; const ftex=await tx(fsp.file); const fw=FH*(fsp.w/fsp.h);
+  (SCENE.collectibles||[]).forEach(c=>{const m=billboard(ftex,fw,FH);
+    m.position.set(c.x,groundHeight(c.x,c.z)+FH/2,c.z);scene.add(m);flowers.push(m);billboards.push(m);});
+  document.getElementById('total').textContent=(SCENE.collectibles||[]).length;
+
+  shadow=new THREE.Mesh(new THREE.PlaneGeometry(SHEN_W*1.7,SHEN_W*1.7),
+    new THREE.MeshBasicMaterial({map:shadowTex,transparent:true,depthWrite:false}));
+  shadow.rotation.x=-Math.PI/2;shadow.renderOrder=1;scene.add(shadow);
+
+  shen=new THREE.Group();scene.add(shen);
+  poseG=new THREE.Group();shen.add(poseG);
+  const st=await tx('out/shen-paper.png');
+  mesh=billboard(st,SHEN_W,SHEN_H);mesh.position.y=SHEN_H/2;poseG.add(mesh);
+
+  const SP=['#cdd9ea','#d8e0ea','#eae2cf','#e0d2e2','#cfe0d6'];
+  for(let i=0;i<5;i++){const sp=billboard(sparkTex,0.4,0.4,{soft:true,tint:SP[i]});
+    sp.visible=false;sp.renderOrder=3;scene.add(sp);sparkles.push(sp);}
+  burst=billboard(softCanvasTex((x,s)=>{const g=x.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
+    g.addColorStop(0,'rgba(255,255,255,0)');g.addColorStop(.7,'rgba(160,180,210,.5)');
+    g.addColorStop(.85,'rgba(160,180,210,.7)');g.addColorStop(1,'rgba(160,180,210,0)');x.fillStyle=g;x.fillRect(0,0,s,s);}),
+    1,1,{soft:true});burst.visible=false;burst.renderOrder=3;scene.add(burst);
+
+  S=initState(SCENE.collectibles);
+  if(SCENE.spawn){S.x=SCENE.spawn.x;S.z=SCENE.spawn.z;}
+  activeZone=pickZone(S.x,S.z)||ZONES[ZONES.length-1];
+  const r0=rigFor(activeZone,S);
+  CAMRIG.pos.copy(r0.pos);CAMRIG.tgt.copy(r0.tgt);CAMRIG.fov=r0.fov;CAMRIG.pitch=r0.pitch;
+  applyCamera();
+  window.__ready=true;resize();startAuto();
+}
+
+const SP_OFF=[[-.55,1.9],[.6,2.2],[-.35,2.6],[.45,1.6],[.15,2.4]];
+function draw(dt){
+  if(!mesh){renderer.render(scene,cam);return;}
+  const gy=groundHeight(S.x,S.z);
+  const q=pose(S);
+  shen.position.set(S.x,gy+GROUND_EPS,S.z);faceYaw(shen);
+  poseG.scale.set(q.sx,q.sy,1);poseG.rotation.z=q.rot;
+  mesh.position.y=SHEN_H/2+q.yW;
+  const k=clampn(q.yW/JOY_H,0,1);
+  shadow.position.set(S.x,gy+GROUND_EPS+0.001,S.z);const ss=1-0.5*k;shadow.scale.set(ss,ss,1);
+  shadow.material.opacity=(1-0.55*k);
+  sparkles.forEach((s,i)=>{if(q.spark<=0){s.visible=false;return;}s.visible=true;
+    const[ox,oy]=SP_OFF[i];s.position.set(S.x+ox*0.45,gy+SHEN_H/2+q.yW+oy*0.45+q.spark*0.4,S.z+0.2);
+    s.quaternion.copy(cam.quaternion);const sc=0.4+0.4*Math.sin(q.spark*Math.PI);s.scale.set(sc,sc,1);
+    s.material.opacity=Math.sin(q.spark*Math.PI);});
+  flowers.forEach((f,i)=>{const c=S.collectibles[i];f.visible=!c.got;
+    f.position.y=groundHeight(c.x,c.z)+FH/2+0.08*Math.sin(S.animClock*3+i);});
+  billboards.forEach(faceYaw);
+  if(S.justGot>=0){const c=S.collectibles[S.justGot];burstPos.set(c.x,groundHeight(c.x,c.z)+0.7,c.z);burstT=0;}
+  if(burstT>=0){burstT+=dt;const p=burstT/0.45;burst.visible=p<1;burst.position.copy(burstPos);burst.quaternion.copy(cam.quaternion);
+    const sc=0.5+p*2.0;burst.scale.set(sc,sc,1);burst.material.opacity=(1-p)*0.8;if(p>=1)burstT=-1;}
+  document.getElementById('score').textContent=S.score;
+  document.getElementById('zoneName').textContent=activeZone?activeZone.id+(blend?' →blend':''):'—';
+  renderer.render(scene,cam);
+}
+
+// ---------- input (camera-relative to corridor axis; AI world-space) ----------
+const held={up:false,down:false,left:false,right:false};let edgeJump=false;
+let aiMove=null,aiTarget=null,aiJump=false;
+addEventListener('keydown',e=>{const k=e.key.toLowerCase();
+  if(k==='arrowup'||k==='w')held.up=true;else if(k==='arrowdown'||k==='s')held.down=true;
+  else if(k==='arrowleft'||k==='a')held.left=true;else if(k==='arrowright'||k==='d')held.right=true;
+  else if((k===' ')&&!e.repeat)edgeJump=true;
+  if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k))e.preventDefault();});
+addEventListener('keyup',e=>{const k=e.key.toLowerCase();
+  if(k==='arrowup'||k==='w')held.up=false;else if(k==='arrowdown'||k==='s')held.down=false;
+  else if(k==='arrowleft'||k==='a')held.left=false;else if(k==='arrowright'||k==='d')held.right=false;});
+function holdBtn(id,set){const b=document.getElementById(id);
+  b.addEventListener('pointerdown',e=>{e.preventDefault();set(true);});
+  ['pointerup','pointerleave','pointercancel'].forEach(ev=>b.addEventListener(ev,()=>set(false)));}
+holdBtn('bU',v=>held.up=v);holdBtn('bD',v=>held.down=v);holdBtn('bL',v=>held.left=v);holdBtn('bR',v=>held.right=v);
+document.getElementById('bHop').addEventListener('click',()=>edgeJump=true);
+// ground-projected camera basis: forward = where the camera looks, right = screen-right.
+function camBasis(){
+  let fx=CAMRIG.tgt.x-CAMRIG.pos.x, fz=CAMRIG.tgt.z-CAMRIG.pos.z;
+  const m=Math.hypot(fx,fz);
+  if(m<1e-4){const a=zoneAxis(activeZone);fx=a.fx;fz=a.fz;}  // looking ~vertical: fall back to zone axis
+  else{fx/=m;fz/=m;}
+  return {fx,fz,rx:-fz,rz:fx};
+}
+function resolveInput(){
+  // camera-relative controls: UP = into the screen (the way the camera looks), DOWN = toward
+  // camera, LEFT/RIGHT = screen left/right. Rotates smoothly as the camera blends between zones,
+  // so a held key curves with the swing instead of jerking.
+  const fwd=(held.up?1:0)-(held.down?1:0), stf=(held.right?1:0)-(held.left?1:0);
+  let mx=0,mz=0;
+  if(fwd||stf){const b=camBasis();
+    mx=b.fx*fwd+b.rx*stf; mz=b.fz*fwd+b.rz*stf;
+    const m=Math.hypot(mx,mz);if(m>1){mx/=m;mz/=m;}}
+  else if(aiMove){mx=aiMove.x;mz=aiMove.z;}
+  else if(aiTarget){const dx=aiTarget.x-S.x,dz=aiTarget.z-S.z,d=Math.hypot(dx,dz);
+    if(d<0.18)aiTarget=null;else{mx=dx/d;mz=dz/d;}}
+  const jump=edgeJump||aiJump;edgeJump=false;aiJump=false;
+  return {moveX:mx,moveZ:mz,jump,joy:false};
+}
+
+// ---------- loop ----------
+const FIXED=1/60;let playing=true,timer=null,last=null,acc=0;
+function frame(){const now=performance.now();if(last===null)last=now;
+  let e=(now-last)/1000;last=now;if(e>0.5)e=0.5;
+  if(playing){acc+=e;let n=0;while(acc>=FIXED&&n<40){S=step(S,resolveInput(),FIXED);acc-=FIXED;n++;}}
+  cameraFrame(S,e); draw(e);}
+function startAuto(){if(!timer){last=null;acc=0;timer=setInterval(frame,16);}}
+window.__stopAuto=()=>{if(timer){clearInterval(timer);timer=null;}};
+window.__startAuto=startAuto;
+window.__render=t=>{if(S){S.animClock=t;cameraFrame(S,1/60);draw(0);}renderer.render(scene,cam);};
+
+function resize(){const w=innerWidth||1280,h=innerHeight||800;renderer.setSize(w,h,false);
+  cam.aspect=w/h;cam.updateProjectionMatrix();}
+addEventListener('resize',resize);
+
+// ---------- AI / debug surface ----------
+window.game={
+  state:()=>({x:+S.x.toFixed(2),z:+S.z.toFixed(2),y:+S.y.toFixed(2),gy:+groundHeight(S.x,S.z).toFixed(2),
+    mode:S.mode,score:S.score,zone:activeZone&&activeZone.id,blend:blend&&+(blend.t/blend.dur).toFixed(2),
+    cam:CAMRIG.pos.toArray().map(n=>+n.toFixed(2)),tgt:CAMRIG.tgt.toArray().map(n=>+n.toFixed(2)),
+    fov:+CAMRIG.fov.toFixed(1)}),
+  zone:()=>activeZone&&activeZone.id, groundY:(x,z)=>+groundHeight(x,z).toFixed(2),
+  goTo:(x,z)=>{aiTarget={x:+x,z:+z};return 'goTo '+x+','+z;},
+  setMove:(x,z)=>{aiMove={x:Math.sign(x||0),z:Math.sign(z||0)};return 'move';},
+  stop:()=>{aiTarget=null;aiMove=null;return 'stop';},
+  jump:()=>{aiJump=true;return 'jump';},
+  warp:(x,z,snap)=>{S.x=x;S.z=z;S.vx=0;S.vz=0;activeZone=pickZone(x,z);blend=null;
+    if(snap){const r=rigFor(activeZone,S);CAMRIG.pos.copy(r.pos);CAMRIG.tgt.copy(r.tgt);CAMRIG.fov=r.fov;CAMRIG.pitch=r.pitch;applyCamera();}
+    return 'warp '+x+','+z;},
+  reset:()=>{S=initState(SCENE.collectibles);if(SCENE.spawn){S.x=SCENE.spawn.x;S.z=SCENE.spawn.z;}
+    activeZone=pickZone(S.x,S.z);blend=null;
+    const r=rigFor(activeZone,S);CAMRIG.pos.copy(r.pos);CAMRIG.tgt.copy(r.tgt);CAMRIG.fov=r.fov;CAMRIG.pitch=r.pitch;
+    return 'reset';},
+  pause:()=>{playing=false;return 'paused';},play:()=>{playing=true;return 'playing';},
+};
+// ---------- camera QA: invariant = Shen is visible from EVERY reachable spot ----------
+const _ray=new THREE.Raycaster();
+function _reachable(step){
+  step=step||1.0; const B=SCENE.bounds, seen=new Set(), out=[];
+  const key=(x,z)=>Math.round(x/step)+','+Math.round(z/step);
+  const blocked=(x,z)=>{ if(x<=B.xmin||x>=B.xmax||z<=B.zmin||z>=B.zmax)return true;
+    for(const c of SCENE_COLLIDERS){const dx=x-c.x,dz=z-c.z;if(dx*dx+dz*dz<(c.r+PLAYER_R)*(c.r+PLAYER_R))return true;} return false; };
+  const sx=SCENE.spawn?SCENE.spawn.x:0, sz=SCENE.spawn?SCENE.spawn.z:2;
+  const stack=[[sx,sz]]; seen.add(key(sx,sz));
+  while(stack.length){ const [x,z]=stack.pop(); out.push([x,z]);
+    for(const [dx,dz] of [[step,0],[-step,0],[0,step],[0,-step]]){const nx=x+dx,nz=z+dz,k=key(nx,nz);
+      if(seen.has(k)||blocked(nx,nz))continue; seen.add(k); stack.push([nx,nz]); } }
+  return out;
+}
+function shenVisible(opts){
+  opts=opts||{}; const minDist=opts.minDist??2.4;
+  cam.updateMatrixWorld(); cam.matrixWorldInverse.copy(cam.matrixWorld).invert();  // project() needs a fresh inverse (render() isn't called in QA)
+  const gy=groundHeight(S.x,S.z);
+  const chest=new THREE.Vector3(S.x,gy+SHEN_H*0.5,S.z);
+  const c=chest.clone().project(cam);
+  if(c.z>1) return {ok:false,why:'behind-camera'};            // chest behind the lens
+  if(Math.abs(c.x)>0.9||Math.abs(c.y)>0.9) return {ok:false,why:'off-screen'};  // body must be well inside frame
+  const head=new THREE.Vector3(S.x,gy+SHEN_H*0.95,S.z).project(cam);
+  const feet=new THREE.Vector3(S.x,gy+0.1,S.z).project(cam);
+  if(head.y>1.0) return {ok:false,why:'head-cut'};            // top of head above the frame
+  if(feet.y<-1.0) return {ok:false,why:'feet-cut'};           // feet below the frame
+  const dist=cam.position.distanceTo(chest);
+  if(dist<minDist) return {ok:false,why:'too-close',dist:+dist.toFixed(2)};
+  const dir=chest.clone().sub(cam.position), dlen=dir.length(); dir.normalize();
+  _ray.set(cam.position,dir); _ray.far=dlen-0.4; _ray.near=0;
+  if(_ray.intersectObjects(BUILDING_MESHES,false).length) return {ok:false,why:'occluded'};
+  return {ok:true};
+}
+window.cameraQA={
+  reach:_reachable, vis:()=>shenVisible(),
+  // STATIC: snap the camera at every reachable cell; report spots where Shen isn't visible
+  static:(step)=>{ const cells=_reachable(step), fails=[];
+    for(const [x,z] of cells){ window.game.warp(x,z,true); const v=shenVisible();
+      if(!v.ok) fails.push({x:+x.toFixed(1),z:+z.toFixed(1),why:v.why}); }
+    window.game.reset();
+    return {cells:cells.length, fails:fails.length, byReason:fails.reduce((a,f)=>((a[f.why]=(a[f.why]||0)+1),a),{}), sample:fails.slice(0,30)}; },
+  // TRANSITION: deterministically walk A->B (manual sim steps, throttle-proof), checking
+  // visibility EVERY frame through the camera blend
+  transition:(from,to,steps)=>{ steps=steps||700; window.game.warp(from[0],from[1],true);
+    held.up=held.down=held.left=held.right=false; aiTarget={x:to[0],z:to[1]}; const fails=[]; let reached=false;
+    for(let i=0;i<steps;i++){ S=step(S,resolveInput(),1/60); cameraFrame(S,1/60);
+      const v=shenVisible(); if(!v.ok) fails.push({x:+S.x.toFixed(1),z:+S.z.toFixed(1),why:v.why});
+      if(Math.hypot(S.x-to[0],S.z-to[1])<0.3){reached=true;break;} }
+    aiTarget=null; window.game.reset();
+    return {reached, fails:fails.length, sample:fails.slice(0,20)}; },
+  // PATH: drive through waypoints CONTINUOUSLY (no reset between legs) so reversals / round-trips
+  // (down a road and back, down the stairs) are exercised — the case a straight A->B sweep misses
+  path:(waypoints,steps=500)=>{ window.game.warp(waypoints[0][0],waypoints[0][1],true);
+    held.up=held.down=held.left=held.right=false; const fails=[];
+    for(let w=1;w<waypoints.length;w++){ aiTarget={x:waypoints[w][0],z:waypoints[w][1]};
+      for(let i=0;i<steps;i++){ S=step(S,resolveInput(),1/60); cameraFrame(S,1/60);
+        const v=shenVisible(); if(!v.ok) fails.push({x:+S.x.toFixed(1),z:+S.z.toFixed(1),leg:w,why:v.why});
+        if(Math.hypot(S.x-waypoints[w][0],S.z-waypoints[w][1])<0.3)break; } }
+    aiTarget=null; window.game.reset();
+    return {fails:fails.length, sample:fails.slice(0,20)}; },
+};
+build().catch(e=>{window.__err=String(e&&e.stack||e);console.error(e);});
+</script></body></html>
