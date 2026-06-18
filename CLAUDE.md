@@ -60,6 +60,27 @@ look at the game (or any `studio/` page):
 
 `/done` tears the server down (`.claude/serve.sh stop` + `preview_stop`).
 
+## Workflow: deploy & done (PR-based — never push to `main`)
+
+Work happens in **git worktrees** (one per session/chat), each on its own branch.
+`main` is **branch-protected**: it only accepts changes through a pull request that
+passes the **`smoke`** check. Do NOT `git push origin main` (or `HEAD:main`) — that's
+how work has accidentally landed on `main` before. Multiple sessions run at once, so
+always `git fetch origin main` and check for peers before acting.
+
+- **`/deploy`** = go live. Commit on the worktree branch → `git push -u origin HEAD` →
+  open a PR (`gh pr create --base main`) → wait for `smoke` green (`gh pr checks --watch`)
+  → if `BEHIND`, read the incoming diff then `gh pr update-branch` → squash-merge
+  (`gh pr merge --squash --delete-branch`). Merging `main` triggers the Pages deploy
+  (`deploy.yml`). After merge, the worktree branch is **refreshed to merged `main`**
+  (`git reset --hard origin/main`) and you keep working in the same worktree; the next
+  `/deploy` opens a fresh PR off the same branch name.
+- **`/done`** = close out the worktree. Resolve pending work (offer `/deploy`), confirm
+  the branch landed on `main` via its PR, sync the primary checkout, tear down the worktree.
+- **CI**: `ci.yml` runs the `smoke` job on every PR — assembles the site and loads
+  `game.html` in headless Chromium asserting `window.__ready` + no errors
+  (`test/smoke.mjs`, uses `playwright`). This is the required check that gates merges.
+
 ## Conventions
 
 - Python tooling lives in `studio/`, computes paths from `__file__` (repo-relative).
