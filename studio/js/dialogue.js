@@ -28,7 +28,14 @@ export const Dialogue = {
   done: false,
   choiceMode: false,
   sel: 0,
-  onEnd: null,
+  _spoken: 0,
+  // optional hooks (game.html wires these to the audio layer; all UI-only)
+  onEnd: null,        // (npc)            conversation ended
+  onLine: null,       // (speaker)        a new line began (reset voice pitch)
+  onReveal: null,     // (ch, speaker)    a glyph was typed by the typewriter
+  onChoiceOpen: null, // ()               a choice menu appeared
+  onChoiceMove: null, // ()               selection moved
+  onChoicePick: null, // ()               a choice was confirmed
 
   init() {
     this.el = {
@@ -54,9 +61,12 @@ export const Dialogue = {
     this.cur = node;
     this.full = node.text || '';
     this.shown = 0;
+    this._spoken = 0;
     this.done = false;
     this.choiceMode = false;
     this.sel = 0;
+    this.speaker = node.speaker || this.npc.name;
+    if (this.onLine) this.onLine(this.speaker);
     this.el.name.textContent = node.speaker || this.npc.name;
     this.el.name.classList.toggle('player', !!node.speaker && node.speaker !== this.npc.name);
     this.el.choices.innerHTML = '';
@@ -79,12 +89,24 @@ export const Dialogue = {
       if (this.cur.choices) this._openChoices();
       else this.el.next.style.visibility = 'visible';
     }
+    this._speak();
     this._renderText();
+  },
+
+  // fire onReveal for each glyph the typewriter has newly uncovered
+  _speak() {
+    if (!this.onReveal) { this._spoken = Math.floor(this.shown); return; }
+    const upto = Math.floor(this.shown);
+    while (this._spoken < upto) {
+      this.onReveal(this.full[this._spoken], this.speaker);
+      this._spoken++;
+    }
   },
 
   _openChoices() {
     this.choiceMode = true;
     this.sel = 0;
+    if (this.onChoiceOpen) this.onChoiceOpen();
     const box = this.el.choices;
     box.innerHTML = '';
     box.style.display = 'flex';
@@ -107,6 +129,7 @@ export const Dialogue = {
     if (!this.active || !this.choiceMode) return;
     const n = this.cur.choices.length;
     this.sel = (this.sel + dir + n) % n;
+    if (this.onChoiceMove) this.onChoiceMove();
     this._highlight();
   },
 
@@ -116,6 +139,7 @@ export const Dialogue = {
     if (this.choiceMode) return this._confirm();
     if (!this.done) {              // skip the typewriter to the end
       this.shown = this.full.length;
+      this._spoken = this.full.length; // don't machine-gun blips on skip
       this.done = true;
       this._renderText();
       if (this.cur.choices) this._openChoices();
@@ -127,6 +151,7 @@ export const Dialogue = {
   },
 
   _confirm() {
+    if (this.onChoicePick) this.onChoicePick();
     const c = this.cur.choices[this.sel];
     this._goto(c ? c.next : null);
   },
