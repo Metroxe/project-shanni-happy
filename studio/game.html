@@ -276,6 +276,12 @@ const cam=new THREE.PerspectiveCamera(40,1,0.1,300);
 const SHEN_H=1.9, SHEN_W=SHEN_H*0.4634, GROUND_EPS=0.02;
 const WALK_HOP=0.24, MAX_LIFT=1.5, FH=0.95, PLAYER_R=0.42;
 const TALK_R=2.4; const _tv=new THREE.Vector3();
+// Positional NPC/world sound: full volume within HEAR_NEAR, silent past HEAR_FAR
+// (squared rolloff). Ambient animation loops (e.g. Chrees' reps) are only audible
+// when the player is near — never across the whole map. (S is assigned in build().)
+const HEAR_NEAR=2.5, HEAR_FAR=9;
+const proxGain=(x,z)=>{ const t=(HEAR_FAR-Math.hypot(x-S.x,z-S.z))/(HEAR_FAR-HEAR_NEAR);
+  return t<=0?0:t>=1?1:t*t; };
 
 const loader=new THREE.TextureLoader();
 const tx=u=>new Promise(res=>loader.load(u,t=>{t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;
@@ -501,9 +507,17 @@ async function build(){
     m.position.set(c.x,groundHeight(c.x,c.z)+HAM_H/2,c.z);
     m.userData={x:c.x,z:c.z,hh:HAM_H/2,kind:c.kind||'hamster'}; scene.add(m); pickups.push(m); billboards.push(m);});
 
-  // NPCs (talk targets) — billboard + grounded group + contact shadow
+  // NPCs (talk targets) — billboard + grounded group + contact shadow.
+  // An NPC may carry a `poses` map {name:texUrl} + a `rep` loop {seq,beat,sfxOn}
+  // for Paper-Mario-style HARD image swaps (no tween): the breathing/greet motion
+  // below is unchanged; only the drawn pose flips. All pose images share one
+  // canvas + foot baseline + body scale (registered by register_poses.py), so the
+  // swap can't resize or unground the character — width is derived once and holds.
   for(const nd of (world.npcs||[])){
-    const ntex=await tx(nd.tex);
+    const poses={}; let defTex=null;
+    if(nd.poses){ for(const[k,u] of Object.entries(nd.poses)) poses[k]=await tx(u);
+      defTex=poses[(nd.rep&&nd.rep.seq&&nd.rep.seq[0])||Object.keys(poses)[0]]; }
+    const ntex=defTex||await tx(nd.tex);
     const nw=nd.h*(ntex.image.width/ntex.image.height);
     const ny=groundHeight(nd.x,nd.z);
     const g=new THREE.Group(); g.position.set(nd.x,ny,nd.z);
@@ -511,7 +525,8 @@ async function build(){
     const sh=new THREE.Mesh(new THREE.PlaneGeometry(nw*1.4,nw*1.4),
       new THREE.MeshBasicMaterial({map:shadowTex,transparent:true,depthWrite:false}));
     sh.rotation.x=-Math.PI/2; sh.position.set(nd.x,ny+GROUND_EPS,nd.z); sh.renderOrder=1; scene.add(sh);
-    npcs.push({data:nd,group:g,mesh:m,h:nd.h,ny,phase:Math.random()*6.28,greet:0});
+    npcs.push({data:nd,group:g,mesh:m,h:nd.h,ny,phase:Math.random()*6.28,greet:0,
+      poses,rep:nd.rep||null,repIdx:0,repT:0});
   }
   Dialogue.init();
   Dialogue.onEnd=()=>{ talkCooldown=0.3; };
@@ -591,6 +606,13 @@ function draw(dt){
   // NPCs: gentle paper breathing + greet hop
   npcs.forEach(o=>{
     const t=S.animClock+o.phase;
+    // discrete pose swap (Paper-Mario style: a hard image flip, no tween). The
+    // breathing/greet transforms below keep running on whichever image is shown.
+    if(o.rep&&o.rep.seq&&o.rep.seq.length>1){ o.repT+=dt;
+      if(o.repT>=o.rep.beat){ o.repT=0; o.repIdx=(o.repIdx+1)%o.rep.seq.length;
+        const nm=o.rep.seq[o.repIdx], tex=o.poses[nm];
+        if(tex){ o.mesh.material.map=tex; o.mesh.material.needsUpdate=true; }
+        if(o.rep.sfxOn===nm){ const pg=proxGain(o.data.x,o.data.z); if(pg>0) Sound.sfx('lift',pg); } } }
     let sy=1+0.02*Math.sin(t*2.0), yW=0;
     if(o.greet>0){o.greet=Math.max(0,o.greet-dt);const p=1-o.greet/0.5;
       yW=Math.sin(p*Math.PI)*0.5; sy=1+0.06*Math.sin(p*Math.PI);}
