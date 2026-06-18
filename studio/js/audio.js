@@ -4,7 +4,7 @@
 // calm pastel papercraft aesthetic (soft, warm, gentle — nothing harsh).
 //
 // Two jobs:
-//   1. SFX  — one-shot game sounds (collect, win, hop, land, joy, step, ui).
+//   1. SFX  — one-shot game sounds (hop, land, step, squeak, quest, ui).
 //   2. Blip — Charlie-Brown muted-brass "wah" voice for dialogue, one little
 //             wah per spoken glyph, pitch-walking like talking, falling on
 //             sentence ends. Per-speaker timbre (Chrees low/gruff, Shen high).
@@ -14,7 +14,7 @@
 // requestAnimationFrame, so it plays fine even in the suspended preview tab.
 
 const CFG = {
-  sfx: { collect: 0.5, win: 0.5, hop: 0.34, land: 0.42, joy: 0.5, step: 0.09, move: 0.3, talk: 0.42, select: 0.42,
+  sfx: { hop: 0.34, land: 0.42, step: 0.09, move: 0.3, talk: 0.42, select: 0.42,
          squeak: 0.34, quest: 0.42, questStep: 0.44, questDone: 0.5, book: 0.4, bookClose: 0.36, flip: 0.3 },
   blip: 0.17,
 };
@@ -135,20 +135,6 @@ const A4 = 440;
 const semi = n => A4 * Math.pow(2, n / 12);
 
 const SFX = {
-  // bright rising 3-note ping + a sparkle tail
-  collect(v) {
-    const seq = [3, 7, 10]; // C#5-ish, E5-ish, G5-ish over A4 root region
-    seq.forEach((s, i) => note({ type: 'triangle', f: semi(s + 12), t0: i * 0.055, dur: 0.2, gain: v * 0.7 }));
-    note({ type: 'sine', f: semi(15 + 12), t0: 0.11, dur: 0.22, gain: v * 0.45 });
-  },
-  // happy little fanfare for clearing the board
-  win(v) {
-    const seq = [0, 4, 7, 12, 16];
-    seq.forEach((s, i) => {
-      note({ type: 'triangle', f: semi(s + 12), t0: i * 0.12, dur: 0.34, gain: v * 0.6 });
-      if (i === seq.length - 1) note({ type: 'sine', f: semi(s + 19), t0: i * 0.12, dur: 0.5, gain: v * 0.4 });
-    });
-  },
   // light upward "whoop"
   hop(v) {
     note({ type: 'triangle', f: semi(2), f2: semi(11), dur: 0.16, gain: v, atk: 0.004 });
@@ -157,11 +143,6 @@ const SFX = {
   land(v) {
     note({ type: 'sine', f: semi(-10), f2: semi(-17), dur: 0.12, gain: v * 0.8 });
     noise({ dur: 0.07, gain: v * 0.5, freq: 900 });
-  },
-  // joyful launch — rising whee + sparkle
-  joy(v) {
-    note({ type: 'triangle', f: semi(0), f2: semi(14), dur: 0.34, gain: v });
-    note({ type: 'sine', f: semi(19), t0: 0.16, dur: 0.3, gain: v * 0.5 });
   },
   // very soft paper footstep (slight random pitch so it never machine-guns)
   step(v) {

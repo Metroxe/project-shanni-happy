@@ -66,7 +66,7 @@ try {
       if (g.start) g.start(true);   // dismiss the title screen into a fresh game so input is live
       g.setMove(1, 0); await new Promise(r => setTimeout(r, 120));
       g.jump();        await new Promise(r => setTimeout(r, 120));
-      g.joy();         await new Promise(r => setTimeout(r, 120));
+      g.talk();        await new Promise(r => setTimeout(r, 120));
       g.stop();
     })()`);
     const jsErr2 = await page.evaluate('window.__err || null');
