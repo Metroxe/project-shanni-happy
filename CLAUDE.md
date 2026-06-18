@@ -49,6 +49,17 @@ is a bug, not a "later." Stay on-aesthetic: soft, warm, calm pastel — never ha
 master chain caps level, but still pick gentle params). Like the art, personality lives in
 motion + sound, not in louder.
 
+**The second rule: world sounds are spatial.** A sound that comes from a *place* in the world
+— an NPC's animation loop, an ambient prop, a distant event — **must be attenuated by the
+player's distance to it**: full only when the player is near, fading with distance, and **not
+fired at all** once they're far. A world sound audible across the whole map is a bug, exactly
+like a silent interaction is. (Player-centric sounds — the player's own footsteps / jumps /
+joy — and UI / dialogue sounds are *not* spatial; they play full.) Mechanism: pass a 0..1
+multiplier to `Sound.sfx(name, mul)`; `proxGain(x,z)` in `game.html` is the standard rolloff
+(full ≤~2.5u, squared falloff to silent ~9u, skips the call past the edge). **When you add any
+sound, ask: does it come from a spot in the world? If yes, gate it through `proxGain` in the
+same change** — same reflex as shipping its sound at all.
+
 **The system:** all **SFX + the dialogue voice** are **procedural Web Audio**, synthesized at
 play time in `studio/js/audio.js` — **no asset files for those** (same ethos as the art:
 programmatic, no hand-authoring). The module exports `Sound`; it's already wired into
@@ -68,11 +79,9 @@ OGG (`out/music/calm.ogg`), because real-time music synthesis isn't practical. I
   2. **Discrete UI/events** (menus, buttons, dialogue, transitions) → call `Sound.sfx('name')`
      right at the event site, or wire a `Dialogue.on*` hook (`onReveal`, `onChoiceOpen/Move/Pick`,
      `onLine`, `onEnd`) in `game.html`.
-- **Positional NPC/world sounds attenuate by distance** — a sound tied to a spot in the world
-  (an NPC's animation loop, an ambient prop) plays through a distance gain so it's full volume
-  only when the player is near and silent far away — never audible across the whole map. Pass the
-  multiplier to `Sound.sfx(name, mul)`; `proxGain(x,z)` in `game.html` is the rolloff (full within
-  ~2.5u, silent past ~9u, and it skips the call entirely past the edge). Chrees' rep `lift` uses it.
+- **Positional sounds are proximity-gated** — see the "world sounds are spatial" rule above; any
+  world-anchored sound goes through `proxGain` (Chrees' rep `lift` does), with the multiplier passed
+  to `Sound.sfx(name, mul)`.
 - **Dialogue voice:** the Charlie-Brown muted-brass "wah" is `Sound.blip(ch, speaker)`, one per
   revealed glyph (fired from `Dialogue.onReveal`). A new speaker gets its timbre in `VOICES`.
 - **Gesture gate:** browsers block audio until a user gesture — `Sound.resume()` is already
