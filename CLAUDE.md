@@ -33,6 +33,40 @@ is suspended** (frozen frame). Drive real-time playback with a `setInterval` clo
 keyed off `performance.now()` instead (see `env-live.html` `__startAuto`). The shoot
 scripts call `__stopAuto()` then `__render(t)` for deterministic capture.
 
+## Sound — every interaction makes a sound (do not ship silent interactions)
+
+**The rule:** if the player does something, or the world reacts to them, it is **audible.**
+Any new interaction — a new collectible, NPC action, button, door, quest beat, menu, screen
+transition — **ships its sound effect in the same change that adds it.** A silent interaction
+is a bug, not a "later." Stay on-aesthetic: soft, warm, calm pastel — never harsh or loud (the
+master chain caps level, but still pick gentle params). Like the art, personality lives in
+motion + sound, not in louder.
+
+**The system:** all audio is **procedural Web Audio**, synthesized at play time in
+`studio/js/audio.js` — **no audio asset files** (same ethos as the art: programmatic, no
+hand-authoring). The module exports `Sound`; it's already wired into `game.html`, so new
+sounds plug into existing seams rather than new plumbing.
+
+- **Add a new SFX:** write a tiny synth fn in the `SFX` map in `audio.js` (use the `note()`
+  and `noise()` helpers; set its level in `CFG.sfx`), then trigger it with `Sound.sfx('name')`.
+- **Trigger it — two patterns, pick by where the event lives:**
+  1. **Sim-driven** (emerges from the deterministic sim/physics: footsteps, jump, land, joy,
+     collect, win) → detect the **state transition** in `audioStep(s)` in `game.html`, comparing
+     against `aprev` (mode / onGround / walkPhase / score). It runs every fixed step, so fire on
+     the *edge* (changed-since-last), never every frame.
+  2. **Discrete UI/events** (menus, buttons, dialogue, transitions) → call `Sound.sfx('name')`
+     right at the event site, or wire a `Dialogue.on*` hook (`onReveal`, `onChoiceOpen/Move/Pick`,
+     `onLine`, `onEnd`) in `game.html`.
+- **Dialogue voice:** the Charlie-Brown muted-brass "wah" is `Sound.blip(ch, speaker)`, one per
+  revealed glyph (fired from `Dialogue.onReveal`). A new speaker gets its timbre in `VOICES`.
+- **Gesture gate:** browsers block audio until a user gesture — `Sound.resume()` is already
+  wired to the title **Start** / first key / first tap, so new triggers don't handle it.
+- **Volume + mute are automatic** (master bus + pause-menu slider, persisted to `shen.vol` /
+  `shen.muted`). Never gate or scale a sound yourself — just call `Sound.sfx` / `Sound.blip`.
+- **Verify in preview** (don't assume): spy on `Sound.sfx` / `Sound.blip`, drive the interaction,
+  assert the event fired the sound, console clean. (Exactly how the audio work verified
+  step/collect/blip — wrap the fn, push calls to a log, read it back.)
+
 ## How to run
 
 ```sh
@@ -148,8 +182,14 @@ always `git fetch origin main` and check for peers before acting.
     discard old saves; to keep progress instead, also add a `migrate()` step. When
     genuinely unsure, prefer bumping — a clean reset beats a silently broken world.
   The `/deploy` skill enforces this check at push time.
+- DONE: **Procedural audio** (`studio/js/audio.js`) — all Web Audio synthesis, **no asset
+  files**. Gameplay SFX via sim-transition detection (`audioStep` in game.html), UI/dialogue
+  SFX via `Sound.sfx` + `Dialogue.on*` hooks, and a Charlie-Brown muted-brass dialogue voice
+  (`Sound.blip`, per-speaker `VOICES`). **Pause menu** (Esc / ☰) with a master volume slider +
+  mute, persisted (`shen.vol` / `shen.muted`); audio unlocks on first gesture. See the
+  **Sound** section above for the "every interaction makes a sound" rule + how to add one.
 - NEXT (ideas): more NPCs/quests; conversation state (remember choices) — persist into the
   reserved `npcs:{}` slot already in the save blob; more zones/goals;
-  sound; idle polish. NOTE: photos in the macOS **Photos library** are unreadable from bash
+  background music (local MusicGen loops — SFX already done); idle polish. NOTE: photos in the macOS **Photos library** are unreadable from bash
   (TCC blocks `cp`/`sips`/`qlmanage` on `~/Pictures/Photos Library.photoslibrary/originals/…`)
   — have the user drag the image into chat or export it to `studio/refs/` to use as a gen ref.
