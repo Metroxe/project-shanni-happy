@@ -33,7 +33,7 @@ export function initState(collectibles) {
     onGround: true, facing: 1,
     walkPhase: 0, animClock: 0,
     mode: 'idle', joyT: 0, score: 0,
-    collectibles: (collectibles || []).map(c => ({ id: c.id, x: c.x, z: c.z, got: false })),
+    collectibles: (collectibles || []).map(c => ({ id: c.id, x: c.x, z: c.z, kind: c.kind || 'flower', got: false })),
     justGot: -1, event: null,
   };
 }
@@ -91,9 +91,16 @@ export function step(s, input, dt) {
     if (c.got) continue;
     const dx = c.x - s.x, dz = c.z - s.z;
     if (dx * dx + dz * dz < PICK_R * PICK_R && s.y < 1.2) {
-      c.got = true; s.score++; s.justGot = i;
+      c.got = true; s.justGot = i;
       s.mode = 'joy'; s.joyT = 0; s.vx = 0; s.vz = 0;
-      s.event = s.collectibles.every(k => k.got) ? 'win' : 'collect';
+      // flowers are the base game (score + win); hamsters are a parallel quest
+      // collection — picked up the same way, but they don't touch score/win.
+      if (c.kind === 'hamster') {
+        s.event = 'critter';
+      } else {
+        s.score++;
+        s.event = s.collectibles.every(k => k.kind === 'hamster' || k.got) ? 'win' : 'collect';
+      }
     }
   }
   return s;
