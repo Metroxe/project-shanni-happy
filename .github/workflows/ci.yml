@@ -1,0 +1,38 @@
+name: CI
+
+# PR gate. Assembles the site exactly like deploy.yml, then runs a headless
+# boot/smoke test. This is the `smoke` check required by main's branch protection.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble static site from studio/ (same as deploy)
+        shell: bash
+        run: |
+          mkdir -p _site
+          cp -r studio/. _site/
+          rm -rf _site/.venv _site/__pycache__ _site/refs
+          rm -f _site/*.py _site/*.mjs _site/requirements.txt
+          ls -la _site
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Playwright + Chromium
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: Smoke test — game boots with no errors
+        run: node test/smoke.mjs _site

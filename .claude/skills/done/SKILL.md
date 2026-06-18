@@ -1,62 +1,86 @@
 ---
 name: done
-description: Finish a git worktree work session — verify the tree is clean and the branch is merged into main, sync the main checkout, then exit/clean up the worktree. Use when the user says they're "done", wants to wrap up / finalize / close out / finish the current worktree, or runs /done.
+description: Finish a git worktree work session — resolve any pending work, confirm it landed on main via its PR, stop this worktree's dev server, sync the primary checkout, then clean up the worktree. Pairs with /deploy. Use when the user says they're done / wrap up / finalize / close out / finish the current worktree, or runs /done.
 ---
 
 # /done — finish a worktree work session
 
-Wrap up the current git **worktree** session: make sure everything is committed and
-landed on `main`, sync the primary checkout, then clean up the worktree. Pairs with
-`/deploy` — that one *publishes* the site, `/done` *closes out the worktree* afterward.
+Close out the current **worktree** session: resolve any pending work, confirm it landed
+on `main` **through its PR** (`main` is branch-protected — nothing reaches it by direct
+push), stop this worktree's dev server, sync the primary checkout, then tear down the
+worktree. Pairs with `/deploy` (which ships).
 
-This skill NEVER auto-commits, force-pushes, or discards unmerged work. If anything
-isn't safe, stop and report rather than forcing it.
+NEVER auto-commit, force-push, push to `main` directly, or discard unmerged work without
+explicit confirmation. If anything isn't safe, stop and report.
 
-## 1. Confirm we're in a worktree
-- `git rev-parse --is-inside-work-tree` and `git worktree list`.
-- The current dir should be a *linked* worktree (e.g. under `.../.claude/worktrees/…`),
-  not the main checkout. If we're on the main checkout or not in a worktree, there's
-  nothing to finalize — say so and stop.
+## Step 0 — Snapshot pending state
+```sh
+git rev-parse --abbrev-ref HEAD
+git status -sb
+git fetch origin main -q
+git log --oneline HEAD..origin/main     # local commits not yet on main
+```
+`HAD_PENDING` = dirty working tree **OR** local commits not on `main`. Remember it; later steps read it.
 
-## 2. Require a clean tree
-- `git status --porcelain`. If non-empty, STOP: ask the user to commit (or run
-  `/deploy`) first. Do not auto-commit, stash, or discard their work.
+## Step 1 — Confirm we're in a worktree
+```sh
+[ "$(git rev-parse --git-dir)" != "$(git rev-parse --git-common-dir)" ] && echo worktree || echo main
+```
+If this is the main checkout (not a linked worktree), there's nothing to finalize — say so and stop.
 
-## 3. Make sure the branch is on main
-- `git fetch origin main -q`, then `git log --oneline origin/main..HEAD`:
-  - **Empty** → already merged (e.g. `/deploy` pushed `HEAD:main`). Continue.
-  - **Non-empty + fast-forwardable** (`git merge-base HEAD origin/main` == `origin/main`):
-    ask if they want it on `main` now. If yes: `git push origin HEAD:main` (on this repo
-    that also triggers the Pages deploy). If they'd rather not ship, leave it and note so.
-  - **Diverged** (merge-base ≠ origin/main): STOP — a fast-forward isn't possible. Offer
-    a merge or PR; never force-push.
+## Step 2 — Handle pending work
+If `HAD_PENDING` is false (clean tree, everything already on `main`), skip to Step 3.
 
-## 4. Sync the main checkout
-- From `git worktree list`, find the worktree whose branch is `main` (the primary
-  checkout). Bring it current without leaving here:
-  `git -C <main-path> merge --ff-only origin/main`.
-- Skip with a note if it isn't on `main` or can't fast-forward — don't force.
+Otherwise ask with **AskUserQuestion** (header "Pending"):
+- **Ship it (/deploy)** *(recommended when the work is finished)* — invoke the `/deploy` skill; let it run all the way to merge + live. Shipping always goes through `/deploy`'s PR — never push to `main` here.
+- **Stash** — `git stash push -u -m "done: <short context>"` (recover later with `git stash pop`).
+- **Leave it** — keep the branch + worktree + dev server exactly as-is to return to later; skip the teardown (go straight to Step 7, Report).
+- **Discard** — destructive; confirm first, then `git reset --hard && git clean -fd`.
 
-## 5. Stop this worktree's dev server
+Execute the choice and confirm it finished before continuing.
+
+## Step 3 — Confirm the branch landed, decide teardown
+```sh
+git fetch origin main -q
+git log --oneline HEAD..origin/main     # empty ⇒ everything is on main
+```
+- **Not landed** and the user didn't choose "Leave it" → **stop and report.** Don't delete unmerged work; offer to run `/deploy`.
+- **Landed** (or user explicitly OK'd losing it) → continue.
+
+Decide `REMOVE` (read by Step 6):
+- `HAD_PENDING` was false → nothing to come back to; `REMOVE = true` (no prompt).
+- `HAD_PENDING` was true (now resolved) → ask with **AskUserQuestion** (header "Worktree"): **Remove it** (`REMOVE = true`) vs **Keep it** (`REMOVE = false`).
+
+## Step 4 — Sync the primary checkout
+Bring the `main` checkout current without leaving here:
+```sh
+MAIN=$(git worktree list --porcelain | sed -n '1s/^worktree //p')
+git -C "$MAIN" merge --ff-only origin/main 2>&1 || echo "skip: main checkout not fast-forwardable"
+```
+Skip with a note if it isn't on `main` or can't fast-forward — don't force.
+
+## Step 5 — Stop this worktree's dev server
 - This project serves the game per-worktree on its own localhost port (see CLAUDE.md
   "Showing the user something"). Tear it down so the port is freed and the generated
   config is removed: `.claude/serve.sh stop`.
 - Also call the harness **preview_stop** for any preview server you started this session.
 
-## 6. Exit the worktree
-- Call the harness **ExitWorktree** tool with `action: "remove"`. It refuses unless the
-  work is committed + merged; only pass `discard_changes: true` with explicit user
-  confirmation.
-- NOTE: ExitWorktree only manages worktrees created via **EnterWorktree this session**.
-  If this worktree was pre-spawned by the harness / FleetView, ExitWorktree is a no-op —
-  do NOT `git worktree remove` the directory you're standing in. Instead report that the
-  branch is landed and `main` synced, and the user can close/discard the worktree from
-  their worktree UI.
+## Step 6 — Remove the worktree (only if `REMOVE`)
+If `REMOVE` is false (user chose "Keep it"), skip to Step 7.
+1. Prefer the harness: call **ExitWorktree** with `action: "remove"` (add `discard_changes: true` only with explicit confirmation). It refuses unless work is committed + merged.
+2. If ExitWorktree reports **no active worktree session** (this worktree was pre-spawned by the app / FleetView, not created via `EnterWorktree`), do **not** `git worktree remove` the directory you're standing in. Run from the main checkout as the **last** shell action (the current dir vanishes):
+   ```sh
+   MAIN=$(git worktree list --porcelain | sed -n '1s/^worktree //p')
+   CUR=$(git rev-parse --show-toplevel); BR=$(git rev-parse --abbrev-ref HEAD)
+   git -C "$MAIN" worktree remove --force "$CUR"
+   git -C "$MAIN" branch -D "$BR"
+   ```
+   …or tell the user to close it from their worktree UI.
 
-## 7. Report
-- The branch + sha that landed on `main`, whether the main checkout synced, the dev
-  server was stopped, and the worktree's final state (removed, or left for the user to close).
+## Step 7 — Report
+The branch + sha that landed on `main`, whether the main checkout synced, that the dev
+server was stopped, and the worktree's final state (removed / kept / left for the user to close).
 
 ## Notes
 - Project-local skill (lives beside `/deploy`). Copy to `~/.claude/skills/done/` to make
-  it global across all worktree projects.
+  it global across worktree projects.
