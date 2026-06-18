@@ -9,6 +9,34 @@
   #hud{left:14px;top:12px}
   #hud b{color:#c27d8b}
   #hint{right:14px;top:12px;color:#7a756c;font-size:12px;background:rgba(255,255,255,.6)}
+  #bMenu{position:fixed;right:14px;top:44px;font-size:16px;padding:4px 11px;line-height:1.2;z-index:21}
+  /* pause menu */
+  #menu{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;
+    background:rgba(70,64,52,.28);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
+  #menu.on{display:flex}
+  #menuPanel{background:rgba(255,253,248,.97);border:1px solid #d6c9b2;border-radius:18px;
+    padding:20px 22px 18px;width:300px;max-width:calc(100vw - 36px);color:#5a564e;
+    box-shadow:0 12px 36px rgba(90,80,60,.26)}
+  #menuTitle{font-weight:700;color:#c27d8b;font-size:18px;letter-spacing:.5px;text-align:center;margin-bottom:16px}
+  #menu .row{display:flex;align-items:center;gap:11px;margin:10px 0;font-size:14px}
+  #menu .row>span:first-child{width:52px;color:#7a756c}
+  #volVal{width:38px;text-align:right;color:#b76b7d;font-variant-numeric:tabular-nums}
+  #menu input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:6px;border-radius:4px;
+    background:#ece2d0;outline:none;cursor:pointer}
+  #menu input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;
+    background:#e6b9c6;border:2px solid #fffdf8;box-shadow:0 1px 4px rgba(90,80,60,.3);cursor:pointer}
+  #menu input[type=range]::-moz-range-thumb{width:18px;height:18px;border:2px solid #fffdf8;border-radius:50%;
+    background:#e6b9c6;box-shadow:0 1px 4px rgba(90,80,60,.3);cursor:pointer}
+  .mrow{display:flex;justify-content:space-between;align-items:center;width:100%;box-sizing:border-box;
+    margin:8px 0 2px;padding:9px 13px;border:1px solid #e0d4bf;border-radius:11px;
+    background:rgba(255,255,255,.6);color:#6a655c;font:inherit;font-size:14px;cursor:pointer}
+  .mrow #muteState{font-weight:700;color:#7aa37e}
+  .mrow.off{opacity:.75}
+  .mrow.off #muteState{color:#c08a8a}
+  .menuHint{margin:14px 2px 4px;font-size:11.5px;color:#8a8579;text-align:center;line-height:1.6}
+  .menuBtns{display:flex;gap:10px;margin-top:14px}
+  .menuBtns .btn{flex:1;padding:11px 0;font-size:14px}
+  .menuBtns .primary{background:#f6e7ea;border-color:#e6b9c6;color:#b76b7d;font-weight:600}
   #win{left:50%;top:24%;transform:translateX(-50%);opacity:0;transition:opacity .4s;
     border-color:#e6c3cf;color:#c27d8b;font-size:18px;font-weight:600}
   #dpad{position:fixed;left:18px;bottom:18px;display:grid;gap:6px;
@@ -111,7 +139,8 @@
 </div>
 <canvas id="c"></canvas>
 <div class="panel" id="hud">flowers <b id="score">0</b> / <span id="total">6</span></div>
-<div class="panel" id="hint">arrows / WASD move · space hop · J joy · E talk</div>
+<div class="panel" id="hint">arrows / WASD move · space hop · J joy · E talk · Esc menu</div>
+<button class="btn" id="bMenu" aria-label="menu" title="menu (Esc)">☰</button>
 <div class="panel" id="win">all flowers! ✿</div>
 <div id="dpad">
   <button class="btn" id="bU" aria-label="up">▲</button>
@@ -143,11 +172,24 @@
     <div id="buildTag"></div>
   </div>
 </div>
+<div id="menu">
+  <div id="menuPanel">
+    <div id="menuTitle">paused</div>
+    <div class="row"><span>volume</span><input type="range" id="vol" min="0" max="100" value="70"><span id="volVal">70%</span></div>
+    <button class="mrow" id="muteRow"><span>sound</span><span id="muteState">on</span></button>
+    <div class="menuHint">arrows / WASD move · space hop · J joy<br>E talk · Esc menu · M mute</div>
+    <div class="menuBtns">
+      <button class="btn" id="restartBtn">restart ✿</button>
+      <button class="btn primary" id="resumeBtn">resume</button>
+    </div>
+  </div>
+</div>
 <script type="module">
 import * as THREE from 'three';
 import { WORLD, initState, step, setBounds } from './js/sim.js';
 import { Dialogue } from './js/dialogue.js';
 import * as Save from './js/save.js';
+import { Sound } from './js/audio.js';
 
 const canvas=document.getElementById('c');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
@@ -257,6 +299,11 @@ async function build(){
   }
   Dialogue.init();
   Dialogue.onEnd=()=>{ talkCooldown=0.3; };
+  Dialogue.onLine=(speaker)=>Sound.newLine();
+  Dialogue.onReveal=(ch,speaker)=>Sound.blip(ch,speaker);
+  Dialogue.onChoiceOpen=()=>Sound.sfx('move');
+  Dialogue.onChoiceMove=()=>Sound.sfx('move');
+  Dialogue.onChoicePick=()=>Sound.sfx('select');
 
   // shadow + shen + sparkles + burst
   shadow=new THREE.Mesh(new THREE.PlaneGeometry(SHEN_W*1.5,SHEN_W*1.5),
@@ -289,7 +336,7 @@ const SP_OFF=[[-.55,1.9],[.6,2.2],[-.35,2.6],[.45,1.6],[.15,2.4]];
 function draw(dt){
   if(!mesh){renderer.render(scene,cam);return;}
   if(talkCooldown>0)talkCooldown-=dt;
-  Dialogue.tick(dt);
+  if(playing)Dialogue.tick(dt);
   const q=pose(S);
   if(!Dinit){D.yW=q.yW;D.sx=q.sx;D.sy=q.sy;D.rot=q.rot;Dinit=true;}
   D.yW =damp(D.yW, q.yW, 0.035,dt);   // height: snappy so jumps stay responsive
@@ -344,11 +391,28 @@ function draw(dt){
   renderer.render(scene,cam);
 }
 
+// ---------- audio: map sim-state transitions to one-shot SFX ----------
+const aprev={onGround:true,mode:'idle',walkSeg:0};
+function audioStep(s){
+  if(s.event==='win')Sound.sfx('win');
+  else if(s.event==='collect'||s.justGot>=0)Sound.sfx('collect');
+  if(aprev.onGround&&!s.onGround)Sound.sfx('hop');           // jump launch
+  if(!aprev.onGround&&s.onGround)Sound.sfx('land');          // touchdown
+  if(s.mode==='joy'&&aprev.mode!=='joy'&&s.justGot<0)Sound.sfx('joy'); // joy (not via pickup)
+  const seg=Math.floor(s.walkPhase/Math.PI);                 // walk contact = each half-cycle
+  if(s.mode==='walk'&&seg!==aprev.walkSeg)Sound.sfx('step');
+  aprev.onGround=s.onGround; aprev.mode=s.mode; aprev.walkSeg=seg;
+}
+
 // ---------- input (human + AI share one path) ----------
 const held={up:false,down:false,left:false,right:false}; let edgeJump=false,edgeJoy=false,edgeTalk=false;
 let aiMove=null, aiTarget=null, aiJump=false, aiJoy=false;
 addEventListener('keydown',e=>{const k=e.key.toLowerCase();
   if(!started)return;                        // title screen owns input until play begins
+  Sound.resume();                            // browsers gate audio behind a gesture
+  if(k==='escape'&&!e.repeat){e.preventDefault();toggleMenu();return;}
+  if(k==='m'&&!e.repeat){Sound.toggle();syncMenu();return;}
+  if(menuOpen())return;                      // paused menu eats other keys
   if(Dialogue.active){                       // dialogue captures all input
     if(k==='arrowup'||k==='w')Dialogue.move(-1);
     else if(k==='arrowdown'||k==='s')Dialogue.move(1);
@@ -365,6 +429,29 @@ addEventListener('keydown',e=>{const k=e.key.toLowerCase();
 addEventListener('keyup',e=>{const k=e.key.toLowerCase();
   if(k==='arrowup'||k==='w')held.up=false; else if(k==='arrowdown'||k==='s')held.down=false;
   else if(k==='arrowleft'||k==='a')held.left=false; else if(k==='arrowright'||k==='d')held.right=false;});
+// resume audio on the first touch/click too (mobile has no keydown)
+addEventListener('pointerdown',()=>Sound.resume(),{passive:true});
+
+// ---------- pause menu (volume slider + mute + controls) ----------
+const menu=document.getElementById('menu'), vol=document.getElementById('vol'), muteRow=document.getElementById('muteRow');
+const menuOpen=()=>menu.classList.contains('on');
+function paintVol(){const v=+vol.value; vol.style.background=`linear-gradient(90deg,#e6b9c6 ${v}%,#ece2d0 ${v}%)`;}
+function syncMenu(){const v=Math.round(Sound.volume*100);
+  vol.value=v; document.getElementById('volVal').textContent=v+'%'; paintVol();
+  document.getElementById('muteState').textContent=Sound.muted?'off':'on';
+  muteRow.classList.toggle('off',Sound.muted);}
+function openMenu(){Sound.resume(); playing=false; held.up=held.down=held.left=held.right=false;
+  menu.classList.add('on'); syncMenu();}
+function closeMenu(){menu.classList.remove('on'); edgeJump=edgeJoy=edgeTalk=false; last=null; playing=true;}
+function toggleMenu(){Sound.resume(); menuOpen()?closeMenu():openMenu();}
+vol.addEventListener('input',()=>{Sound.resume();Sound.setVolume(+vol.value/100);syncMenu();});
+vol.addEventListener('change',()=>Sound.sfx('select'));  // preview the level on release
+muteRow.addEventListener('click',e=>{e.preventDefault();Sound.resume();Sound.toggle();syncMenu();});
+document.getElementById('resumeBtn').addEventListener('click',e=>{e.preventDefault();closeMenu();});
+document.getElementById('restartBtn').addEventListener('click',e=>{e.preventDefault();Save.wipe();S=initState(world.collectibles);persist();Sound.sfx('move');closeMenu();});
+document.getElementById('bMenu').addEventListener('click',e=>{e.preventDefault();toggleMenu();});
+menu.addEventListener('pointerdown',e=>{if(e.target===menu)closeMenu();}); // backdrop closes
+syncMenu();
 function holdBtn(id,set){const b=document.getElementById(id);
   b.addEventListener('pointerdown',e=>{e.preventDefault();set(true);});
   ['pointerup','pointerleave','pointercancel'].forEach(ev=>b.addEventListener(ev,()=>set(false)));}
@@ -393,8 +480,8 @@ function resolveInput(){
 const FIXED=1/60; let playing=true,timer=null,last=null,acc=0;
 function frame(){const now=performance.now();if(last===null)last=now;
   let e=(now-last)/1000;last=now; if(e>0.5)e=0.5;
-  if(started&&edgeTalk){edgeTalk=false; if(!Dialogue.active&&nearNpc){nearNpc.greet=0.5; Dialogue.start(nearNpc.data);}}
-  if(playing){acc+=e;let n=0;while(acc>=FIXED&&n<40){S=step(S,resolveInput(),FIXED);acc-=FIXED;n++;}}
+  if(started&&edgeTalk){edgeTalk=false; if(playing&&!Dialogue.active&&nearNpc){nearNpc.greet=0.5; Sound.sfx('talk'); Dialogue.start(nearNpc.data);}}
+  if(playing){acc+=e;let n=0;while(acc>=FIXED&&n<40){S=step(S,resolveInput(),FIXED);audioStep(S);acc-=FIXED;n++;}}
   draw(e);}
 function startAuto(){if(!timer){last=null;acc=0;timer=setInterval(frame,16);}}
 window.__stopAuto=()=>{if(timer){clearInterval(timer);timer=null;}};
@@ -426,6 +513,7 @@ function onNew(){
   beginGame(true);
 }
 function beginGame(fresh){
+  Sound.resume();                           // first gesture — unlock audio
   if(fresh){Save.wipe(); S=initState(world.collectibles);}
   started=true; titleEl.classList.add('off');
   persist();                                // stamp a save the moment play begins
@@ -467,7 +555,13 @@ window.game={
   save:()=>{persist();return 'saved';},
   wipe:()=>{Save.wipe();return 'wiped';},
   saveData:()=>Save.load(world),
+  // audio debug surface
+  audio:()=>({ready:Sound.ready,muted:Sound.muted}),
+  sfx:(n)=>{Sound.resume();return Sound.sfx(n)||('sfx '+n);},
+  say:(t='Hello there, friend!',who='Chrees')=>{Sound.resume();Sound.newLine();
+    [...String(t)].forEach((c,i)=>setTimeout(()=>Sound.blip(c,who),i*60));return 'say';},
 };
+window.audio=Sound;
 build().catch(e=>{window.__err=String(e&&e.stack||e);console.error(e);
   const ld=document.getElementById('loader'); if(ld){ld.classList.add('err');
     const t=document.getElementById('loadText'); if(t)t.textContent='couldn’t load ✗';}});
