@@ -101,7 +101,9 @@ keep running on whichever image is shown; the swap is just the picture.
 5. In `world.json` give the NPC `poses:{name:"out/<name>-<pose>-paper.png", …}` + a
    `rep:{seq:[…], beat:<sec>, sfxOn:<poseName>}` loop. The renderer (`game.html`) preloads
    the textures and hard-swaps `mesh.material.map` on the beat. Sound it — every
-   interaction makes a sound; the curl's is the `lift` SFX in `audio.js`.
+   interaction makes a sound; the curl's is the `lift` SFX in `audio.js`, played at
+   **proximity volume** (`proxGain` in `game.html`) so it's only audible when the player
+   is near, never across the whole map.
 
 ## Showing the user
 

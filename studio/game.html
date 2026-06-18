@@ -276,6 +276,12 @@ const cam=new THREE.PerspectiveCamera(40,1,0.1,300);
 const SHEN_H=1.9, SHEN_W=SHEN_H*0.4634, GROUND_EPS=0.02;
 const WALK_HOP=0.24, JOY_H=1.5, FH=0.95, PLAYER_R=0.42;
 const TALK_R=2.4; const _tv=new THREE.Vector3();
+// Positional NPC/world sound: full volume within HEAR_NEAR, silent past HEAR_FAR
+// (squared rolloff). Ambient animation loops (e.g. Chrees' reps) are only audible
+// when the player is near — never across the whole map. (S is assigned in build().)
+const HEAR_NEAR=2.5, HEAR_FAR=9;
+const proxGain=(x,z)=>{ const t=(HEAR_FAR-Math.hypot(x-S.x,z-S.z))/(HEAR_FAR-HEAR_NEAR);
+  return t<=0?0:t>=1?1:t*t; };
 
 const loader=new THREE.TextureLoader();
 const tx=u=>new Promise(res=>loader.load(u,t=>{t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;
@@ -628,7 +634,7 @@ function draw(dt){
       if(o.repT>=o.rep.beat){ o.repT=0; o.repIdx=(o.repIdx+1)%o.rep.seq.length;
         const nm=o.rep.seq[o.repIdx], tex=o.poses[nm];
         if(tex){ o.mesh.material.map=tex; o.mesh.material.needsUpdate=true; }
-        if(o.rep.sfxOn===nm) Sound.sfx('lift'); } }
+        if(o.rep.sfxOn===nm){ const pg=proxGain(o.data.x,o.data.z); if(pg>0) Sound.sfx('lift',pg); } } }
     let sy=1+0.02*Math.sin(t*2.0), yW=0;
     if(o.greet>0){o.greet=Math.max(0,o.greet-dt);const p=1-o.greet/0.5;
       yW=Math.sin(p*Math.PI)*0.5; sy=1+0.06*Math.sin(p*Math.PI);}

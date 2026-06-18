@@ -68,6 +68,11 @@ OGG (`out/music/calm.ogg`), because real-time music synthesis isn't practical. I
   2. **Discrete UI/events** (menus, buttons, dialogue, transitions) → call `Sound.sfx('name')`
      right at the event site, or wire a `Dialogue.on*` hook (`onReveal`, `onChoiceOpen/Move/Pick`,
      `onLine`, `onEnd`) in `game.html`.
+- **Positional NPC/world sounds attenuate by distance** — a sound tied to a spot in the world
+  (an NPC's animation loop, an ambient prop) plays through a distance gain so it's full volume
+  only when the player is near and silent far away — never audible across the whole map. Pass the
+  multiplier to `Sound.sfx(name, mul)`; `proxGain(x,z)` in `game.html` is the rolloff (full within
+  ~2.5u, silent past ~9u, and it skips the call entirely past the edge). Chrees' rep `lift` uses it.
 - **Dialogue voice:** the Charlie-Brown muted-brass "wah" is `Sound.blip(ch, speaker)`, one per
   revealed glyph (fired from `Dialogue.onReveal`). A new speaker gets its timbre in `VOICES`.
 - **Gesture gate:** browsers block audio until a user gesture — `Sound.resume()` is already
