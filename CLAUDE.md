@@ -42,10 +42,14 @@ is a bug, not a "later." Stay on-aesthetic: soft, warm, calm pastel — never ha
 master chain caps level, but still pick gentle params). Like the art, personality lives in
 motion + sound, not in louder.
 
-**The system:** all audio is **procedural Web Audio**, synthesized at play time in
-`studio/js/audio.js` — **no audio asset files** (same ethos as the art: programmatic, no
-hand-authoring). The module exports `Sound`; it's already wired into `game.html`, so new
-sounds plug into existing seams rather than new plumbing.
+**The system:** all **SFX + the dialogue voice** are **procedural Web Audio**, synthesized at
+play time in `studio/js/audio.js` — **no asset files for those** (same ethos as the art:
+programmatic, no hand-authoring). The module exports `Sound`; it's already wired into
+`game.html`, so new sounds plug into existing seams rather than new plumbing. The one
+**exception is background music** — a single seamless ~26s loop **generated programmatically
+with MusicGen** (`gen_music.py` + `make_loop.py`, NOT hand-authored) and committed as one small
+OGG (`out/music/calm.ogg`), because real-time music synthesis isn't practical. It plays through a
+**music sub-bus** under the master, so the volume slider + mute already scale it.
 
 - **Add a new SFX:** write a tiny synth fn in the `SFX` map in `audio.js` (use the `note()`
   and `noise()` helpers; set its level in `CFG.sfx`), then trigger it with `Sound.sfx('name')`.
@@ -61,8 +65,27 @@ sounds plug into existing seams rather than new plumbing.
   revealed glyph (fired from `Dialogue.onReveal`). A new speaker gets its timbre in `VOICES`.
 - **Gesture gate:** browsers block audio until a user gesture — `Sound.resume()` is already
   wired to the title **Start** / first key / first tap, so new triggers don't handle it.
-- **Volume + mute are automatic** (master bus + pause-menu slider, persisted to `shen.vol` /
-  `shen.muted`). Never gate or scale a sound yourself — just call `Sound.sfx` / `Sound.blip`.
+- **Background music:** `Sound.startMusic('out/music/calm.ogg')` (called from `beginGame()`,
+  after the gesture) fetches+decodes once and loops a single `AudioBufferSourceNode` (gapless —
+  NOT an `<audio>` element) through the music sub-bus. `Sound.stopMusic()` /
+  `Sound.setMusicVolume(0..1)` (0 = off) / `Sound.toggleMusic()`; the **music** pause-menu slider
+  drives it, persisted to `shen.musicvol` (own key — NOT in the save blob). Decode failure degrades
+  to "no music", never a crash.
+- **⚠️ Background music MUST loop seamlessly — every time, no exceptions.** A loop with an audible
+  seam/click/gap is a bug, not "good enough." MusicGen (and most generators) do NOT loop natively,
+  so you always run the loop step: render a little long (~30s), then `make_loop.py` does an
+  **equal-power crossfade of the tail back over the head** so the wrap lands on two
+  originally-consecutive samples (no click) with a continuous envelope (no level jump). NEVER commit
+  a raw generated clip as the loop. **VERIFY the seam** before shipping (don't trust your ear over a
+  background tab): decode the OGG in an `OfflineAudioContext` and check the wrap discontinuity
+  `|x[0]-x[N-1]|` sits within the clip's own adjacent-sample-delta distribution (well under its max)
+  — that's a numeric proof the loop is gapless. To make a NEW loop, follow the `gen_music.py` →
+  `make_loop.py` flow in `requirements-music.txt`.
+- **Three independent levels, all automatic** — **master** "volume" + mute (`shen.vol`/`shen.muted`,
+  scales everything), **effects** (`shen.sfxvol`, the SFX+voice sub-bus), **music** (`shen.musicvol`,
+  the music sub-bus). Each has its own pause-menu slider. Never gate or scale a sound yourself —
+  SFX/`blip` route through the effects sub-bus and music through the music sub-bus, both under the
+  master, so just call `Sound.sfx` / `Sound.blip` / `Sound.startMusic` and the sliders cover it.
 - **Verify in preview** (don't assume): spy on `Sound.sfx` / `Sound.blip`, drive the interaction,
   assert the event fired the sound, console clean. (Exactly how the audio work verified
   step/collect/blip — wrap the fn, push calls to a log, read it back.)
@@ -188,8 +211,19 @@ always `git fetch origin main` and check for peers before acting.
   (`Sound.blip`, per-speaker `VOICES`). **Pause menu** (Esc / ☰) with a master volume slider +
   mute, persisted (`shen.vol` / `shen.muted`); audio unlocks on first gesture. See the
   **Sound** section above for the "every interaction makes a sound" rule + how to add one.
+- DONE: **Background music** (`studio/out/music/calm.ogg`) — one seamless ~26s ambient loop,
+  generated programmatically with **MusicGen-medium** (`gen_music.py` → 30s clips, `make_loop.py`
+  → equal-power crossfade loop + `oggenc`; env in `requirements-music.txt`. Generated on **CPU** —
+  PyTorch MPS crashed mid-generate on this M4 Pro). Plays through a **music sub-bus** in `audio.js`
+  (`Sound.startMusic`/`stopMusic`/`setMusicVolume`), a gapless looping `AudioBufferSourceNode`
+  started from `beginGame()` after the gesture. Decode failure degrades to "no music", never a crash.
+- DONE: **Independent volume mix** — `audio.js` now has **two sub-buses under the master**: SFX +
+  dialogue-voice route through `sfxGain`, music through `musicGain`. **Three pause-menu sliders** —
+  master **volume** (`shen.vol`/`shen.muted`), **effects** (`shen.sfxvol`), **music**
+  (`shen.musicvol`, 0 = off) — each its own key, none in the save blob. `Sound.setSfxVolume` /
+  `setMusicVolume` / `setVolume`; defaults reproduce the old single-volume behaviour exactly.
 - NEXT (ideas): more NPCs/quests; conversation state (remember choices) — persist into the
   reserved `npcs:{}` slot already in the save blob; more zones/goals;
-  background music (local MusicGen loops — SFX already done); idle polish. NOTE: photos in the macOS **Photos library** are unreadable from bash
+  per-mood music loops (6 palettes in `specs/all.json`); idle polish. NOTE: photos in the macOS **Photos library** are unreadable from bash
   (TCC blocks `cp`/`sips`/`qlmanage` on `~/Pictures/Photos Library.photoslibrary/originals/…`)
   — have the user drag the image into chat or export it to `studio/refs/` to use as a gen ref.

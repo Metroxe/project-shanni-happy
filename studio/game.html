@@ -176,6 +176,8 @@
   <div id="menuPanel">
     <div id="menuTitle">paused</div>
     <div class="row"><span>volume</span><input type="range" id="vol" min="0" max="100" value="70"><span id="volVal">70%</span></div>
+    <div class="row"><span>effects</span><input type="range" id="sfxvol" min="0" max="100" value="100"><span id="sfxVal">100%</span></div>
+    <div class="row"><span>music</span><input type="range" id="musicvol" min="0" max="100" value="42"><span id="musicVal">42%</span></div>
     <button class="mrow" id="muteRow"><span>sound</span><span id="muteState">on</span></button>
     <div class="menuHint">arrows / WASD move · space hop · J joy<br>E talk · Esc menu · M mute</div>
     <div class="menuBtns">
@@ -433,11 +435,17 @@ addEventListener('keyup',e=>{const k=e.key.toLowerCase();
 addEventListener('pointerdown',()=>Sound.resume(),{passive:true});
 
 // ---------- pause menu (volume slider + mute + controls) ----------
-const menu=document.getElementById('menu'), vol=document.getElementById('vol'), muteRow=document.getElementById('muteRow');
+const menu=document.getElementById('menu'), vol=document.getElementById('vol'),
+  sfxvol=document.getElementById('sfxvol'), musicvol=document.getElementById('musicvol'),
+  muteRow=document.getElementById('muteRow');
 const menuOpen=()=>menu.classList.contains('on');
-function paintVol(){const v=+vol.value; vol.style.background=`linear-gradient(90deg,#e6b9c6 ${v}%,#ece2d0 ${v}%)`;}
-function syncMenu(){const v=Math.round(Sound.volume*100);
-  vol.value=v; document.getElementById('volVal').textContent=v+'%'; paintVol();
+function paintSlider(el){const v=+el.value; el.style.background=`linear-gradient(90deg,#e6b9c6 ${v}%,#ece2d0 ${v}%)`;}
+function setSlider(el,valId,frac){const v=Math.round(frac*100);
+  el.value=v; document.getElementById(valId).textContent=v+'%'; paintSlider(el);}
+function syncMenu(){
+  setSlider(vol,'volVal',Sound.volume);
+  setSlider(sfxvol,'sfxVal',Sound.sfxVolume);
+  setSlider(musicvol,'musicVal',Sound.musicVolume);
   document.getElementById('muteState').textContent=Sound.muted?'off':'on';
   muteRow.classList.toggle('off',Sound.muted);}
 function openMenu(){Sound.resume(); playing=false; held.up=held.down=held.left=held.right=false;
@@ -445,7 +453,10 @@ function openMenu(){Sound.resume(); playing=false; held.up=held.down=held.left=h
 function closeMenu(){menu.classList.remove('on'); edgeJump=edgeJoy=edgeTalk=false; last=null; playing=true;}
 function toggleMenu(){Sound.resume(); menuOpen()?closeMenu():openMenu();}
 vol.addEventListener('input',()=>{Sound.resume();Sound.setVolume(+vol.value/100);syncMenu();});
-vol.addEventListener('change',()=>Sound.sfx('select'));  // preview the level on release
+vol.addEventListener('change',()=>Sound.sfx('select'));      // preview overall level on release
+sfxvol.addEventListener('input',()=>{Sound.resume();Sound.setSfxVolume(+sfxvol.value/100);syncMenu();});
+sfxvol.addEventListener('change',()=>Sound.sfx('select'));   // preview the SFX level on release
+musicvol.addEventListener('input',()=>{Sound.resume();Sound.setMusicVolume(+musicvol.value/100);syncMenu();});
 muteRow.addEventListener('click',e=>{e.preventDefault();Sound.resume();Sound.toggle();syncMenu();});
 document.getElementById('resumeBtn').addEventListener('click',e=>{e.preventDefault();closeMenu();});
 document.getElementById('restartBtn').addEventListener('click',e=>{e.preventDefault();Save.wipe();S=initState(world.collectibles);persist();Sound.sfx('move');closeMenu();});
@@ -514,6 +525,7 @@ function onNew(){
 }
 function beginGame(fresh){
   Sound.resume();                           // first gesture — unlock audio
+  Sound.startMusic('out/music/calm.ogg');   // looping ambient (gated by shen.music)
   if(fresh){Save.wipe(); S=initState(world.collectibles);}
   started=true; titleEl.classList.add('off');
   persist();                                // stamp a save the moment play begins
@@ -556,8 +568,11 @@ window.game={
   wipe:()=>{Save.wipe();return 'wiped';},
   saveData:()=>Save.load(world),
   // audio debug surface
-  audio:()=>({ready:Sound.ready,muted:Sound.muted}),
+  audio:()=>({ready:Sound.ready,muted:Sound.muted,volume:Sound.volume,effects:Sound.sfxVolume,
+    music:Sound.musicVolume,musicOn:Sound.musicOn,musicPlaying:Sound.musicPlaying}),
   sfx:(n)=>{Sound.resume();return Sound.sfx(n)||('sfx '+n);},
+  effects:(v)=>{Sound.resume();return Sound.setSfxVolume(+v);},
+  music:(v)=>{Sound.resume();return v===undefined?Sound.toggleMusic():Sound.setMusicVolume(+v);},
   say:(t='Hello there, friend!',who='Chrees')=>{Sound.resume();Sound.newLine();
     [...String(t)].forEach((c,i)=>setTimeout(()=>Sound.blip(c,who),i*60));return 'say';},
 };

@@ -1,0 +1,3 @@
+# raw generated audio (intermediate; only the final *.ogg loops are committed)
+raw/
+*.wav

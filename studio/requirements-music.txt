@@ -1,0 +1,18 @@
+# Background-music generation env (heavy; kept SEPARATE from requirements.txt).
+# MusicGen-medium via HuggingFace transformers (same weights as Meta audiocraft,
+# but installs cleanly on Apple-Silicon MPS without xformers/pinned-torch pain).
+#
+#   uv venv --python 3.12 studio/.venv-music
+#   uv pip install --python studio/.venv-music/bin/python -r studio/requirements-music.txt
+#   studio/.venv-music/bin/python studio/gen_music.py --seeds 0,1,2
+#   studio/.venv-music/bin/python studio/make_loop.py --analyze out/music/raw/*.wav
+#   studio/.venv-music/bin/python studio/make_loop.py out/music/raw/calm-s<best>.wav --out out/music/calm.ogg
+#
+# Encoding the .ogg needs `oggenc` (brew install vorbis-tools) — this Homebrew
+# ffmpeg ships without libvorbis. Tested on M4 Pro: torch 2.12, transformers 5.12.
+torch
+torchaudio
+transformers
+scipy
+soundfile
+numpy
