@@ -9,11 +9,18 @@ Flat, minimal, **clean** Paper-Mario papercraft. NOT realistic, NOT anime, NOT n
 (noir was tried and dropped). "High fidelity" to this user = clean execution: no
 clutter, no clashing colours, no stray lines/artifacts, calm negative space.
 
-- One static graphic per NPC (chibi, generated in Gemini). The texture NEVER changes.
-- ALL animation = the paper cutout physically moving: hop-walk (squash on contact,
+- One base graphic per NPC (chibi, generated in Gemini), static by default. A *few*
+  characters add a SMALL set (1–3) of alternate **pose images** for the rare moment the
+  drawing itself must change (e.g. Chrees curling a dumbbell). These **hard-swap** —
+  instant, no tween, Paper-Mario style. Every pose image of a character shares ONE
+  canvas + foot baseline + body scale (registered by `studio/register_poses.py`,
+  vision-checked by `studio/qa_vision.py`) so the swap can't resize or unground them.
+  Most characters still have exactly one image. See the `papercraft-asset` skill §4.
+- ALL motion = the paper cutout physically moving: hop-walk (squash on contact,
   stretch in air, slight lean), jump-for-joy (crouch → launch → airborne apex with
   tilt-wiggle + pastel sparkles → fall → big squash → rebound), contact shadow that
-  shrinks/fades with height. Personality is in the motion, not the texture.
+  shrinks/fades with height. Personality is in the motion (and, sparingly, a pose
+  swap) — **never a tween between two drawings.**
 - Character **Shen** = `studio/refs/shen-chibi-4.png` (pink bucket hat, round glasses,
   dark braids, dusty-rose jacket over gray tee, cream floral skirt).
 - Environments use the same flat pastel paper set (flat bands, soft rounded hills,

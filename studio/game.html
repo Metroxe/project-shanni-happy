@@ -514,9 +514,17 @@ async function build(){
     m.userData={x:c.x,z:c.z,hh:h/2,kind:c.kind||'flower'}; scene.add(m); flowers.push(m); billboards.push(m);});
   document.getElementById('total').textContent=world.collectibles.filter(c=>(c.kind||'flower')!=='hamster').length;
 
-  // NPCs (talk targets) — billboard + grounded group + contact shadow
+  // NPCs (talk targets) — billboard + grounded group + contact shadow.
+  // An NPC may carry a `poses` map {name:texUrl} + a `rep` loop {seq,beat,sfxOn}
+  // for Paper-Mario-style HARD image swaps (no tween): the breathing/greet motion
+  // below is unchanged; only the drawn pose flips. All pose images share one
+  // canvas + foot baseline + body scale (registered by register_poses.py), so the
+  // swap can't resize or unground the character — width is derived once and holds.
   for(const nd of (world.npcs||[])){
-    const ntex=await tx(nd.tex);
+    const poses={}; let defTex=null;
+    if(nd.poses){ for(const[k,u] of Object.entries(nd.poses)) poses[k]=await tx(u);
+      defTex=poses[(nd.rep&&nd.rep.seq&&nd.rep.seq[0])||Object.keys(poses)[0]]; }
+    const ntex=defTex||await tx(nd.tex);
     const nw=nd.h*(ntex.image.width/ntex.image.height);
     const ny=groundHeight(nd.x,nd.z);
     const g=new THREE.Group(); g.position.set(nd.x,ny,nd.z);
@@ -524,7 +532,8 @@ async function build(){
     const sh=new THREE.Mesh(new THREE.PlaneGeometry(nw*1.4,nw*1.4),
       new THREE.MeshBasicMaterial({map:shadowTex,transparent:true,depthWrite:false}));
     sh.rotation.x=-Math.PI/2; sh.position.set(nd.x,ny+GROUND_EPS,nd.z); sh.renderOrder=1; scene.add(sh);
-    npcs.push({data:nd,group:g,mesh:m,h:nd.h,ny,phase:Math.random()*6.28,greet:0});
+    npcs.push({data:nd,group:g,mesh:m,h:nd.h,ny,phase:Math.random()*6.28,greet:0,
+      poses,rep:nd.rep||null,repIdx:0,repT:0});
   }
   Dialogue.init();
   Dialogue.onEnd=()=>{ talkCooldown=0.3; };
@@ -613,6 +622,13 @@ function draw(dt){
   // NPCs: gentle paper breathing + greet hop
   npcs.forEach(o=>{
     const t=S.animClock+o.phase;
+    // discrete pose swap (Paper-Mario style: a hard image flip, no tween). The
+    // breathing/greet transforms below keep running on whichever image is shown.
+    if(o.rep&&o.rep.seq&&o.rep.seq.length>1){ o.repT+=dt;
+      if(o.repT>=o.rep.beat){ o.repT=0; o.repIdx=(o.repIdx+1)%o.rep.seq.length;
+        const nm=o.rep.seq[o.repIdx], tex=o.poses[nm];
+        if(tex){ o.mesh.material.map=tex; o.mesh.material.needsUpdate=true; }
+        if(o.rep.sfxOn===nm) Sound.sfx('lift'); } }
     let sy=1+0.02*Math.sin(t*2.0), yW=0;
     if(o.greet>0){o.greet=Math.max(0,o.greet-dt);const p=1-o.greet/0.5;
       yW=Math.sin(p*Math.PI)*0.5; sy=1+0.06*Math.sin(p*Math.PI);}
