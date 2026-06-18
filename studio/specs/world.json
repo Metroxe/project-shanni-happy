@@ -76,7 +76,9 @@
   "npcs": [
     {
       "name": "Chrees",
-      "tex": "out/chrees-paper.png",
+      "tex": "out/chrees-down-paper.png",
+      "poses": { "down": "out/chrees-down-paper.png", "curl": "out/chrees-curl-paper.png" },
+      "rep": { "seq": ["down", "curl"], "beat": 0.72, "sfxOn": "curl" },
       "x": -12, "z": -29, "h": 2.4,
       "dialogue": {
         "start": "g1",
