@@ -1,0 +1,156 @@
+<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  html,body{margin:0;height:100%;background:#e9f1ea;overflow:hidden;
+    font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#5a564e}
+  #c{display:block;position:fixed;inset:0;width:100vw;height:100vh}
+  .lab{position:fixed;left:0;right:0;text-align:center;font-size:15px;
+    letter-spacing:.02em;pointer-events:none}
+  #labA{top:9%}#labA b{color:#7aa37f}
+  #labB{top:53%}#labB b{color:#c27d8b}
+  .lab small{display:block;font-size:12px;color:#8a857c;margin-top:2px}
+  #cap{position:fixed;left:0;right:0;bottom:10px;text-align:center;
+    font-size:12px;color:#8a857c}
+</style>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}</script>
+</head><body>
+<canvas id="c"></canvas>
+<div class="lab" id="labA"><b>1 · Procedural low-poly paper</b><small>coded primitives + matte paper material + soft light</small></div>
+<div class="lab" id="labB"><b>2 · Crossed-billboard standees</b><small>your existing PNG sprites, crossed at 90° for volume</small></div>
+<div id="cap">turntable — same tree / house / rock, both ways · use __render(deg) to freeze an angle</div>
+<script type="module">
+import * as THREE from 'three';
+
+const canvas=document.getElementById('c');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true,preserveDrawingBuffer:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color('#e9f1ea');
+
+// orthographic = flat papercraft, no perspective warp (locked art direction)
+// NB: innerWidth/innerHeight read 0 in the headless preview tab, so we render at a
+// FIXED resolution and derive the frustum from that (same trick as env-live.html).
+const RW=1440, RH=810, HALFW=8.6;    // fixed buffer + world half-width to fit the row
+const cam=new THREE.OrthographicCamera(-HALFW,HALFW,HALFW*RH/RW,-HALFW*RH/RW,0.1,100);
+cam.position.set(7.2,8.4,12); cam.lookAt(0,0.9,0);
+
+// soft paper lighting (r160 non-legacy lights need higher intensities)
+scene.add(new THREE.HemisphereLight(0xffffff,0xdfe7d6,2.3));
+const sun=new THREE.DirectionalLight(0xfff6ea,2.1);
+sun.position.set(6,11,7); sun.castShadow=true;
+sun.shadow.mapSize.set(1024,1024);
+const sc=sun.shadow.camera; sc.left=-12;sc.right=12;sc.top=12;sc.bottom=-12;sc.near=1;sc.far=40;
+scene.add(sun);
+
+// ground
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(60,60),
+  new THREE.MeshLambertMaterial({color:'#cfe1c2'}));
+ground.rotation.x=-Math.PI/2; ground.receiveShadow=true; scene.add(ground);
+
+const paper=(hex,opts={})=>new THREE.MeshLambertMaterial({color:new THREE.Color(hex),
+  flatShading:opts.flat!==false, emissive:new THREE.Color(hex), emissiveIntensity:0.06});
+function shade(m){m.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}});return m;}
+
+// ---- procedural low-poly paper props (centred at local origin, base at y=0) ----
+function pTree(){
+  const g=new THREE.Group();
+  const trunk=new THREE.Mesh(new THREE.CylinderGeometry(0.17,0.22,1.15,8),paper('#c7a279'));
+  trunk.position.y=0.57; g.add(trunk);
+  const c1=new THREE.Mesh(new THREE.IcosahedronGeometry(0.98,1),paper('#aed0b6'));
+  c1.position.y=1.9; c1.scale.set(1.05,0.92,1.05); g.add(c1);
+  const c2=new THREE.Mesh(new THREE.IcosahedronGeometry(0.62,1),paper('#cce6cf'));
+  c2.position.set(0.18,2.5,0.1); g.add(c2);
+  return shade(g);
+}
+function pHouse(){
+  const g=new THREE.Group();
+  const body=new THREE.Mesh(new THREE.BoxGeometry(1.35,1.05,1.15),paper('#f3e7d2',{flat:false}));
+  body.position.y=0.53; g.add(body);
+  const roof=new THREE.Mesh(new THREE.ConeGeometry(1.08,0.82,4),paper('#e4b3c1'));
+  roof.position.y=1.46; roof.rotation.y=Math.PI/4; g.add(roof);
+  const door=new THREE.Mesh(new THREE.BoxGeometry(0.34,0.56,0.08),paper('#b98aa6',{flat:false}));
+  door.position.set(0,0.3,0.6); g.add(door);
+  return shade(g);
+}
+function pRock(){
+  const g=new THREE.Group();
+  const r1=new THREE.Mesh(new THREE.DodecahedronGeometry(0.52,0),paper('#c8c5be'));
+  r1.position.y=0.3; r1.scale.set(1.15,0.72,0.98); r1.rotation.y=0.6; g.add(r1);
+  const r2=new THREE.Mesh(new THREE.DodecahedronGeometry(0.3,0),paper('#d4d1ca'));
+  r2.position.set(0.55,0.18,0.2); r2.scale.set(1.1,0.7,1); g.add(r2);
+  return shade(g);
+}
+
+// ---- crossed-billboard standees from the EXISTING sprites ----
+const loader=new THREE.TextureLoader();
+const tx=u=>new Promise(res=>loader.load(u,t=>{t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=8;
+  t.minFilter=THREE.LinearMipmapLinearFilter;t.magFilter=THREE.LinearFilter;res(t);}));
+function standee(tex,w,h){
+  const g=new THREE.Group();
+  const mat=new THREE.MeshLambertMaterial({map:tex,transparent:true,alphaTest:0.5,
+    side:THREE.DoubleSide,emissive:0x000000});
+  for(const ry of [0,Math.PI/2]){
+    const p=new THREE.Mesh(new THREE.PlaneGeometry(w,h),mat);
+    p.position.y=h/2; p.rotation.y=ry; p.castShadow=true; g.add(p);
+  }
+  return g;
+}
+
+function shadowDisc(r){
+  const s=128,cv=document.createElement('canvas');cv.width=s;cv.height=s;
+  const x=cv.getContext('2d');const gr=x.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
+  gr.addColorStop(0,'rgba(60,52,40,.34)');gr.addColorStop(.6,'rgba(60,52,40,.14)');gr.addColorStop(1,'rgba(60,52,40,0)');
+  x.fillStyle=gr;x.fillRect(0,0,s,s);
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(r,r),
+    new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(cv),transparent:true,depthWrite:false}));
+  m.rotation.x=-Math.PI/2;m.position.y=0.02;return m;
+}
+
+const turntables=[];
+function place(node,x,z,shadowR){
+  const tt=new THREE.Group(); tt.position.set(x,0,z); tt.add(node); scene.add(tt);
+  const sh=shadowDisc(shadowR); sh.position.set(x,0.02,z); scene.add(sh);
+  turntables.push(tt); return tt;
+}
+
+async function build(){
+  const man=await (await fetch('out/sprites/manifest.json')).json();
+  const SLOT=[-4.3,0,4.3], ZA=-1.7, ZB=2.0;
+  // row A — procedural
+  place(pTree(),SLOT[0],ZA,2.6);
+  place(pHouse(),SLOT[1],ZA,2.4);
+  place(pRock(),SLOT[2],ZA,1.7);
+  // row B — standees from existing art
+  const specs=[['tree_a',2.7],['house',1.95],['rock',0.8]];
+  for(let i=0;i<3;i++){
+    const [name,h]=specs[i]; const sp=man[name];
+    const t=await tx(sp.file); const w=h*(sp.w/sp.h);
+    place(standee(t,w,h),SLOT[i],ZB,w*1.15);
+  }
+  window.__ready=true; resize(); startAuto();
+  window.__dbg={scene,cam,renderer,THREE,turntables,
+    info:()=>({calls:renderer.info.render.calls,tris:renderer.info.render.triangles,
+      kids:scene.children.length,tt:turntables.length,
+      cam:{l:cam.left,r:cam.right,t:cam.top,b:cam.bottom,pos:cam.position.toArray()},
+      wh:[innerWidth,innerHeight]}),
+    ndc:(x,y,z)=>{const v=new THREE.Vector3(x,y,z).project(cam);return v.toArray().map(n=>+n.toFixed(2));}};
+}
+
+function resize(){ renderer.setSize(RW,RH,false); cam.updateProjectionMatrix(); }
+addEventListener('resize',resize);
+
+let deg=0;
+function render(d){ for(const tt of turntables) tt.rotation.y=d*Math.PI/180; renderer.render(scene,cam); }
+window.__render=d=>{ render(d); };
+
+let timer=null,t0=null;
+function tick(){const now=performance.now();if(t0===null)t0=now;deg=((now-t0)/1000)*26%360;render(deg);}
+function startAuto(){if(!timer){t0=null;tick();timer=setInterval(tick,33);}}
+window.__stopAuto=()=>{if(timer){clearInterval(timer);timer=null;}};
+window.__startAuto=startAuto;
+
+build().catch(e=>{window.__err=String(e&&e.stack||e);console.error(e);});
+</script></body></html>

@@ -1,0 +1,54 @@
+{
+  "sky": "e7edf2",
+  "ground": "d7d2c8",
+  "fog": [28, 64],
+  "bounds": { "xmin": -28, "xmax": 28, "zmin": -40, "zmax": 6 },
+  "spawn": { "x": 0, "z": 4 },
+
+  "ramps": [
+    { "id": "stairs", "axis": "z", "z0": -2, "z1": -22, "yLo": 0, "yHi": 4.0,
+      "x0": -4, "x1": 4, "treads": 15, "color": "e7ded0" }
+  ],
+  "plateau": { "color": "dcd6cb" },
+
+  "buildings": [
+    { "x": -6.5, "z": -8, "w": 5, "d": 28, "h": 14, "color": "cbd6e2", "base": 0 },
+    { "x":  6.5, "z": -8, "w": 5, "d": 28, "h": 14, "color": "d4cfe0", "base": 0 },
+
+    { "x":  -8.5, "z": -24, "w": 9, "d": 4, "h": 7,  "color": "e2dccf", "base": 4 },
+    { "x":   8.5, "z": -24, "w": 9, "d": 4, "h": 7,  "color": "dfd8e0", "base": 4 },
+    { "x": -17.5, "z": -24, "w": 9, "d": 4, "h": 9,  "color": "d6dee6", "base": 4 },
+    { "x":  17.5, "z": -24, "w": 9, "d": 4, "h": 9,  "color": "e0d4c6", "base": 4 },
+    { "x": -25,   "z": -24, "w": 6, "d": 4, "h": 11, "color": "d8d2cc", "base": 4 },
+    { "x":  25,   "z": -24, "w": 6, "d": 4, "h": 11, "color": "d8d2cc", "base": 4 },
+
+    { "x":   0, "z": -34, "w": 8, "d": 4, "h": 9,  "color": "d2dfd0", "base": 4 },
+    { "x":  -8, "z": -34, "w": 8, "d": 4, "h": 12, "color": "e0d2c4", "base": 4 },
+    { "x":   8, "z": -34, "w": 8, "d": 4, "h": 10, "color": "e2d6c2", "base": 4 },
+    { "x": -16, "z": -34, "w": 8, "d": 4, "h": 14, "color": "cfd9e4", "base": 4 },
+    { "x":  16, "z": -34, "w": 8, "d": 4, "h": 13, "color": "cbd6e2", "base": 4 },
+    { "x": -24, "z": -34, "w": 8, "d": 4, "h": 11, "color": "d6dee6", "base": 4 },
+    { "x":  24, "z": -34, "w": 8, "d": 4, "h": 12, "color": "e2d6c2", "base": 4 }
+  ],
+
+  "zones": [
+    { "id": "road_right",
+      "center": [16, -29], "axisDeg": 90, "halfLen": 14, "halfWid": 3.5,
+      "height": 4.2, "back": 10.0, "side": 0, "lookAhead": 3.0, "lookY": 1.2,
+      "fov": 50, "pitchBias": 0, "follow": 6.0, "blendIn": 0.85 },
+
+    { "id": "road_left",
+      "center": [-16, -29], "axisDeg": 270, "halfLen": 14, "halfWid": 3.5,
+      "height": 4.2, "back": 10.0, "side": 0, "lookAhead": 3.0, "lookY": 1.2,
+      "fov": 50, "pitchBias": 0, "follow": 6.0, "blendIn": 0.85 },
+
+    { "id": "stairs",
+      "center": [0, -13], "axisDeg": 0, "halfLen": 22, "halfWid": 4.5,
+      "height": 3.4, "back": 8.5, "side": 0, "lookAhead": 2.0, "lookY": 1.2,
+      "fov": 38, "pitchBias": -0.06, "follow": 5.5, "blendIn": 0.85 }
+  ],
+
+  "collectibles": [
+    { "x": 0, "z": -12 }, { "x": -18, "z": -29 }, { "x": 18, "z": -29 }
+  ]
+}
