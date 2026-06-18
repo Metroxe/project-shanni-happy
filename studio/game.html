@@ -8,6 +8,13 @@
     border-radius:11px;padding:6px 11px;color:#5a564e;font-size:14px}
   #hud{left:14px;top:12px}
   #hud b{color:#c27d8b}
+  /* tiny time-of-day clock */
+  #clock{left:14px;top:48px;display:flex;align-items:center;gap:5px;padding:4px 9px 4px 5px}
+  #clockFace{display:block}
+  #clockGlyph{font-size:12px;line-height:1}
+  #clockTime{color:#7a756c;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:.3px}
+  #clock.night{background:rgba(58,63,100,.78);border-color:#4a4f7e}
+  #clock.night #clockTime{color:#e7e6f2}
   #hint{right:14px;top:12px;color:#7a756c;font-size:12px;background:rgba(255,255,255,.6)}
   #bMenu{position:fixed;right:14px;top:44px;font-size:16px;padding:4px 11px;line-height:1.2;z-index:21}
   /* journal (book) — replaces the pause menu */
@@ -195,6 +202,15 @@
 </div>
 <canvas id="c"></canvas>
 <div class="panel" id="hud">flowers <b id="score">0</b> / <span id="total">6</span></div>
+<div class="panel" id="clock" title="time of day">
+  <svg id="clockFace" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+    <circle cx="12" cy="12" r="10.5" fill="#fff8ec" stroke="#d9b9c6" stroke-width="1.4"/>
+    <circle cx="12" cy="3.4" r="0.9" fill="#cdb9a4"/><circle cx="12" cy="20.6" r="0.9" fill="#cdb9a4"/>
+    <circle cx="3.4" cy="12" r="0.9" fill="#cdb9a4"/><circle cx="20.6" cy="12" r="0.9" fill="#cdb9a4"/>
+    <line id="clockHr" x1="12" y1="12" x2="12" y2="7.2" stroke="#8a7f6e" stroke-width="1.6" stroke-linecap="round"/>
+    <line id="clockMin" x1="12" y1="12" x2="12" y2="4.6" stroke="#b76b7d" stroke-width="1.3" stroke-linecap="round"/>
+    <circle cx="12" cy="12" r="1.1" fill="#8a7f6e"/>
+  </svg><span id="clockGlyph">☀</span><b id="clockTime">6:24</b></div>
 <div class="panel" id="hint">arrows / WASD move · space hop · J joy · E talk · Esc journal</div>
 <button class="btn" id="bMenu" aria-label="journal" title="journal (Esc)">📖</button>
 <div class="panel" id="win">all flowers! ✿</div>
@@ -265,6 +281,7 @@ import { Dialogue } from './js/dialogue.js';
 import * as Save from './js/save.js';
 import { Sound } from './js/audio.js';
 import { Quests } from './js/quests.js';
+import { Sky } from './js/sky.js';
 
 const canvas=document.getElementById('c');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
@@ -487,14 +504,10 @@ async function build(){
   world=await (await fetch('specs/world.json')).json();
   SCENE=world; RAMPS=world.ramps||[]; ZONES=world.zones||[];
   setBounds(world.bounds);
-  scene.background=hex(world.sky);
-  scene.fog=new THREE.Fog(hex(world.sky),world.fog[0],world.fog[1]);
-
-  // lighting (paper buildings need form-shading; billboards stay unlit)
-  scene.add(new THREE.HemisphereLight(0xffffff,0xd9dde6,2.0));
-  const sun=new THREE.DirectionalLight(0xfff4ea,2.0);
-  sun.position.set(10,20,12);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.bias=-0.0004;
-  const sc=sun.shadow.camera;sc.left=-40;sc.right=40;sc.top=40;sc.bottom=-40;sc.near=1;sc.far=100;scene.add(sun);
+  // sky + lighting: the day/night cycle owns the gradient skydome, arcing sun + moon,
+  // drifting paper clouds, soft stars, and BOTH lights (directional sun/moon + hemisphere
+  // fill). Driven by a single day phase on a wall clock. See studio/js/sky.js.
+  Sky.build(scene, Object.assign({fog:world.fog}, world.sky||{}));
   // base ground + raised plateau + stairs + paper-box buildings (+ collider chains)
   const ground=new THREE.Mesh(new THREE.PlaneGeometry(200,200),
     new THREE.MeshStandardMaterial({color:hex(world.ground),roughness:1,metalness:0}));
@@ -576,7 +589,22 @@ async function build(){
 }
 
 const SP_OFF=[[-.55,1.9],[.6,2.2],[-.35,2.6],[.45,1.6],[.15,2.4]];
+// tiny time-of-day clock — analog hands + digital read-out; refreshed only when the
+// in-game minute changes (cheap), and tinted to night when the sun is down.
+let _clkMin=-1; const _clk={};
+function updateClock(){
+  if(!Sky.ready)return;
+  const c=Sky.clock(), key=c.h24*60+c.m; if(key===_clkMin)return; _clkMin=key;  // refresh on any minute change (incl. hour rollover)
+  if(!_clk.box){_clk.box=document.getElementById('clock');_clk.hr=document.getElementById('clockHr');
+    _clk.min=document.getElementById('clockMin');_clk.t=document.getElementById('clockTime');_clk.g=document.getElementById('clockGlyph');}
+  _clk.hr.setAttribute('transform','rotate('+c.hourDeg.toFixed(1)+' 12 12)');
+  _clk.min.setAttribute('transform','rotate('+c.minDeg.toFixed(1)+' 12 12)');
+  _clk.t.textContent=c.hhmm; _clk.g.textContent=c.isDay?'☀':'☾';
+  _clk.box.classList.toggle('night',!c.isDay);
+}
+
 function draw(dt){
+  Sky.update(dt,cam);                       // advance day/night (wall clock — runs even while paused)
   if(!mesh){renderer.render(scene,cam);return;}
   if(talkCooldown>0)talkCooldown-=dt;
   if(playing)Dialogue.tick(dt);
@@ -638,7 +666,7 @@ function draw(dt){
   } else tp.classList.remove('on');
   document.getElementById('bTalk').classList.toggle('near',!!nearNpc||Dialogue.active);
 
-  document.getElementById('score').textContent=S.score;
+  document.getElementById('score').textContent=S.score; updateClock();
   if(S.event==='win'){const w=document.getElementById('win');w.style.opacity=1;setTimeout(()=>w.style.opacity=0,2400);}
   renderer.render(scene,cam);
 }
@@ -919,7 +947,11 @@ window.game={
   music:(v)=>{Sound.resume();return v===undefined?Sound.toggleMusic():Sound.setMusicVolume(+v);},
   say:(t='Hello there, friend!',who='Chrees')=>{Sound.resume();Sound.newLine();
     [...String(t)].forEach((c,i)=>setTimeout(()=>Sound.blip(c,who),i*60));return 'say';},
+  // sky / day-night debug surface
+  time:(p)=>p===undefined?Sky.getTime():Sky.setTime(+p),        // 0=sunrise .25=noon .5=sunset .75=midnight
+  dayLength:(s)=>s===undefined?Sky.dayLength:Sky.setDayLength(+s),
 };
+window.sky=Sky;
 window.audio=Sound;
 build().catch(e=>{window.__err=String(e&&e.stack||e);console.error(e);
   const ld=document.getElementById('loader'); if(ld){ld.classList.add('err');

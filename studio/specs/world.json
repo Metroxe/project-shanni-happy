@@ -1,5 +1,11 @@
 {
-  "sky": "e7edf2",
+  "sky": {
+    "dayLength": 1440,
+    "startPhase": 0.16,
+    "stars": 90,
+    "arc": { "spread": 1.05, "depth": 0.12, "elev": 0.4 },
+    "clouds": { "count": 7, "radius": [55, 120], "y": [20, 38], "scale": [11, 22], "wind": 1.1, "opacity": 0.9 }
+  },
   "ground": "d7d2c8",
   "fog": [28, 64],
   "bounds": { "xmin": -28, "xmax": 28, "zmin": -40, "zmax": 6 },
