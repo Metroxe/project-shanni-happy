@@ -52,8 +52,12 @@ Preview: `http://localhost:8723/env-live.html`. The asset pipeline is the
 
 ## Status / next
 
-- DONE: character cutout + die-cut, walk + jump-for-joy, 6 environment moods, live
-  Three.js prototype (`env-live.html`), pipeline migrated out of `/tmp` into the repo.
-- NEXT: promote baked backdrop props to individual 3D billboards (parallax /
-  walk-behind); build the deterministic game loop (input → Shen movement); add
-  `/done` (worktree cleanup) and `/deploy` (GitHub Action release) skills; web deploy.
+- DONE: character cutout + die-cut; walk + jump-for-joy; 6 environment moods;
+  pipeline migrated into the repo; **3D Paper-Mario game loop** (`studio/game.html`
+  + `studio/js/sim.js`) — perspective follow-camera (Shen always centred),
+  full-window responsive, 2D ground movement, depth-sorted billboard props
+  (walk behind/in front), d-pad + keyboard, 6 collectible flowers; `/deploy` skill
+  + GitHub Pages. **Live: https://metroxe.github.io/project-shanni-happy/**
+- NEXT (ideas): NPCs with dialogue (via the papercraft-asset pipeline); more
+  zones/goals; sound; idle polish. A `/done` skill was discussed but isn't needed
+  yet (work happens directly on `main`, not in worktrees).
