@@ -27,20 +27,40 @@ const VOICES = {
 };
 
 const AC = window.AudioContext || window.webkitAudioContext;
-const GAIN_CEIL = 0.8; // bus gain when volume = 1
-let ctx = null, bus = null, comp = null;
+const GAIN_CEIL = 0.8; // master bus gain when volume = 1
+const clamp01 = v => Math.max(0, Math.min(1, v));
+let ctx = null, bus = null, comp = null, sfxGain = null, musicGain = null;
 
-// persisted prefs (volume 0..1, mute) — survive reloads via localStorage
+// background-music state: one looping AudioBufferSourceNode through its sub-bus.
+let musicBuf = null, musicSrc = null, musicURL = null, musicLoading = null;
+let musicStarted = false, lastMusicVol = 0.42;   // remembers level across an off→on toggle
+
+// THREE independent levels, each on its own localStorage key so they survive
+// reloads separately (none of these live in the save blob):
+//   master "volume" (shen.vol) + mute (shen.muted)  scale EVERYTHING (master bus),
+//   "effects"        (shen.sfxvol)                   scales the SFX + voice sub-bus,
+//   "music"          (shen.musicvol)                 scales the music sub-bus (0 = off).
+// Defaults reproduce the prior single-volume behaviour exactly (sfx full, music 0.42).
 const store = (() => { try { return window.localStorage; } catch (e) { return null; } })();
-let volume = (() => { const v = store && store.getItem('shen.vol'); const n = v == null ? 0.7 : +v;
-  return Math.max(0, Math.min(1, isFinite(n) ? n : 0.7)); })();
-let muted = (store && store.getItem('shen.muted')) === '1';
+const readNum = (k, d) => { const v = store && store.getItem(k); const n = v == null ? d : +v;
+  return clamp01(isFinite(n) ? n : d); };
+let volume   = readNum('shen.vol', 0.7);
+let muted    = (store && store.getItem('shen.muted')) === '1';
+let sfxVol   = readNum('shen.sfxvol', 1.0);     // effects at full by default
+let musicVol = readNum('shen.musicvol', 0.42);  // music gently under the SFX
+if (musicVol > 0) lastMusicVol = musicVol;
 
 function applyGain() { if (bus) bus.gain.value = muted ? 0 : volume * GAIN_CEIL; }
-function persist() { try { if (store) { store.setItem('shen.vol', String(volume)); store.setItem('shen.muted', muted ? '1' : '0'); } } catch (e) {} }
+function applySfx()  { if (sfxGain) sfxGain.gain.value = sfxVol; }
+function persist()      { try { if (store) { store.setItem('shen.vol', String(volume)); store.setItem('shen.muted', muted ? '1' : '0'); } } catch (e) {} }
+function persistSfx()   { try { if (store) store.setItem('shen.sfxvol', String(sfxVol)); } catch (e) {} }
+function persistMusic() { try { if (store) store.setItem('shen.musicvol', String(musicVol)); } catch (e) {} }
 
 // gentle master chain: bus gain -> soft lowpass -> limiter -> out. The lowpass
-// keeps everything mellow; the compressor tames overlapping sounds.
+// keeps everything mellow; the compressor tames overlapping sounds. TWO sub-buses
+// feed INTO bus — sfxGain (SFX + dialogue voice) and musicGain (the loop) — so the
+// master volume + mute scale both for free, while each sub-bus gain sets its own
+// independent level ("effects" / "music" sliders).
 function ensure() {
   if (ctx) return true;
   if (!AC) return false;
@@ -51,8 +71,32 @@ function ensure() {
   comp.threshold.value = -14; comp.knee.value = 24; comp.ratio.value = 3.5;
   comp.attack.value = 0.004; comp.release.value = 0.18;
   bus.connect(lp).connect(comp).connect(ctx.destination);
+  sfxGain = ctx.createGain(); sfxGain.gain.value = sfxVol; sfxGain.connect(bus);
+  musicGain = ctx.createGain(); musicGain.gain.value = 0; musicGain.connect(bus);
   applyGain();
   return true;
+}
+
+// fade the music sub-bus to a target level (short ramp = no click on toggle)
+function rampMusic(to, dur = 0.6) {
+  if (!musicGain) return;
+  const t = ctx.currentTime;
+  musicGain.gain.cancelScheduledValues(t);
+  musicGain.gain.setValueAtTime(Math.max(0.0001, musicGain.gain.value), t);
+  musicGain.gain.linearRampToValueAtTime(to, t + dur);
+}
+
+// (re)start the looping source from the decoded buffer. AudioBufferSourceNode is
+// single-use, so each (re)start makes a fresh node. loop=true → gapless repeat.
+function playMusic(fadeIn) {
+  if (!musicBuf || !musicGain) return;
+  if (musicSrc) { try { musicSrc.stop(); } catch (e) {} musicSrc.disconnect(); musicSrc = null; }
+  musicSrc = ctx.createBufferSource();
+  musicSrc.buffer = musicBuf; musicSrc.loop = true;
+  musicSrc.connect(musicGain);
+  musicSrc.start();
+  if (fadeIn) { musicGain.gain.setValueAtTime(0.0001, ctx.currentTime); rampMusic(musicVol, 1.4); }
+  else musicGain.gain.value = musicVol;
 }
 
 const now = () => ctx.currentTime;
@@ -60,7 +104,7 @@ const rand = (a, b) => a + Math.random() * (b - a);
 
 // a single enveloped oscillator note
 function note({ type = 'sine', f, f2 = null, t0 = 0, dur = 0.18, gain = 0.3,
-                atk = 0.006, detune = 0, dest = bus }) {
+                atk = 0.006, detune = 0, dest = sfxGain }) {
   const t = now() + t0;
   const o = ctx.createOscillator(); o.type = type; o.detune.value = detune;
   o.frequency.setValueAtTime(f, t);
@@ -73,7 +117,7 @@ function note({ type = 'sine', f, f2 = null, t0 = 0, dur = 0.18, gain = 0.3,
 }
 
 // a short filtered-noise burst — the "paper" texture for taps/lands
-function noise({ t0 = 0, dur = 0.08, gain = 0.2, freq = 1400, q = 0.8, type = 'lowpass', dest = bus }) {
+function noise({ t0 = 0, dur = 0.08, gain = 0.2, freq = 1400, q = 0.8, type = 'lowpass', dest = sfxGain }) {
   const t = now() + t0, len = Math.max(1, Math.ceil(ctx.sampleRate * dur));
   const buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
   for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
@@ -154,7 +198,7 @@ function wah(f0, dur, fall, mute) {
   g.gain.setValueAtTime(0, t);
   g.gain.linearRampToValueAtTime(CFG.blip, t + 0.02);
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o.connect(bp).connect(lp).connect(g).connect(bus);
+  o.connect(bp).connect(lp).connect(g).connect(sfxGain);
   o.start(t); o.stop(t + dur + 0.03);
 }
 
@@ -168,15 +212,24 @@ export const Sound = {
     if (ctx.state === 'suspended') ctx.resume();
   },
 
+  // master "volume" — scales the whole mix (both sub-buses)
   get volume() { return volume; },
   setVolume(v) {
-    volume = Math.max(0, Math.min(1, v));
-    if (volume > 0) muted = false;   // dragging the slider up unmutes
+    volume = clamp01(v);
+    if (volume > 0) muted = false;   // dragging the master up unmutes
     applyGain(); persist();
     return volume;
   },
   setMuted(m) { muted = !!m; applyGain(); persist(); return muted; },
   toggle() { muted = !muted; applyGain(); persist(); return muted; },
+
+  // "effects" — SFX + dialogue-voice sub-bus level, independent of music
+  get sfxVolume() { return sfxVol; },
+  setSfxVolume(v) {
+    sfxVol = clamp01(v);
+    ensure(); applySfx(); persistSfx();
+    return sfxVol;
+  },
 
   sfx(name, mul = 1) {
     if (muted || !ensure()) return;
@@ -207,4 +260,66 @@ export const Sound = {
 
   // reset the pitch walk so each new line starts neutral
   newLine() { pitchWalk = 0; },
+
+  // ---- background music ----
+  get musicVolume() { return musicVol; },
+  get musicOn() { return musicVol > 0; },        // derived: "on" == audible
+  get musicPlaying() { return !!musicSrc; },
+
+  // read-only live gains, for verify-in-preview (see CLAUDE.md "Verify in preview")
+  get levels() { return { ctx: ctx && ctx.state, bus: bus ? bus.gain.value : null,
+    sfx: sfxGain ? sfxGain.gain.value : null, music: musicGain ? musicGain.gain.value : null }; },
+
+  // Begin the looping background track. Call AFTER a user gesture (the title
+  // Start/Continue press) — never autoplay. Fetch+decode happens once; the
+  // buffer is cached so a later level-up is instant. Decode failure (e.g. a
+  // browser that can't read OGG) degrades to "no music", never a crash.
+  startMusic(url) {
+    if (!ensure()) return;
+    if (ctx.state === 'suspended') ctx.resume();
+    if (url) musicURL = url;
+    musicStarted = true;
+    loadMusicBuffer().then(buf => { if (buf && musicVol > 0 && musicStarted) playMusic(true); });
+  },
+
+  stopMusic() { stopMusicNode(0.5); },
+
+  // "music" — the loop's own level. 0 stops the source entirely (off); raising
+  // from 0 starts it. Independent of the effects level + master.
+  setMusicVolume(v) {
+    musicVol = clamp01(v);
+    if (musicVol > 0) lastMusicVol = musicVol;
+    persistMusic();
+    if (!ensure()) return musicVol;
+    if (ctx.state === 'suspended') ctx.resume();
+    if (musicVol <= 0) stopMusicNode(0.4);                          // off
+    else if (musicSrc) rampMusic(musicVol, 0.25);                   // already playing → re-level
+    else if (musicStarted) loadMusicBuffer().then(buf => { if (buf && musicVol > 0) playMusic(true); }); // was off → start
+    return musicVol;
+  },
+  // convenience on/off that remembers the last audible level
+  toggleMusic() { return this.setMusicVolume(musicVol > 0 ? 0 : (lastMusicVol || 0.42)); },
+  setMusicOn(on) { return this.setMusicVolume(on ? (musicVol > 0 ? musicVol : (lastMusicVol || 0.42)) : 0); },
 };
+
+// fetch + decode the loop ONCE; cached. Returns the buffer (or null on failure).
+function loadMusicBuffer() {
+  if (musicBuf) return Promise.resolve(musicBuf);
+  if (musicLoading) return musicLoading;
+  if (!musicURL || !ctx) return Promise.resolve(null);
+  musicLoading = fetch(musicURL)
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
+    .then(ab => ctx.decodeAudioData(ab))
+    .then(buf => { musicBuf = buf; musicLoading = null; return buf; })
+    .catch(e => { musicLoading = null; console.warn('[music] load failed:', (e && e.message) || e); return null; });
+  return musicLoading;
+}
+
+// fade out + stop the current source (clock-accurate, no click); safe if none.
+function stopMusicNode(fade = 0.5) {
+  if (!musicSrc || !ctx) return;
+  const s = musicSrc; musicSrc = null;
+  rampMusic(0.0001, fade);
+  try { s.stop(ctx.currentTime + fade + 0.05); } catch (e) {}
+  s.onended = () => { try { s.disconnect(); } catch (e) {} };
+}
