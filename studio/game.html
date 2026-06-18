@@ -179,7 +179,10 @@
   .tbtn[hidden]{display:none}
   #buildTag{margin-top:14px;font-size:11px;color:#bcb4a6;letter-spacing:.3px}
 </style>
-<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}</script>
+<script type="importmap">{"imports":{
+  "three":"https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"
+}}</script>
 </head><body>
 <div id="loader">
   <div id="loadStage">
@@ -258,6 +261,7 @@ import { Dialogue } from './js/dialogue.js';
 import * as Save from './js/save.js';
 import { Sound } from './js/audio.js';
 import { Quests } from './js/quests.js';
+import { FX } from './js/fx.js';
 
 const canvas=document.getElementById('c');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
@@ -469,6 +473,10 @@ async function build(){
   setBounds(world.bounds);
   scene.background=hex(world.sky);
   scene.fog=new THREE.Fog(hex(world.sky),world.fog[0],world.fog[1]);
+  // optional post-processing finishing pass (off|minimal|diorama|full). Degrades
+  // to plain render if the composer can't build. window.__fx(name) switches live.
+  FX.init({renderer,scene,camera:cam,skyColor:world.sky,groundColor:world.ground});
+  window.__fx=(name)=>{const p=FX.setPreset(name);resize();return p;};
 
   // lighting (paper buildings need form-shading; billboards stay unlit)
   scene.add(new THREE.HemisphereLight(0xffffff,0xd9dde6,2.0));
@@ -549,7 +557,7 @@ async function build(){
 }
 
 function draw(dt){
-  if(!mesh){renderer.render(scene,cam);return;}
+  if(!mesh){FX.render();return;}
   if(talkCooldown>0)talkCooldown-=dt;
   if(playing)Dialogue.tick(dt);
   cameraFrame(S,dt);
@@ -607,7 +615,7 @@ function draw(dt){
   const talkable=!!nearNpc||Dialogue.active, bTalk=document.getElementById('bTalk');
   bTalk.hidden=!talkable; bTalk.classList.toggle('near',talkable);
 
-  renderer.render(scene,cam);
+  FX.render();
 }
 
 // ---------- audio: map sim-state transitions to one-shot SFX ----------
@@ -845,7 +853,7 @@ addEventListener('pagehide',persist);
 setInterval(persist,10000);
 
 function resize(){const w=innerWidth||1280,h=innerHeight||800;renderer.setSize(w,h,false);
-  cam.aspect=w/h;cam.updateProjectionMatrix();}
+  cam.aspect=w/h;cam.updateProjectionMatrix();FX.setSize(w,h);}
 addEventListener('resize',resize);
 
 // ---------- AI / debug control surface ----------
