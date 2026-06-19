@@ -110,3 +110,16 @@ keep running on whichever image is shown; the swap is just the picture.
 Inline `Read` of a single small PNG renders in the GUI; GIFs do NOT animate via Read,
 and localhost URLs aren't reachable from the user's browser. To show motion live, use
 the Claude preview pane pointed at the served HTML. The user often opens files directly.
+
+## After building/placing — run the QA gate (required)
+
+A new asset, prop, building, or world layout is NOT done until it passes QA. Adding
+geometry repeatedly introduces the same bugs: z-fighting from overlapping/extending
+geometry, stray cream outlines, the abyss past the map edge, "invisible circle"
+colliders that block paths, props clipping or placed where they don't belong. So after
+any placement:
+- run **`/zone-camera`** (Shen visible from everywhere + every transition → 0 fails), and
+- run **`/papercraft-env-qa`** (the picture battery + geometric overlap/reachability audits
+  + multi-agent sweep) until clean.
+The full failure-mode checklist is in CLAUDE.md ("World/asset QA gate") and the
+`/papercraft-env-qa` skill. Do not `/deploy` a world/asset change that hasn't passed it.

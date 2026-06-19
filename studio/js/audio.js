@@ -14,9 +14,10 @@
 // requestAnimationFrame, so it plays fine even in the suspended preview tab.
 
 const CFG = {
-  sfx: { hop: 0.34, land: 0.42, step: 0.09, move: 0.3, talk: 0.42, select: 0.42,
+  sfx: { hop: 0.34, land: 0.42, step: 0.09, stepSoft: 0.08, move: 0.3, talk: 0.42, select: 0.42,
          squeak: 0.34, quest: 0.42, questStep: 0.44, questDone: 0.5, book: 0.4, bookClose: 0.36, flip: 0.3, lift: 0.18 },
   blip: 0.17,
+  water: 0.14,   // ambient fountain trickle ceiling (faded in by player proximity — a spatial world sound)
 };
 
 // Per-speaker voice for the dialogue "wah". base = root freq (Hz), range =
@@ -103,6 +104,27 @@ function playMusic(fadeIn) {
 const now = () => ctx.currentTime;
 const rand = (a, b) => a + Math.random() * (b - a);
 
+// ambient fountain water: one looping filtered-noise babble on the SFX sub-bus, its
+// level driven each frame by the player's distance to the fountain (a spatial world
+// sound — full when near, silent when far). Created lazily on the first audible call.
+let waterSrc = null, waterAmp = null, waterLfo = null, waterLfoGain = null;
+function startWater() {
+  if (!ctx || waterSrc) return;
+  const len = Math.ceil(ctx.sampleRate * 2.2), buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+  let last = 0;                                  // light low-pass on white noise → soft "brook"
+  for (let i = 0; i < len; i++) { const w = Math.random() * 2 - 1; last = (last + 0.02 * w) / 1.02; d[i] = last * 3.2; }
+  const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true;
+  const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 920; bp.Q.value = 0.7;
+  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3200;
+  const amp = ctx.createGain(); amp.gain.value = 0;          // base level (proximity)
+  const lfo = ctx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 0.7;  // slow babble
+  const lfoG = ctx.createGain(); lfoG.gain.value = 0;        // wobble depth (set with level)
+  lfo.connect(lfoG).connect(amp.gain);
+  src.connect(bp).connect(lp).connect(amp).connect(sfxGain);
+  src.start(); lfo.start();
+  waterSrc = src; waterAmp = amp; waterLfo = lfo; waterLfoGain = lfoG;
+}
+
 // a single enveloped oscillator note
 function note({ type = 'sine', f, f2 = null, t0 = 0, dur = 0.18, gain = 0.3,
                 atk = 0.006, detune = 0, dest = sfxGain }) {
@@ -148,6 +170,11 @@ const SFX = {
   step(v) {
     note({ type: 'sine', f: semi(-14 + rand(-1.5, 1.5)), dur: 0.07, gain: v });
     noise({ dur: 0.04, gain: v * 0.6, freq: 1100, q: 0.6 });
+  },
+  // muffled footstep for soft ground (park grass) — duller, less click
+  stepSoft(v) {
+    note({ type: 'sine', f: semi(-17 + rand(-1.2, 1.2)), dur: 0.08, gain: v * 0.9 });
+    noise({ dur: 0.05, gain: v * 0.5, freq: 620, q: 0.5 });
   },
   // ui tick for choice navigation
   move(v) { note({ type: 'triangle', f: semi(10), dur: 0.06, gain: v }); },
@@ -261,6 +288,20 @@ export const Sound = {
     if (ctx.state === 'suspended') ctx.resume();
     const fn = SFX[name]; if (!fn) return;
     fn((CFG.sfx[name] ?? 0.3) * mul);
+  },
+
+  // ambient fountain water level (0..1), set every frame from player proximity
+  // (game.html draws it via proxGain). Routes through the SFX sub-bus → effects + master sliders cover it.
+  setWaterLevel(v) {
+    v = clamp01(v);
+    if (v > 0 && !waterSrc) { if (!ensure()) return v; if (ctx.state === 'suspended') ctx.resume(); startWater(); }
+    if (!waterAmp) return v;
+    const t = ctx.currentTime, lvl = v * (CFG.water || 0.14);
+    waterAmp.gain.cancelScheduledValues(t);
+    waterAmp.gain.setValueAtTime(Math.max(0.00001, waterAmp.gain.value), t);
+    waterAmp.gain.linearRampToValueAtTime(lvl, t + 0.2);
+    if (waterLfoGain) waterLfoGain.gain.setTargetAtTime(lvl * 0.4, t, 0.2);
+    return v;
   },
 
   // one wah per spoken glyph; speaker picks the voice. Spaces = a breath
