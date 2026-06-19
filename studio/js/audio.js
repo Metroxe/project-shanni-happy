@@ -375,6 +375,18 @@ export const Sound = {
   // convenience on/off that remembers the last audible level
   toggleMusic() { return this.setMusicVolume(musicVol > 0 ? 0 : (lastMusicVol || 0.42)); },
   setMusicOn(on) { return this.setMusicVolume(on ? (musicVol > 0 ? musicVol : (lastMusicVol || 0.42)) : 0); },
+
+  // Dev builds boot QUIET: default both effects and music OFF so working on the game
+  // locally isn't noisy. Only overrides a level the user hasn't explicitly chosen (no
+  // stored key) — a manual slider change persists and is still respected on the next
+  // dev load. Deliberately does NOT persist its own 0, so the stored state stays clean
+  // and a real deploy (isDev=false) is never touched. Call once at boot, after BUILD
+  // resolves. lastMusicVol is left at its default so toggling music on still works.
+  quietInDev(isDev) {
+    if (!isDev || !store) return;
+    if (store.getItem('shen.sfxvol')   == null) { sfxVol = 0; applySfx(); }  // applySfx no-ops until the bus exists; ensure() then reads sfxVol=0
+    if (store.getItem('shen.musicvol') == null) { musicVol = 0; }            // music isn't playing yet → just keep it off
+  },
 };
 
 // fetch + decode the loop ONCE; cached. Returns the buffer (or null on failure).

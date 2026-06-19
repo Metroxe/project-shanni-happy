@@ -991,6 +991,7 @@ async function build(){
 
   S=initState(world.collectibles, world.spawn);
   try{const r=await fetch('build.json',{cache:'no-store'});if(r.ok){const j=await r.json();BUILD=j.sha||'dev';}}catch{}
+  Sound.quietInDev(BUILD==='dev');   // dev worktree boots silent — effects + music off until you choose a level
   const saved=Save.load(world);
   if(saved)Save.apply(S,saved);          // preview at the saved spot behind the title
   // quests — the engine reads the LIVE collected set + collectible kinds (closures
