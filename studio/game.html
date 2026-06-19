@@ -14,13 +14,23 @@
 <link rel="icon" type="image/png" sizes="192x192" href="out/icon-192.png">
 <style>
   html,body{margin:0;height:100%;background:#e9f1ea;overflow:hidden;
-    font-family:-apple-system,Segoe UI,Roboto,sans-serif;touch-action:none;
-    -webkit-tap-highlight-color:transparent}
+    font-family:-apple-system,Segoe UI,Roboto,sans-serif;touch-action:none}
+  /* nothing in the game is text-selectable — it's a game, not a document */
+  *{-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;
+    -webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
   /* dvh keeps the canvas matched to the *visible* viewport as the mobile URL bar
      shows/hides (100vh would over-extend under it); vh is the desktop fallback. */
   #c{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100dvh}
   .panel{position:fixed;background:rgba(255,255,255,.74);border:1px solid #d6c9b2;
     border-radius:11px;padding:6px 11px;color:#5a564e;font-size:14px}
+  /* tiny time-of-day clock (top-left; the flowers HUD that used to sit here is gone) */
+  #clock{left:calc(14px + env(safe-area-inset-left));top:calc(12px + env(safe-area-inset-top));
+    display:flex;align-items:center;gap:5px;padding:4px 9px 4px 5px}
+  #clockFace{display:block}
+  #clockGlyph{font-size:12px;line-height:1}
+  #clockTime{color:#7a756c;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:.3px}
+  #clock.night{background:rgba(58,63,100,.78);border-color:#4a4f7e}
+  #clock.night #clockTime{color:#e7e6f2}
   #hint{right:calc(14px + env(safe-area-inset-right));top:calc(12px + env(safe-area-inset-top));
     color:#7a756c;font-size:12px;background:rgba(255,255,255,.6)}
   #bMenu{position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(44px + env(safe-area-inset-top));
@@ -256,7 +266,10 @@
     #dlgText{font-size:15px;min-height:2.7em}
   }
 </style>
-<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}</script>
+<script type="importmap">{"imports":{
+  "three":"https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"
+}}</script>
 </head><body>
 <div id="loader">
   <div id="loadStage">
@@ -267,6 +280,15 @@
   <div id="loadText">shenning</div>
 </div>
 <canvas id="c"></canvas>
+<div class="panel" id="clock" title="time of day">
+  <svg id="clockFace" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+    <circle cx="12" cy="12" r="10.5" fill="#fff8ec" stroke="#d9b9c6" stroke-width="1.4"/>
+    <circle cx="12" cy="3.4" r="0.9" fill="#cdb9a4"/><circle cx="12" cy="20.6" r="0.9" fill="#cdb9a4"/>
+    <circle cx="3.4" cy="12" r="0.9" fill="#cdb9a4"/><circle cx="20.6" cy="12" r="0.9" fill="#cdb9a4"/>
+    <line id="clockHr" x1="12" y1="12" x2="12" y2="7.2" stroke="#8a7f6e" stroke-width="1.6" stroke-linecap="round"/>
+    <line id="clockMin" x1="12" y1="12" x2="12" y2="4.6" stroke="#b76b7d" stroke-width="1.3" stroke-linecap="round"/>
+    <circle cx="12" cy="12" r="1.1" fill="#8a7f6e"/>
+  </svg><span id="clockGlyph">☀</span><b id="clockTime">6:24</b></div>
 <div class="panel" id="hint">arrows / WASD move · space hop · E talk · Esc journal</div>
 <button class="btn" id="bMenu" aria-label="journal" title="journal (Esc)">📖</button>
 <button class="btn" id="bFull" aria-label="fullscreen" title="fullscreen">
@@ -365,6 +387,8 @@ import { Dialogue } from './js/dialogue.js';
 import * as Save from './js/save.js';
 import { Sound } from './js/audio.js';
 import { Quests } from './js/quests.js';
+import { Sky } from './js/sky.js';
+import { FX } from './js/fx.js';
 
 const canvas=document.getElementById('c');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
@@ -376,6 +400,12 @@ const cam=new THREE.PerspectiveCamera(40,1,0.1,300);
 const SHEN_H=1.9, SHEN_W=SHEN_H*0.4634, GROUND_EPS=0.02;
 const WALK_HOP=0.24, MAX_LIFT=1.5, FH=0.95, PLAYER_R=0.42;
 const TALK_R=2.4; const _tv=new THREE.Vector3();
+// Positional NPC/world sound: full volume within HEAR_NEAR, silent past HEAR_FAR
+// (squared rolloff). Ambient animation loops (e.g. Chrees' reps) are only audible
+// when the player is near — never across the whole map. (S is assigned in build().)
+const HEAR_NEAR=2.5, HEAR_FAR=9;
+const proxGain=(x,z)=>{ const t=(HEAR_FAR-Math.hypot(x-S.x,z-S.z))/(HEAR_FAR-HEAR_NEAR);
+  return t<=0?0:t>=1?1:t*t; };
 
 const loader=new THREE.TextureLoader();
 const tx=u=>new Promise(res=>loader.load(u,t=>{t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;
@@ -574,14 +604,15 @@ async function build(){
   world=await (await fetch('specs/world.json')).json();
   SCENE=world; RAMPS=world.ramps||[]; ZONES=world.zones||[];
   setBounds(world.bounds);
-  scene.background=hex(world.sky);
-  scene.fog=new THREE.Fog(hex(world.sky),world.fog[0],world.fog[1]);
-
-  // lighting (paper buildings need form-shading; billboards stay unlit)
-  scene.add(new THREE.HemisphereLight(0xffffff,0xd9dde6,2.0));
-  const sun=new THREE.DirectionalLight(0xfff4ea,2.0);
-  sun.position.set(10,20,12);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.bias=-0.0004;
-  const sc=sun.shadow.camera;sc.left=-40;sc.right=40;sc.top=40;sc.bottom=-40;sc.near=1;sc.far=100;scene.add(sun);
+  // sky + lighting: the day/night cycle owns the gradient skydome, arcing sun + moon,
+  // drifting paper clouds, soft stars, dynamic background/fog, and BOTH lights (directional
+  // sun/moon + hemisphere fill). Driven by a single day phase on a wall clock. See sky.js.
+  Sky.build(scene, Object.assign({fog:world.fog}, world.sky||{}));
+  // optional post-processing finishing pass (off|minimal|diorama|full). Degrades to plain
+  // render if the composer can't build. window.__fx(name) switches live. Sky.update reasserts
+  // scene.background each frame, so the day/night sky wins over FX's static gradient.
+  FX.init({renderer,scene,camera:cam,skyColor:'cfe0f2',groundColor:world.ground});
+  window.__fx=(name)=>{const p=FX.setPreset(name);resize();return p;};
   // base ground + raised plateau + stairs + paper-box buildings (+ collider chains)
   const ground=new THREE.Mesh(new THREE.PlaneGeometry(200,200),
     new THREE.MeshStandardMaterial({color:hex(world.ground),roughness:1,metalness:0}));
@@ -597,9 +628,17 @@ async function build(){
     m.position.set(c.x,groundHeight(c.x,c.z)+HAM_H/2,c.z);
     m.userData={x:c.x,z:c.z,hh:HAM_H/2,kind:c.kind||'hamster'}; scene.add(m); pickups.push(m); billboards.push(m);});
 
-  // NPCs (talk targets) — billboard + grounded group + contact shadow
+  // NPCs (talk targets) — billboard + grounded group + contact shadow.
+  // An NPC may carry a `poses` map {name:texUrl} + a `rep` loop {seq,beat,sfxOn}
+  // for Paper-Mario-style HARD image swaps (no tween): the breathing/greet motion
+  // below is unchanged; only the drawn pose flips. All pose images share one
+  // canvas + foot baseline + body scale (registered by register_poses.py), so the
+  // swap can't resize or unground the character — width is derived once and holds.
   for(const nd of (world.npcs||[])){
-    const ntex=await tx(nd.tex);
+    const poses={}; let defTex=null;
+    if(nd.poses){ for(const[k,u] of Object.entries(nd.poses)) poses[k]=await tx(u);
+      defTex=poses[(nd.rep&&nd.rep.seq&&nd.rep.seq[0])||Object.keys(poses)[0]]; }
+    const ntex=defTex||await tx(nd.tex);
     const nw=nd.h*(ntex.image.width/ntex.image.height);
     const ny=groundHeight(nd.x,nd.z);
     const g=new THREE.Group(); g.position.set(nd.x,ny,nd.z);
@@ -607,7 +646,8 @@ async function build(){
     const sh=new THREE.Mesh(new THREE.PlaneGeometry(nw*1.4,nw*1.4),
       new THREE.MeshBasicMaterial({map:shadowTex,transparent:true,depthWrite:false}));
     sh.rotation.x=-Math.PI/2; sh.position.set(nd.x,ny+GROUND_EPS,nd.z); sh.renderOrder=1; scene.add(sh);
-    npcs.push({data:nd,group:g,mesh:m,h:nd.h,ny,phase:Math.random()*6.28,greet:0});
+    npcs.push({data:nd,group:g,mesh:m,h:nd.h,ny,phase:Math.random()*6.28,greet:0,
+      poses,rep:nd.rep||null,repIdx:0,repT:0});
   }
   Dialogue.init();
   Dialogue.onEnd=()=>{ talkCooldown=0.3; };
@@ -655,8 +695,23 @@ async function build(){
   if(ld){ld.classList.add('done'); setTimeout(()=>ld.remove(),600);}
 }
 
+// tiny time-of-day clock — analog hands + digital read-out; refreshed only when the
+// in-game minute changes (cheap), and tinted to night when the sun is down.
+let _clkMin=-1; const _clk={};
+function updateClock(){
+  if(!Sky.ready)return;
+  const c=Sky.clock(), key=c.h24*60+c.m; if(key===_clkMin)return; _clkMin=key;  // refresh on any minute change (incl. hour rollover)
+  if(!_clk.box){_clk.box=document.getElementById('clock');_clk.hr=document.getElementById('clockHr');
+    _clk.min=document.getElementById('clockMin');_clk.t=document.getElementById('clockTime');_clk.g=document.getElementById('clockGlyph');}
+  _clk.hr.setAttribute('transform','rotate('+c.hourDeg.toFixed(1)+' 12 12)');
+  _clk.min.setAttribute('transform','rotate('+c.minDeg.toFixed(1)+' 12 12)');
+  _clk.t.textContent=c.hhmm; _clk.g.textContent=c.isDay?'☀':'☾';
+  _clk.box.classList.toggle('night',!c.isDay);
+}
+
 function draw(dt){
-  if(!mesh){renderer.render(scene,cam);return;}
+  Sky.update(dt,cam);                       // advance day/night (wall clock — runs even while paused)
+  if(!mesh){FX.render();return;}
   if(talkCooldown>0)talkCooldown-=dt;
   if(playing)Dialogue.tick(dt);
   cameraFrame(S,dt);
@@ -687,6 +742,13 @@ function draw(dt){
   // NPCs: gentle paper breathing + greet hop
   npcs.forEach(o=>{
     const t=S.animClock+o.phase;
+    // discrete pose swap (Paper-Mario style: a hard image flip, no tween). The
+    // breathing/greet transforms below keep running on whichever image is shown.
+    if(o.rep&&o.rep.seq&&o.rep.seq.length>1){ o.repT+=dt;
+      if(o.repT>=o.rep.beat){ o.repT=0; o.repIdx=(o.repIdx+1)%o.rep.seq.length;
+        const nm=o.rep.seq[o.repIdx], tex=o.poses[nm];
+        if(tex){ o.mesh.material.map=tex; o.mesh.material.needsUpdate=true; }
+        if(o.rep.sfxOn===nm){ const pg=proxGain(o.data.x,o.data.z); if(pg>0) Sound.sfx('lift',pg); } } }
     let sy=1+0.02*Math.sin(t*2.0), yW=0;
     if(o.greet>0){o.greet=Math.max(0,o.greet-dt);const p=1-o.greet/0.5;
       yW=Math.sin(p*Math.PI)*0.5; sy=1+0.06*Math.sin(p*Math.PI);}
@@ -720,7 +782,8 @@ function draw(dt){
   // directly + Talk advances) so it never overlaps the dialogue box on small screens
   document.body.classList.toggle('talking',Dialogue.active);
 
-  renderer.render(scene,cam);
+  updateClock();
+  FX.render();
 }
 
 // ---------- audio: map sim-state transitions to one-shot SFX ----------
@@ -972,7 +1035,7 @@ addEventListener('pagehide',persist);
 setInterval(persist,10000);
 
 function resize(){const w=innerWidth||1280,h=innerHeight||800;renderer.setSize(w,h,false);
-  cam.aspect=w/h;cam.updateProjectionMatrix();}
+  cam.aspect=w/h;cam.updateProjectionMatrix();FX.setSize(w,h);}
 addEventListener('resize',resize);
 
 // ---------- mobile: iOS install guide + rotate-to-landscape + fullscreen ----------
@@ -1072,7 +1135,11 @@ window.game={
     a2hs:document.body.classList.contains('ios-web'),portraitLock:document.body.classList.contains('portrait-lock'),
     fsSupported,inFullscreen:inFullscreen(),btnShown:fsBtn.style.display==='block'}),
   fs:()=>{toggleFullscreen();return 'fs-toggle';},
+  // sky / day-night debug surface
+  time:(p)=>p===undefined?Sky.getTime():Sky.setTime(+p),        // 0=sunrise .25=noon .5=sunset .75=midnight
+  dayLength:(s)=>s===undefined?Sky.dayLength:Sky.setDayLength(+s),
 };
+window.sky=Sky;
 window.audio=Sound;
 build().catch(e=>{window.__err=String(e&&e.stack||e);console.error(e);
   const ld=document.getElementById('loader'); if(ld){ld.classList.add('err');

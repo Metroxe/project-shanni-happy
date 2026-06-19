@@ -16,7 +16,7 @@
 const CFG = {
   sfx: { hop: 0.34, land: 0.42, step: 0.09, move: 0.3, talk: 0.42, select: 0.42,
          squeak: 0.34, quest: 0.42, questStep: 0.44, questDone: 0.5, book: 0.4, bookClose: 0.36, flip: 0.3,
-         fs: 0.4 },
+         fs: 0.4, lift: 0.18 },
   blip: 0.17,
 };
 
@@ -200,6 +200,12 @@ const SFX = {
   fs(v) {
     noise({ dur: 0.2, gain: v * 0.34, freq: 900, q: 0.5, type: 'bandpass' });
     note({ type: 'triangle', f: semi(0), f2: semi(12), dur: 0.24, gain: v * 0.4, atk: 0.008 });
+  },
+  // soft effort "hnf" for a weight rep — a low woody note that lifts + a breathy
+  // puff. Fires on the up-swing of a pose loop; kept gentle since it repeats each rep.
+  lift(v) {
+    note({ type: 'sine', f: semi(-12), f2: semi(-6), dur: 0.17, gain: v * 0.7, atk: 0.02 });
+    noise({ dur: 0.12, gain: v * 0.4, freq: 600, q: 0.6 });
   },
 };
 

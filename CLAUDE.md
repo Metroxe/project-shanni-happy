@@ -9,12 +9,18 @@ Flat, minimal, **clean** Paper-Mario papercraft. NOT realistic, NOT anime, NOT n
 (noir was tried and dropped). "High fidelity" to this user = clean execution: no
 clutter, no clashing colours, no stray lines/artifacts, calm negative space.
 
-- One static graphic per NPC (chibi, generated in Gemini). The texture NEVER changes.
-- ALL animation = the paper cutout physically moving: hop-walk (squash on contact,
-  stretch in air, slight lean), jump (squash → launch → airborne → land squash),
-  contact shadow that shrinks/fades with height. Personality is in the motion, not
-  the texture. (The old "jump-for-joy" celebration + pastel sparkles were removed at
-  the user's request — do NOT re-add them.)
+- One base graphic per NPC (chibi, generated in Gemini), static by default. A *few*
+  characters add a SMALL set (1–3) of alternate **pose images** for the rare moment the
+  drawing itself must change (e.g. Chrees curling a dumbbell). These **hard-swap** —
+  instant, no tween, Paper-Mario style. Every pose image of a character shares ONE
+  canvas + foot baseline + body scale (registered by `studio/register_poses.py`,
+  vision-checked by `studio/qa_vision.py`) so the swap can't resize or unground them.
+  Most characters still have exactly one image. See the `papercraft-asset` skill §4.
+- ALL motion = the paper cutout physically moving: hop-walk (squash on contact, stretch
+  in air, slight lean), jump (squash → launch → airborne → land squash), contact shadow
+  that shrinks/fades with height. Personality is in the motion (and, sparingly, a pose
+  swap) — **never a tween between two drawings.** (The old "jump-for-joy" celebration +
+  pastel sparkles were removed at the user's request — do NOT re-add them.)
 - Character **Shen** = `studio/refs/shen-chibi-4.png` (pink bucket hat, round glasses,
   dark braids, dusty-rose jacket over gray tee, cream floral skirt).
 - Environments use the same flat pastel paper set (flat bands, soft rounded hills,
@@ -43,6 +49,17 @@ is a bug, not a "later." Stay on-aesthetic: soft, warm, calm pastel — never ha
 master chain caps level, but still pick gentle params). Like the art, personality lives in
 motion + sound, not in louder.
 
+**The second rule: world sounds are spatial.** A sound that comes from a *place* in the world
+— an NPC's animation loop, an ambient prop, a distant event — **must be attenuated by the
+player's distance to it**: full only when the player is near, fading with distance, and **not
+fired at all** once they're far. A world sound audible across the whole map is a bug, exactly
+like a silent interaction is. (Player-centric sounds — the player's own footsteps / jumps —
+and UI / dialogue sounds are *not* spatial; they play full.) Mechanism: pass a 0..1
+multiplier to `Sound.sfx(name, mul)`; `proxGain(x,z)` in `game.html` is the standard rolloff
+(full ≤~2.5u, squared falloff to silent ~9u, skips the call past the edge). **When you add any
+sound, ask: does it come from a spot in the world? If yes, gate it through `proxGain` in the
+same change** — same reflex as shipping its sound at all.
+
 **The system:** all **SFX + the dialogue voice** are **procedural Web Audio**, synthesized at
 play time in `studio/js/audio.js` — **no asset files for those** (same ethos as the art:
 programmatic, no hand-authoring). The module exports `Sound`; it's already wired into
@@ -62,6 +79,9 @@ OGG (`out/music/calm.ogg`), because real-time music synthesis isn't practical. I
   2. **Discrete UI/events** (menus, buttons, dialogue, transitions) → call `Sound.sfx('name')`
      right at the event site, or wire a `Dialogue.on*` hook (`onReveal`, `onChoiceOpen/Move/Pick`,
      `onLine`, `onEnd`) in `game.html`.
+- **Positional sounds are proximity-gated** — see the "world sounds are spatial" rule above; any
+  world-anchored sound goes through `proxGain` (Chrees' rep `lift` does), with the multiplier passed
+  to `Sound.sfx(name, mul)`.
 - **Dialogue voice:** the Charlie-Brown muted-brass "wah" is `Sound.blip(ch, speaker)`, one per
   revealed glyph (fired from `Dialogue.onReveal`). A new speaker gets its timbre in `VOICES`.
 - **Gesture gate:** browsers block audio until a user gesture — `Sound.resume()` is already
@@ -278,6 +298,13 @@ camera change with unrun or failing QA is not finished. Reference + harness:
   - **Sounds** (all procedural, `audio.js`): `squeak` (hamster), `quest`/`questStep`/`questDone`,
     `book`/`bookClose`/`flip`. Verified in preview: full lifecycle (accept→auto-track→complete),
     real dialogue acceptance for both NPCs, journal DOM + page-flip, save round-trip, **camera QA 0 fails**.
+- IN FLIGHT: **Premium look overhaul** (make it less "web-ish"). Working brief + A–Z of style
+  directions + concerns + method: **`studio/PREMIUM_LOOK.md`** — READ IT before doing visual work.
+  Two pieces already exist: (1) a post-processing finishing lens `studio/js/fx.js` (`EffectComposer`
+  presets `off|minimal|diorama|full`, toggle `window.__fx('diorama')`; **diorama accepted as the final
+  10% lens**; SSAO parked — billboard halo); (2) the **`papercraft-texture`** skill that fixes the
+  blurry/stretched surfaces (256px fixed-`repeat` → crisp seamless tiles + world-space UVs). The brief
+  says the real win is in the **bones** (palette, textures, toon, UI skin, character rim), not the lens.
 - NEXT (ideas): more NPCs/quests (drop-in: add art + a `world.json` npc/quest); conversation state
   (remember choices) — persist into the reserved `npcs:{}` slot already in the save blob; more zones/goals;
   per-mood music loops (6 palettes in `specs/all.json`); idle polish. NOTE: photos in the macOS **Photos library** are unreadable from bash
