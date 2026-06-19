@@ -399,6 +399,11 @@ const cam=new THREE.PerspectiveCamera(40,1,0.1,300);
 
 const SHEN_H=1.9, SHEN_W=SHEN_H*0.4634, GROUND_EPS=0.02;
 const WALK_HOP=0.24, MAX_LIFT=1.5, FH=0.95, PLAYER_R=0.42;
+// Framing guardrails (enforced by cameraQA.framing): Shen's sprite must fill >= this
+// fraction of viewport height (never a tiny dot), and the view must sit <= this far
+// below horizontal (a 3/4 view, never a top-down plan view). Design AIM is comfortably
+// inside these: ~0.14 size, <= ~32 deg pitch. These are the hard floor/ceiling.
+const CAM_MIN_FRAC=0.125, CAM_MAX_PITCH=40*Math.PI/180;
 const TALK_R=2.4; const _tv=new THREE.Vector3();
 // Positional NPC/world sound: full volume within HEAR_NEAR, silent past HEAR_FAR
 // (squared rolloff). Ambient animation loops (e.g. Chrees' reps) are only audible
@@ -499,10 +504,16 @@ function pointInZone(z,x,zc){const {along,across}=zoneLocal(z,x,zc);
 let ZONES=[],activeZone=null;
 const CAMRIG={pos:new THREE.Vector3(),tgt:new THREE.Vector3(),fov:40,pitch:0};
 let blend=null;
-function rigFor(zone,s){ const {fx,fz}=zoneAxis(zone);
-  const a=clampn(zoneLocal(zone,s.x,s.z).along,-zone.halfLen,zone.halfLen);
-  const cpx=zone.center[0]+fx*a, cpz=zone.center[1]+fz*a;
-  const gyCam=groundHeight(cpx,cpz), gyP=groundHeight(s.x,s.z), latx=-fz, latz=fx;
+function rigFor(zone,s){ const {fx,fz}=zoneAxis(zone); const latx=-fz, latz=fx;
+  const L=zoneLocal(zone,s.x,s.z);
+  const a=clampn(L.along,-zone.halfLen,zone.halfLen);
+  // Open-area zones (trackWid>0) ALSO follow the player across the axis, clamped to
+  // +/-trackWid, so a wide sideways wander can't grow the camera distance — Shen keeps a
+  // stable on-screen size. Corridor zones leave trackWid unset (b=0) → ride the centerline
+  // (the angle is still fixed; this only TRANSLATES the eye, never an orbit/free follow).
+  const b=zone.trackWid?clampn(L.across,-zone.trackWid,zone.trackWid):0;
+  const cpx=zone.center[0]+fx*a+latx*b, cpz=zone.center[1]+fz*a+latz*b;
+  const gyCam=groundHeight(cpx,cpz), gyP=groundHeight(s.x,s.z);
   return { pos:new THREE.Vector3(cpx-fx*zone.back+latx*zone.side, gyCam+zone.height, cpz-fz*zone.back+latz*zone.side),
     tgt:new THREE.Vector3(s.x+fx*zone.lookAhead, gyP+zone.lookY, s.z+fz*zone.lookAhead),
     fov:zone.fov, pitch:zone.pitchBias }; }
@@ -804,12 +815,36 @@ function shenVisible(){ cam.updateMatrixWorld();cam.matrixWorldInverse.copy(cam.
   const hit=_ray.intersectObjects(BUILDING_MESHES,false);
   if(hit.length)return {ok:false,why:'occluded',occ:hit[0].object.userData.bn||'?'};
   return {ok:true};}
+// FRAMING QA — separate from visibility: measures whether Shen is well-FRAMED at rest.
+// size = sprite height as a fraction of the viewport (project foot->head, NDC y spans 2);
+// pitch = how far below horizontal the camera looks. Guardrails: not a tiny dot, not top-down.
+function shenFraming(){ cam.updateMatrixWorld();cam.matrixWorldInverse.copy(cam.matrixWorld).invert();
+  const gy=groundHeight(S.x,S.z);
+  const foot=new THREE.Vector3(S.x,gy+0.04,S.z).project(cam);
+  const head=new THREE.Vector3(S.x,gy+SHEN_H,S.z).project(cam);
+  const size=Math.abs(head.y-foot.y)/2;
+  cam.getWorldDirection(_dir);
+  const pitch=Math.asin(clampn(-_dir.y,-1,1));
+  const r={size:+size.toFixed(3),pitchDeg:+(pitch*180/Math.PI).toFixed(1)};
+  if(size<CAM_MIN_FRAC)return Object.assign({ok:false,why:'too-small'},r);
+  if(pitch>CAM_MAX_PITCH)return Object.assign({ok:false,why:'too-steep'},r);
+  return Object.assign({ok:true},r); }
 window.cameraQA={
   warp:(x,z)=>_warp(x,z),
   static:(stepSz)=>{const cells=_reachable(stepSz),fails=[];
     for(const [x,z] of cells){_warp(x,z);const v=shenVisible();if(!v.ok)fails.push({x:+x.toFixed(1),z:+z.toFixed(1),why:v.why});}
     _warp(SCENE.spawn.x,SCENE.spawn.z);
     return {cells:cells.length,fails:fails.length,byReason:fails.reduce((a,f)=>((a[f.why]=(a[f.why]||0)+1),a),{}),sample:fails.slice(0,30)};},
+  // FRAMING sweep: at every reachable cell, assert Shen is big enough + not viewed top-down.
+  // Reports minSize / maxPitch across the map so you can tune back/height/fov to the AIM.
+  framing:(stepSz)=>{const cells=_reachable(stepSz),fails=[];let minSize=9,maxPitch=0;
+    for(const [x,z] of cells){_warp(x,z);const f=shenFraming();
+      if(f.size<minSize)minSize=f.size; if(f.pitchDeg>maxPitch)maxPitch=f.pitchDeg;
+      if(!f.ok)fails.push({x:+x.toFixed(1),z:+z.toFixed(1),why:f.why,size:f.size,pitchDeg:f.pitchDeg,zone:activeZone&&activeZone.id});}
+    _warp(SCENE.spawn.x,SCENE.spawn.z);
+    return {cells:cells.length,fails:fails.length,minSize:+minSize.toFixed(3),maxPitch:+maxPitch.toFixed(1),
+      byReason:fails.reduce((a,f)=>((a[f.why]=(a[f.why]||0)+1),a),{}),
+      byZone:fails.reduce((a,f)=>((a[f.zone]=(a[f.zone]||0)+1),a),{}),sample:fails.slice(0,30)};},
   transition:(from,to,steps)=>{steps=steps||700;const ws=started;started=true;_warp(from[0],from[1]);
     held.up=held.down=held.left=held.right=false;aiTarget={x:to[0],z:to[1]};const fails=[];let reached=false;
     for(let i=0;i<steps;i++){S=step(S,resolveInput(),1/60);cameraFrame(S,1/60);

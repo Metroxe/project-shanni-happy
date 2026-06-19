@@ -182,17 +182,29 @@ building it — it is part of "done", not a follow-up. Invoke the **`/zone-camer
 
 > **Shen must be visible from every reachable spot and through every transition.**
 
-Two design rules: **one fixed camera per zone** (never vary the angle by travel
-direction — that flips the eye into a wall on reversal), and **contain the player** so
-every reachable spot is inside a zone.
+But **visible is the floor, not the goal** — also enforce the **framing rules**:
+> **Shen is never a tiny dot (≥ ~13% of the screen, AIM ~15%+), and never looked
+> down on top-down (3/4 view, angle ≤ ~32°).** She sits BEHIND and slightly above,
+> not overhead. For an open area where she'd drift far, DON'T zoom out — keep the camera
+> close and use a zone **`trackWid`** so the eye follows her across the field (constant
+> size). The hard floor/ceiling are `CAM_MIN_FRAC` / `CAM_MAX_PITCH` in `game.html`.
+
+Three design rules: **one fixed camera per zone** (never vary the angle by travel
+direction — that flips the eye into a wall on reversal), **contain the player** so
+every reachable spot is inside a zone, and **keep her big + low-angle** (small-ish
+`back`, `height` ≲ ~0.7×`back`; pulling `back` way out to flatten the angle is the trap
+that shrinks her and walks the eye into neighbouring buildings).
 
 Workflow every time: author the camera → serve the worktree on localhost (never
-`file://`) → in the preview run `cameraQA.static()`, `cameraQA.transition([a],[b])` for
+`file://`) → in the preview run `cameraQA.static()` (visibility) AND `cameraQA.framing()`
+(size + angle; reports `minSize`/`maxPitch`), `cameraQA.transition([a],[b])` for
 cross-junction pairs, AND `cameraQA.path([...])` for **round-trips** (down a road and
-back, up the stairs and back — reversals hit transitions a one-way sweep misses) →
-`game.warp(x,z,true)` + screenshot any failure → fix → re-run until **0 failures**. A
-camera change with unrun or failing QA is not finished. Reference + harness:
-`studio/test-scene.html`.
+back, up the stairs and back — reversals hit transitions a one-way sweep misses; they
+also catch a blend grazing a building that `static` won't) → `cameraQA.warp(x,z)` +
+screenshot any failure → fix → re-run until **0 failures** on both. (The occlusion
+check raycasts BUILDINGS only, so eyeball prop-heavy areas — a tree between camera and
+Shen won't be flagged.) A camera change with unrun or failing QA is not finished.
+Reference + harness: `studio/test-scene.html`.
 
 ## World/asset QA gate — RUN EVERY PUSH that touches a world or asset (not optional)
 
@@ -239,11 +251,18 @@ believable objects (hedges / construction `barrier`), backfill with `buildBackdr
 | Props that don't belong / overlap | bushes on a road, bench on a bush → streets = lamps/trees, park = bushes; space props ≥~3u; the `placement` lens |
 | Edits not showing on reload | browser cached `specs/world.json` → it's fetched `cache:'no-store'`; hard-reload |
 
-Debug hooks (all on `window`): `cameraQA.{static,path,transition,reach,walk}`,
+Debug hooks (all on `window`): `cameraQA.{static,framing,path,transition,reach,walk,warp}`,
 `__overlaps()`, `__colliders(x,z,r)`, `__freecam/__look` (free-cam for QA shots).
 
 ## Status / next
 
+- DONE: **Camera framing pass** — every zone retuned to a calmer 3/4 view (no top-down;
+  the worst, the `corner`, went from ~56° to ~26°) and a bigger Shen (min ~13%, AIM ~15%+
+  of screen). New **`trackWid`** zone field gives the open `park` a 2D follow so she stays
+  a constant size wherever she roams (was a tiny dot off-centre). New **`cameraQA.framing()`**
+  + `CAM_MIN_FRAC`/`CAM_MAX_PITCH` guardrails in `game.html` make "not too small / not
+  top-down" permanent 0-failure gates. Full QA green (framing, visibility, round-trips).
+  Rules written into `/zone-camera` (SKILL + REFERENCE) and the Cameras section above.
 - DONE: character cutout + die-cut; walk + jump (hop); 6 environment moods;
   pipeline migrated into the repo; **3D Paper-Mario game loop** (`studio/game.html`
   + `studio/js/sim.js`) — perspective follow-camera (Shen always centred),
