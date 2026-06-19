@@ -121,7 +121,7 @@ const DOME_FRAG=`uniform vec3 top; uniform vec3 hor; varying vec3 vDir;
   void main(){ float t=smoothstep(0.0,0.55,vDir.y); gl_FragColor=vec4(mix(hor,top,t),1.0);}`;
 
 export const Sky = {
-  ready:false, phase:0, dayLength:240, group:null, dome:null, sun:null, moon:null,
+  ready:false, phase:0, dayLength:1440, group:null, dome:null, sun:null, moon:null,
   stars:null, clouds:[], dir:null, hemi:null, _scene:null, _broke:false, _arc:null,
   _pal:{top:new THREE.Color(),hor:new THREE.Color(),dir:new THREE.Color(),
         hs:new THREE.Color(),hg:new THREE.Color(),ct:new THREE.Color(),hi:2,co:1,st:0},
@@ -130,7 +130,7 @@ export const Sky = {
   build(scene, cfg={}){
     try{
       this._scene=scene;
-      this.dayLength=cfg.dayLength||240;
+      this.dayLength=cfg.dayLength||1440;   // 24-min day; matches world.json so a stale/missing config can't run fast
       this.phase=((cfg.startPhase??0.16)%1+1)%1;
       this._arc=cfg.arc||{};          // {spread,depth,elev} tuning for the sun/moon path
       const DOME_R=cfg.domeR||250, DISC_R=cfg.discR||200, STAR_R=cfg.starR||232;
@@ -302,5 +302,5 @@ export const Sky = {
   getTime(){ const labels=[[0.05,'dawn'],[0.20,'morning'],[0.34,'noon'],[0.46,'afternoon'],[0.52,'sunset'],[0.66,'dusk'],[0.92,'night'],[1.01,'pre-dawn']];
     let l='night'; for(const[a,n]of labels){ if(this.phase<a){l=n;break;} }
     return {phase:+this.phase.toFixed(3), label:l, dayLength:this.dayLength}; },
-  setDayLength(s){ this.dayLength=Math.max(8,+s||240); return this.dayLength; },
+  setDayLength(s){ this.dayLength=Math.max(8,+s||1440); return this.dayLength; },
 };
