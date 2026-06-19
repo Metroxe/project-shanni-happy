@@ -26,9 +26,11 @@ export function setBounds(b) {
   WORLD.XMIN = b.xmin; WORLD.XMAX = b.xmax; WORLD.ZMIN = b.zmin; WORLD.ZMAX = b.zmax;
 }
 
-export function initState(collectibles) {
+export function initState(collectibles, spawn) {
   return {
-    x: 0, z: 2, vx: 0, vz: 0, y: 0, vy: 0,
+    x: (spawn && Number.isFinite(spawn.x)) ? spawn.x : 0,
+    z: (spawn && Number.isFinite(spawn.z)) ? spawn.z : 2,
+    vx: 0, vz: 0, y: 0, vy: 0,
     onGround: true, facing: 1,
     walkPhase: 0, animClock: 0,
     mode: 'idle',

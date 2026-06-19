@@ -194,6 +194,54 @@ back, up the stairs and back — reversals hit transitions a one-way sweep misse
 camera change with unrun or failing QA is not finished. Reference + harness:
 `studio/test-scene.html`.
 
+## World/asset QA gate — RUN EVERY PUSH that touches a world or asset (not optional)
+
+Whenever you add/move/retexture buildings, props, surfaces, terrain, colliders, or a new
+asset, you MUST run this gate before calling it done / before `/deploy`. `/zone-camera`
+proves Shen is *visible*; it does NOT prove the world *looks right* or is *traversable*.
+These bugs recur every build — audit for ALL of them, every time. Full how-to +
+detection commands + root-cause code refs live in the **`/papercraft-env-qa`** skill
+(this is the standing summary so it's not forgotten between sessions).
+
+**The gate (all must pass):**
+1. `node test/smoke.mjs studio` → green (boots, no JS errors).
+2. `node studio/qa_shots.mjs` → captures the zone battery + flicker pairs + a **per-object
+   close-up of EVERY placed prop & building** (`studio/out/qa/props/`) AND prints
+   **`✓ geometry audit clean`** (`window.__overlaps()`=`[]` and `cameraQA.reach()` all
+   reachable). Footprint overlaps = z-fight/clipping; unreachable = a wall blocks a route.
+   **Every single thing placed in a session must be screenshotted and looked at** — zone
+   shots hide per-object defects (a barrier that reads as a bench, a prop facing wrong, a
+   shrub clipping a wall). Inspect the `props/` close-ups, not just the wide shots.
+3. In the preview (`/zone-camera`): `cameraQA.static()`=0 + `cameraQA.path()` round-trips=0,
+   AND `cameraQA.walk([a],[b])` on every corridor (`stuckAt` null).
+4. **Multi-agent picture sweep** over `studio/out/qa/*.png` (template
+   `.claude/skills/papercraft-env-qa/visual-qa.workflow.js`) — but trust the geometric
+   audit over the sweep's synthesizer (it once mis-dismissed a real z-fight as a "hedge join").
+   Fix everything found → re-shoot → repeat until clean.
+
+**Two cardinal rules:** (1) **Never the abyss** — no reachable spot/angle may see off the
+edge of the world; build PAST the edge, ring open areas with buildings, block with
+believable objects (hedges / construction `barrier`), backfill with `buildBackdrop()` + fog.
+(2) **Stay on the locked look** — no clipping, no stray outlines, no clashing colours.
+
+**Recurring failure modes → root cause → fix (audit for each):**
+| Symptom | Cause → Fix |
+|---|---|
+| Windows/door sunk into ground | building `base`=`groundHeight`; box `bottom=base` (NO downward extension) |
+| Dark squares / mottled patch / flicker on a park-edge wall | box extended below base INTO the retaining wall (vertical z-fight) → `bottom=base` |
+| Two buildings/stairs flicker where they meet | overlapping footprints → `window.__overlaps()` must be `[]`; separate them |
+| Road/plaza/sidewalk shimmer seam | coplanar surfaces same height → distinct per-kind `y`-eps (+ `lift`) |
+| Stray white/cream outline lines | `EdgesGeometry` on the wrong thing → `edge=false` on buildings + rounded/small props (keep only as deliberate die-cut) |
+| "Invisible circle" blocks a path | coarse box collider (`r=0.5·min(w,d)` → r=2 bulge) → tight perimeter ring (~0.55); confirm with `cameraQA.walk` |
+| Silent unreachable area | a stray collider walled it off → `cameraQA.reach()` `unreachable` must be `[]` |
+| Clip THROUGH a prop (slide/climber) | one centre collider → per-part `cols:[{dx,dz,r}]` |
+| Prop faces the wrong way | make it orientation-free (lamp = top globe) or set per-prop `rot` |
+| Props that don't belong / overlap | bushes on a road, bench on a bush → streets = lamps/trees, park = bushes; space props ≥~3u; the `placement` lens |
+| Edits not showing on reload | browser cached `specs/world.json` → it's fetched `cache:'no-store'`; hard-reload |
+
+Debug hooks (all on `window`): `cameraQA.{static,path,transition,reach,walk}`,
+`__overlaps()`, `__colliders(x,z,r)`, `__freecam/__look` (free-cam for QA shots).
+
 ## Status / next
 
 - DONE: character cutout + die-cut; walk + jump (hop); 6 environment moods;
