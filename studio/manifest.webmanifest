@@ -1,0 +1,16 @@
+{
+  "name": "Shen",
+  "short_name": "Shen",
+  "description": "A little papercraft game.",
+  "start_url": "game.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#e9f1ea",
+  "theme_color": "#e9f1ea",
+  "icons": [
+    { "src": "out/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "out/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "out/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

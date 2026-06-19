@@ -15,7 +15,8 @@
 
 const CFG = {
   sfx: { hop: 0.34, land: 0.42, step: 0.09, move: 0.3, talk: 0.42, select: 0.42,
-         squeak: 0.34, quest: 0.42, questStep: 0.44, questDone: 0.5, book: 0.4, bookClose: 0.36, flip: 0.3 },
+         squeak: 0.34, quest: 0.42, questStep: 0.44, questDone: 0.5, book: 0.4, bookClose: 0.36, flip: 0.3,
+         fs: 0.4 },
   blip: 0.17,
 };
 
@@ -194,6 +195,11 @@ const SFX = {
   flip(v) {
     noise({ dur: 0.11, gain: v * 0.4, freq: 2600, q: 0.7, type: 'bandpass' });
     noise({ t0: 0.025, dur: 0.10, gain: v * 0.3, freq: 1500, q: 0.6 });
+  },
+  // fullscreen toggle: a soft airy paper "whoosh" opening up + a gentle rise
+  fs(v) {
+    noise({ dur: 0.2, gain: v * 0.34, freq: 900, q: 0.5, type: 'bandpass' });
+    note({ type: 'triangle', f: semi(0), f2: semi(12), dur: 0.24, gain: v * 0.4, atk: 0.008 });
   },
 };
 
