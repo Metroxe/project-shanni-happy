@@ -1,23 +1,49 @@
 <!doctype html><html><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#e9f1ea">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Shen">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" sizes="180x180" href="out/apple-touch-icon.png">
+<link rel="apple-touch-icon" sizes="167x167" href="out/apple-touch-icon-167.png">
+<link rel="apple-touch-icon" sizes="152x152" href="out/apple-touch-icon-152.png">
+<link rel="apple-touch-icon-precomposed" sizes="180x180" href="out/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="out/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="out/icon-192.png">
 <style>
   html,body{margin:0;height:100%;background:#e9f1ea;overflow:hidden;
     font-family:-apple-system,Segoe UI,Roboto,sans-serif;touch-action:none}
   /* nothing in the game is text-selectable — it's a game, not a document */
   *{-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;
     -webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
-  #c{display:block;position:fixed;inset:0;width:100vw;height:100vh}
+  /* dvh keeps the canvas matched to the *visible* viewport as the mobile URL bar
+     shows/hides (100vh would over-extend under it); vh is the desktop fallback. */
+  #c{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100dvh}
   .panel{position:fixed;background:rgba(255,255,255,.74);border:1px solid #d6c9b2;
     border-radius:11px;padding:6px 11px;color:#5a564e;font-size:14px}
   /* tiny time-of-day clock (top-left; the flowers HUD that used to sit here is gone) */
-  #clock{left:14px;top:12px;display:flex;align-items:center;gap:5px;padding:4px 9px 4px 5px}
+  #clock{left:calc(14px + env(safe-area-inset-left));top:calc(12px + env(safe-area-inset-top));
+    display:flex;align-items:center;gap:5px;padding:4px 9px 4px 5px}
   #clockFace{display:block}
   #clockGlyph{font-size:12px;line-height:1}
   #clockTime{color:#7a756c;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:.3px}
   #clock.night{background:rgba(58,63,100,.78);border-color:#4a4f7e}
   #clock.night #clockTime{color:#e7e6f2}
-  #hint{right:14px;top:12px;color:#7a756c;font-size:12px;background:rgba(255,255,255,.6)}
-  #bMenu{position:fixed;right:14px;top:44px;font-size:16px;padding:4px 11px;line-height:1.2;z-index:21}
+  #hint{right:calc(14px + env(safe-area-inset-right));top:calc(12px + env(safe-area-inset-top));
+    color:#7a756c;font-size:12px;background:rgba(255,255,255,.6)}
+  #bMenu{position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(44px + env(safe-area-inset-top));
+    font-size:16px;padding:4px 11px;line-height:1.2;z-index:21}
+  /* fullscreen toggle: sits just left of the journal button, mobile-only (JS shows
+     it solely when the Fullscreen API is supported, so iPhone Safari never gets a
+     dead control). Inline-SVG corner glyph: expand when windowed, contract in FS. */
+  #bFull{position:fixed;top:calc(44px + env(safe-area-inset-top));
+    right:calc(58px + env(safe-area-inset-right));display:none;padding:5px 8px;line-height:0;z-index:21}
+  #bFull svg{width:18px;height:18px;display:block;stroke:currentColor;fill:none;
+    stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+  #bFull .fs-out{display:none}
+  #bFull.on .fs-in{display:none}#bFull.on .fs-out{display:block}
   /* journal (book) — replaces the pause menu */
   #journal{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;
     background:rgba(70,64,52,.30);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
@@ -101,10 +127,12 @@
     color:#b76b7d;font-size:13px;font-weight:600;white-space:nowrap;pointer-events:none;
     opacity:0;transition:opacity .25s,transform .25s;box-shadow:0 4px 14px rgba(90,80,60,.16)}
   #qtoast.on{opacity:1;transform:translateX(-50%) translateY(0)}
-  #dpad{position:fixed;left:18px;bottom:18px;display:grid;gap:6px;
+  #dpad{position:fixed;left:calc(18px + env(safe-area-inset-left));
+    bottom:calc(18px + env(safe-area-inset-bottom));display:grid;gap:6px;
     grid-template-columns:repeat(3,50px);grid-template-rows:repeat(3,50px);
     grid-template-areas:". u ." "l m r" ". d .";}
-  #acts{position:fixed;right:18px;bottom:22px;display:flex;gap:10px}
+  #acts{position:fixed;right:calc(18px + env(safe-area-inset-right));
+    bottom:calc(22px + env(safe-area-inset-bottom));display:flex;gap:10px}
   button.btn{font:inherit;border-radius:12px;border:1px solid #d6c9b2;
     background:rgba(255,255,255,.85);color:#5a564e;cursor:pointer;user-select:none;touch-action:none}
   button.btn:active{background:#f0e6d8;transform:scale(.95)}
@@ -113,7 +141,7 @@
   #acts .btn{font-size:16px;padding:12px 18px}
   #bTalk.near{background:#f6e7ea;border-color:#e6b9c6;color:#b76b7d}
   /* dialogue */
-  #dlg{position:fixed;left:50%;bottom:18px;transform:translateX(-50%) translateY(14px);
+  #dlg{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(14px);
     width:min(680px,calc(100vw - 32px));box-sizing:border-box;
     background:rgba(255,253,248,.95);border:1px solid #d6c9b2;border-radius:16px;
     padding:14px 18px 18px;color:#5a564e;box-shadow:0 6px 22px rgba(90,80,60,.18);
@@ -188,6 +216,55 @@
   .tbtn.danger{background:#f7e3e3;border-color:#e6b9b9;color:#b76b6b}
   .tbtn[hidden]{display:none}
   #buildTag{margin-top:14px;font-size:11px;color:#bcb4a6;letter-spacing:.3px}
+  /* rotate-to-landscape overlay: only shown (via body.portrait-lock, set by JS on
+     touch devices held in portrait) over the whole screen; auto-hides on rotate. */
+  #rotate{position:fixed;inset:0;z-index:120;display:none;flex-direction:column;
+    align-items:center;justify-content:center;gap:20px;padding:28px;box-sizing:border-box;
+    text-align:center;background:radial-gradient(120% 120% at 50% 35%,#eef4ee,#e4ece4)}
+  body.portrait-lock #rotate{display:flex}
+  .rphone{width:78px;height:138px;border-radius:16px;border:3px solid #c8b9a0;background:#fffdf8;
+    position:relative;box-shadow:0 10px 26px rgba(90,80,60,.16);transform-origin:50% 50%;
+    animation:rtip 2.6s ease-in-out infinite}
+  .rphone::before{content:'';position:absolute;left:50%;top:9px;width:20px;height:3px;border-radius:2px;
+    background:#e6dcc8;transform:translateX(-50%)}
+  .rphone::after{content:'✿';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    color:#e6b9c6;font-size:34px}
+  #rotate h2{margin:0;font-size:21px;font-weight:700;color:#c27d8b;letter-spacing:.3px}
+  #rotate p{margin:0;font-size:13px;color:#9a948a;line-height:1.6}
+  @keyframes rtip{0%,32%{transform:rotate(0)}64%,100%{transform:rotate(-90deg)}}
+  @media (prefers-reduced-motion:reduce){.rphone{animation:none;transform:rotate(-90deg)}}
+  /* iOS Safari "Add to Home Screen" guide: shown via body.ios-web (set by JS only
+     on iPhone/iPad in a browser TAB, never in the installed standalone app, where
+     the rotate prompt takes over instead). The route to a chromeless iOS game. */
+  #a2hs{position:fixed;inset:0;z-index:130;display:none;flex-direction:column;
+    align-items:center;justify-content:safe center;gap:13px;padding:26px;box-sizing:border-box;
+    overflow-y:auto;text-align:center;background:radial-gradient(120% 120% at 50% 38%,#eef4ee,#e4ece4)}
+  body.ios-web #a2hs{display:flex}
+  #a2hs .ic{width:90px;height:90px;border-radius:21px;box-shadow:0 8px 22px rgba(90,80,60,.18)}
+  #a2hs h2{margin:2px 0 0;font-size:21px;font-weight:700;color:#c27d8b;letter-spacing:.3px}
+  #a2hs .lead{margin:0;font-size:13px;color:#9a948a;line-height:1.6;max-width:300px}
+  #a2hs .steps{display:flex;flex-direction:column;gap:9px;margin:3px 0 2px}
+  #a2hs .step{display:flex;align-items:center;gap:11px;font-size:14px;color:#5a564e;box-sizing:border-box;
+    background:rgba(255,255,255,.7);border:1px solid #e0d4bf;border-radius:13px;padding:10px 15px;max-width:320px}
+  #a2hs .step svg{width:25px;height:25px;flex:none;stroke:#c27d8b;fill:none;
+    stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+  #a2hs .step b{color:#b76b7d}
+  #a2hs .skip{margin-top:4px;font-size:13px;color:#a99e8b;background:none;border:none;
+    text-decoration:underline;cursor:pointer;font:inherit;-webkit-tap-highlight-color:transparent}
+  #a2hs .step span{text-align:left}
+  #a2hs .hint2{margin:3px 0 0;font-size:11.5px;color:#b3aa9a;line-height:1.65;max-width:300px}
+  /* touch devices: the on-screen controls replace the keyboard, so drop the
+     desktop key hint, and keep the dialogue box clear of the d-pad while talking. */
+  @media (pointer:coarse){
+    #hint{display:none}
+    body.talking #dpad{display:none}
+  }
+  /* short landscape (phones held sideways): trim the dialogue width so it never
+     tucks under the corner controls, and nudge it up off the home indicator. */
+  @media (max-height:520px) and (orientation:landscape){
+    #dlg{width:min(560px,calc(100vw - 230px))}
+    #dlgText{font-size:15px;min-height:2.7em}
+  }
 </style>
 <script type="importmap">{"imports":{
   "three":"https://unpkg.com/three@0.160.0/build/three.module.js",
@@ -214,6 +291,10 @@
   </svg><span id="clockGlyph">☀</span><b id="clockTime">6:24</b></div>
 <div class="panel" id="hint">arrows / WASD move · space hop · E talk · Esc journal</div>
 <button class="btn" id="bMenu" aria-label="journal" title="journal (Esc)">📖</button>
+<button class="btn" id="bFull" aria-label="fullscreen" title="fullscreen">
+  <svg class="fs-in" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3H3v6"/><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M15 21h6v-6"/></svg>
+  <svg class="fs-out" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h6V3"/><path d="M21 9h-6V3"/><path d="M3 15h6v6"/><path d="M21 15h-6v6"/></svg>
+</button>
 <div id="dpad">
   <button class="btn" id="bU" aria-label="up">▲</button>
   <button class="btn" id="bL" aria-label="left">◀</button>
@@ -273,6 +354,32 @@
   </div>
 </div>
 <div id="qtoast"></div>
+<div id="rotate">
+  <div class="rphone"></div>
+  <h2>Turn your phone sideways</h2>
+  <p>Shen's little world is wider that way. ✿<br>Rotate to landscape to play.</p>
+</div>
+<div id="a2hs">
+  <img class="ic" src="out/apple-touch-icon.png" alt="Shen app icon" width="90" height="90">
+  <h2>Add Shen to your Home Screen</h2>
+  <p class="lead">Play full-screen with no browser bars. In Safari:</p>
+  <div class="steps">
+    <div class="step">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.2" width="17" height="13.6" rx="4.2"/><path d="M7.6 10.5h8.8"/><path d="M7.6 13.9h5.4"/></svg>
+      <span>Tap the <b>menu button</b> just left of the URL (refresh is on the right)</span>
+    </div>
+    <div class="step">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14.2V3.1"/><path d="M8.3 6.7 12 3 15.7 6.7"/><path d="M8 9.6H6.6A2.6 2.6 0 0 0 4 12.2v6.4A2.6 2.6 0 0 0 6.6 21.2h10.8A2.6 2.6 0 0 0 20 18.6v-6.4a2.6 2.6 0 0 0-2.6-2.6H16"/></svg>
+      <span>In that menu, tap <b>Share</b> (a box with an <b>↑</b> arrow)</span>
+    </div>
+    <div class="step">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.6" y="3.6" width="16.8" height="16.8" rx="5"/><path d="M12 8.1v7.8"/><path d="M8.1 12h7.8"/></svg>
+      <span>Scroll the menu and tap <b>Add to Home Screen</b></span>
+    </div>
+  </div>
+  <p class="hint2">On iOS 26 the Share button lives inside that menu, not on the bar. Easiest with your phone upright. ✿</p>
+  <button class="skip" id="a2hsSkip">play in the browser instead</button>
+</div>
 <script type="module">
 import * as THREE from 'three';
 import { WORLD, initState, step, setBounds, setColliders } from './js/sim.js';
@@ -949,9 +1056,15 @@ function draw(dt){
     tp.textContent='💬 Talk to '+nearNpc.data.name;
     tp.classList.add('on');
   } else tp.classList.remove('on');
-  // the Talk action button only appears when you're beside someone to talk to
+  // the Talk action button only appears when you're beside someone to talk to;
+  // mid-conversation it doubles as a clear "advance" affordance.
   const talkable=!!nearNpc||Dialogue.active, bTalk=document.getElementById('bTalk');
   bTalk.hidden=!talkable; bTalk.classList.toggle('near',talkable);
+  const bLbl=Dialogue.active?'next ▾':'talk 💬';
+  if(bTalk.textContent!==bLbl)bTalk.textContent=bLbl;
+  // on touch, hide the d-pad mid-conversation (movement is gated; choices are tapped
+  // directly + Talk advances) so it never overlaps the dialogue box on small screens
+  document.body.classList.toggle('talking',Dialogue.active);
 
   updateClock();
   FX.render();
@@ -1117,6 +1230,20 @@ holdBtn('bL',v=>held.left=v);holdBtn('bR',v=>held.right=v);
 document.getElementById('bHop').addEventListener('click',()=>{if(!Dialogue.active)edgeJump=true;});
 document.getElementById('bTalk').addEventListener('click',()=>{
   if(Dialogue.active)Dialogue.advance(); else edgeTalk=true;});
+// ----- tap to progress dialogue (mobile-friendly) -----
+// Tapping the dialogue box OR the scene advances the line, the way every mobile
+// game works. Choices are tapped directly, so ignore taps on a choice / while the
+// choice menu is open (there you pick an option, you don't "continue").
+function tapAdvance(e){
+  if(!Dialogue.active) return;
+  if(e&&e.target&&e.target.closest&&e.target.closest('.dlgChoice')) return; // choice handles itself
+  if(Dialogue.choiceMode) return;                                          // pick a choice, don't advance
+  if(e) e.preventDefault();
+  Sound.resume();
+  Dialogue.advance();
+}
+document.getElementById('dlg').addEventListener('pointerdown',tapAdvance);
+canvas.addEventListener('pointerdown',e=>{ if(started) tapAdvance(e); });
 function resolveInput(){
   if(!started||Dialogue.active) return {moveX:0,moveZ:0,jump:false};
   // camera-relative: UP = into the screen (where the camera looks), LEFT/RIGHT = screen-relative
@@ -1196,6 +1323,66 @@ function resize(){const w=innerWidth||1280,h=innerHeight||800;renderer.setSize(w
   cam.aspect=w/h;cam.updateProjectionMatrix();FX.setSize(w,h);}
 addEventListener('resize',resize);
 
+// ---------- mobile: iOS install guide + rotate-to-landscape + fullscreen ----------
+// "touch device" = coarse pointer / no hover. We only ever nag-to-rotate or show
+// the fullscreen button on these; a narrow desktop window is left alone.
+const isTouch=()=> (matchMedia('(pointer:coarse)').matches || matchMedia('(hover:none)').matches
+  || 'ontouchstart' in window);
+const UA=navigator.userAgent||'';
+// iPadOS 13+ reports as "MacIntel" with a touch screen, so sniff that too.
+const isIPad=()=> /ipad/i.test(UA) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+const isIOS=()=> /ip(hone|od)/i.test(UA) || isIPad();
+// "standalone" = launched from the Home Screen (iOS) or installed PWA (Android).
+const isStandalone=()=> navigator.standalone===true
+  || matchMedia('(display-mode: standalone)').matches
+  || matchMedia('(display-mode: fullscreen)').matches;
+const A2HS_SKIP='shen.a2hs.skip';
+const skipA2HS=()=>{try{return localStorage.getItem(A2HS_SKIP)==='1';}catch(e){return false;}};
+
+// Decide which (if any) full-screen overlay applies. Precedence:
+//   iOS Safari tab (not installed) → "Add to Home Screen" guide (any orientation),
+//   otherwise (incl. the installed iOS app + Android) → rotate prompt when portrait.
+function updateOrientation(){
+  const portrait=(innerHeight>innerWidth);
+  const a2hs=isIOS() && !isStandalone() && !skipA2HS();
+  document.body.classList.toggle('ios-pad', a2hs && isIPad());
+  document.body.classList.toggle('ios-web', a2hs);
+  document.body.classList.toggle('portrait-lock', !a2hs && isTouch() && portrait);
+}
+updateOrientation();
+addEventListener('orientationchange',updateOrientation);
+addEventListener('resize',updateOrientation);
+// "play in the browser instead": remember the choice so we don't nag on return
+const a2hsSkip=document.getElementById('a2hsSkip');
+if(a2hsSkip)a2hsSkip.addEventListener('click',e=>{e.preventDefault();
+  try{localStorage.setItem(A2HS_SKIP,'1');}catch(err){} updateOrientation();});
+
+// Fullscreen API is absent on iPhone Safari (only iPad/desktop/Android expose it),
+// so the button is shown ONLY where it actually works, never a dead control.
+const fsBtn=document.getElementById('bFull'), fsEl=document.documentElement;
+const reqFs=fsEl.requestFullscreen||fsEl.webkitRequestFullscreen;
+const fsSupported=!!reqFs && (document.fullscreenEnabled||document.webkitFullscreenEnabled||false);
+const inFullscreen=()=> !!(document.fullscreenElement||document.webkitFullscreenElement);
+function applyFsIcon(){fsBtn.classList.toggle('on',inFullscreen());
+  fsBtn.title=inFullscreen()?'exit fullscreen':'fullscreen';}
+async function toggleFullscreen(){
+  Sound.resume(); Sound.sfx('fs');
+  try{
+    if(!inFullscreen()){
+      const p=reqFs.call(fsEl); if(p&&p.then)await p;
+      try{await screen.orientation.lock('landscape');}catch(e){}   // best-effort (Android in FS)
+    }else{
+      const ex=document.exitFullscreen||document.webkitExitFullscreen; if(ex){const p=ex.call(document);if(p&&p.then)await p;}
+      try{screen.orientation.unlock();}catch(e){}
+    }
+  }catch(e){/* user dismissed or unsupported gesture, ignore */}
+}
+if(fsSupported && isTouch()) fsBtn.style.display='block';
+fsBtn.addEventListener('click',e=>{e.preventDefault();toggleFullscreen();});
+['fullscreenchange','webkitfullscreenchange'].forEach(ev=>
+  document.addEventListener(ev,()=>{applyFsIcon();resize();}));
+applyFsIcon();
+
 // ---------- AI / debug control surface ----------
 window.game={
   state:()=>({x:+S.x.toFixed(2),z:+S.z.toFixed(2),y:+S.y.toFixed(2),mode:S.mode,
@@ -1228,6 +1415,11 @@ window.game={
   music:(v)=>{Sound.resume();return v===undefined?Sound.toggleMusic():Sound.setMusicVolume(+v);},
   say:(t='Hello there, friend!',who='Chrees')=>{Sound.resume();Sound.newLine();
     [...String(t)].forEach((c,i)=>setTimeout(()=>Sound.blip(c,who),i*60));return 'say';},
+  // mobile debug surface
+  mobile:()=>({touch:isTouch(),ios:isIOS(),ipad:isIPad(),standalone:isStandalone(),
+    a2hs:document.body.classList.contains('ios-web'),portraitLock:document.body.classList.contains('portrait-lock'),
+    fsSupported,inFullscreen:inFullscreen(),btnShown:fsBtn.style.display==='block'}),
+  fs:()=>{toggleFullscreen();return 'fs-toggle';},
   // sky / day-night debug surface
   time:(p)=>p===undefined?Sky.getTime():Sky.setTime(+p),        // 0=sunrise .25=noon .5=sunset .75=midnight
   dayLength:(s)=>s===undefined?Sky.dayLength:Sky.setDayLength(+s),
