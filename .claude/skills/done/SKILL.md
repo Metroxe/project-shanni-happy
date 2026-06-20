@@ -14,6 +14,11 @@ concurrent sessions'), sync the primary checkout, then tear down the worktree. P
 NEVER auto-commit, force-push, push to `main` directly, or discard unmerged work without
 explicit confirmation. If anything isn't safe, stop and report.
 
+**Minimize interaction — you're wrapping up a job you were trusted to finish, not checking
+in.** The only thing you may prompt for is the single go-live gate in Step 2 (and only when
+there's pending work). Worktree teardown and serve/preview shutdown happen silently. End on
+a one-line goal verdict.
+
 ## Step 0 — Snapshot pending state
 ```sh
 git rev-parse --abbrev-ref HEAD
@@ -29,16 +34,22 @@ git log --oneline HEAD..origin/main     # local commits not yet on main
 ```
 If this is the main checkout (not a linked worktree), there's nothing to finalize — say so and stop.
 
-## Step 2 — Handle pending work
+## Step 2 — The go-live gate (the one decision that's the user's)
 If `HAD_PENDING` is false (clean tree, everything already on `main`), skip to Step 3.
 
-Otherwise ask with **AskUserQuestion** (header "Pending"):
-- **Ship it (/deploy)** *(recommended when the work is finished)* — invoke the `/deploy` skill; let it run all the way to merge + live. Shipping always goes through `/deploy`'s PR — never push to `main` here.
+Otherwise this is the single human decision in the wrap-up. Ask with **AskUserQuestion**
+(header "Ship it?"), and **lead the question text with the goal verdict** so the user knows
+what they're approving — e.g. *"Goal: pet-shop music per-scene. Done and QA-clean. Go live?"*
+- **Ship it (/deploy)** *(default — work finished and meant to go live)* — invoke the
+  `/deploy` skill; let it run all the way to merge + live (silently). Shipping always goes
+  through `/deploy`'s PR — never push to `main` here.
 - **Stash** — `git stash push -u -m "done: <short context>"` (recover later with `git stash pop`).
-- **Leave it** — keep the branch + worktree + dev server exactly as-is to return to later; skip the teardown (go straight to Step 7, Report).
-- **Discard** — destructive; confirm first, then `git reset --hard && git clean -fd`.
+- **Leave it** — keep the branch + worktree + dev server as-is to return to later; skip the teardown (go straight to Step 7).
+- **Discard** — destructive, work gone for good; never pick this yourself — only on the user's explicit say-so.
 
-Execute the choice and confirm it finished before continuing.
+Execute the choice and confirm it finished. Once the user says ship, everything downstream
+(merge, deploy, sync, teardown, close) is yours to finish without further prompts — unless
+`/deploy` hits an irreversible/catastrophic snag (see its recoverable-vs-catastrophic line).
 
 ## Step 3 — Confirm the branch landed, decide teardown
 ```sh
@@ -48,9 +59,10 @@ git log --oneline HEAD..origin/main     # empty ⇒ everything is on main
 - **Not landed** and the user didn't choose "Leave it" → **stop and report.** Don't delete unmerged work; offer to run `/deploy`.
 - **Landed** (or user explicitly OK'd losing it) → continue.
 
-Decide `REMOVE` (read by Step 6):
-- `HAD_PENDING` was false → nothing to come back to; `REMOVE = true` (no prompt).
-- `HAD_PENDING` was true (now resolved) → ask with **AskUserQuestion** (header "Worktree"): **Remove it** (`REMOVE = true`) vs **Keep it** (`REMOVE = false`).
+Decide `REMOVE` (read by Step 6) — **silently, no prompt.** Once the work has landed on
+`main` (confirmed above) there's nothing to come back to and removing the worktree is safe
+and reversible (its commits are on `main`), so `REMOVE = true`. The only way to keep it is
+the explicit "Leave it" choice in Step 2, which already skipped to Step 7.
 
 ## Step 4 — Sync the primary checkout
 Bring the `main` checkout current without leaving here:
@@ -106,10 +118,12 @@ If `REMOVE` is false (user chose "Keep it"), skip to Step 7.
    ```
    …or tell the user to close it from their worktree UI.
 
-## Step 7 — Report
-The branch + sha that landed on `main`, whether the main checkout synced, that **this
-session's** serve + Claude preview were stopped (and that other sessions' servers/previews
-were left running), and the worktree's final state (removed / kept / left for the user to close).
+## Step 7 — Report — one line, goal verdict first
+End with a single line that names the goal and verdicts it, so when the user reopens this
+session cold they instantly know where it landed — e.g. *"Done. Pet-shop music shipped and
+live. Nothing needs you."* If something's still alive (a kept worktree, an ambiguous
+resource you left running) name it in that line; otherwise end on "Nothing needs you." Keep
+the detail (branch/sha, sync status, what was stopped) in your back pocket for if asked.
 
 ## Notes
 - Project-local skill (lives beside `/deploy`). Copy to `~/.claude/skills/done/` to make
