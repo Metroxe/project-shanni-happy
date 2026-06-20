@@ -1210,7 +1210,9 @@ window.__items=()=>{ const out=[];
 async function build(){
   // Load EVERY scene spec up-front (cheap JSON): transitions are then instant, and
   // the save layer can validate ids / clamp positions against any scene.
-  for(const [id,url] of Object.entries(SCENE_URLS)) SPECS[id]=await (await fetch(url)).json();
+  // no-store so a spec edit (a moved prop, a retuned camera) always shows on reload — the
+  // preview otherwise serves a STALE scene spec (the same cache trap as the ES modules).
+  for(const [id,url] of Object.entries(SCENE_URLS)) SPECS[id]=await (await fetch(url,{cache:'no-store'})).json();
   world=SPECS.town;                                  // the primary spec: quest defs, New Game reset, persistent sky/ground colour
   kindMap={}; for(const id in SPECS) (SPECS[id].collectibles||[]).forEach(c=>kindMap[c.id]=c.kind||'flower');
 
