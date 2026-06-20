@@ -9,6 +9,14 @@ The locked look: flat, minimal, clean Paper-Mario papercraft. One static graphic
 NPC; all animation is the paper physically moving. NOT realistic/anime/noir. Keep
 palettes pastel and low-contrast; props get a cream die-cut border to match Shen.
 
+**Foreground = model it, don't paint it.** Build foreground structure (a storefront's
+sign, awning, window frames, door) as separate modeled paper pieces, not as one big
+texture across a wall, and keep the kit small (no fussy mullions/brick/trim). Texture
+carries only flat pastel grain; in-world signs go on their own die-cut board, never baked
+into a wall. The how-to (decompose `facadeTex`, `makeFacade`/`makeSign`, uniform texel
+density) lives in the **`papercraft-texture`** skill; QA it at real resolution per the
+**`papercraft-env-qa`** gate.
+
 All tooling lives in `studio/` and uses the venv at `studio/.venv`. First run:
 `python3 -m venv studio/.venv && studio/.venv/bin/pip install -r studio/requirements.txt`
 

@@ -25,6 +25,14 @@ clutter, no clashing colours, no stray lines/artifacts, calm negative space.
   dark braids, dusty-rose jacket over gray tee, cream floral skirt).
 - Environments use the same flat pastel paper set (flat bands, soft rounded hills,
   cream die-cut props, contact shadows). See the 6 mood specs in `studio/specs/all.json`.
+- **Foreground = model it; texture only flat grain.** In the reachable world (plaza,
+  street, stairs, park) build structure as *separate modeled paper pieces* (sign board,
+  awning, window frames, door) and keep the kit small (no fussy mullions, brick, or trim).
+  Texture carries only flat pastel grain: one small shared seamless tile at a single fixed
+  texels-per-metre, big or unique textures are reserved for the unreachable backdrop, and
+  every in-world sign sits on its **own die-cut board**, never baked into a wall. Test: if
+  you can NAME it (a sign, a window, a door) model it; if you can only FEEL it (grain,
+  mottle) texture it. Full how-to lives in the **`papercraft-texture`** skill.
 
 ## Renderers (two, by purpose)
 
@@ -211,7 +219,13 @@ detection commands + root-cause code refs live in the **`/papercraft-env-qa`** s
    reachable). Footprint overlaps = z-fight/clipping; unreachable = a wall blocks a route.
    **Every single thing placed in a session must be screenshotted and looked at** — zone
    shots hide per-object defects (a barrier that reads as a bench, a prop facing wrong, a
-   shrub clipping a wall). Inspect the `props/` close-ups, not just the wide shots.
+   shrub clipping a wall). Inspect the `props/` close-ups, not just the wide shots. Also
+   capture a **texture close-up of every textured surface at the CLOSEST reachable gameplay
+   distance** (plus each sign straight-on); a blurry / stretched / clashing / low-res-text
+   surface fails the gate (the whole-object `props/` frame is too far away to be a resolution
+   read). Once a texel-density audit is wired into `qa_shots.mjs`, also require it to print
+   **`✓ texture density uniform`**. (Both the close-up pass and the audit are to-build; see
+   the `/papercraft-env-qa` and `/papercraft-texture` skills.)
 3. In the preview (`/zone-camera`): `cameraQA.static()`=0 + `cameraQA.path()` round-trips=0,
    AND `cameraQA.walk([a],[b])` on every corridor (`stuckAt` null).
 4. **Multi-agent picture sweep** over `studio/out/qa/*.png` (template
@@ -237,6 +251,12 @@ believable objects (hedges / construction `barrier`), backfill with `buildBackdr
 | Clip THROUGH a prop (slide/climber) | one centre collider → per-part `cols:[{dx,dz,r}]` |
 | Prop faces the wrong way | make it orientation-free (lamp = top globe) or set per-prop `rot` |
 | Props that don't belong / overlap | bushes on a road, bench on a bush → streets = lamps/trees, park = bushes; space props ≥~3u; the `placement` lens |
+| Blurry / smeared wall or prop up close | 256px `paperTex` + fixed `repeat 1.6` (too few texels/m) → one 1024px `gen_paper` set via `loadPaper()`, `worldUV(geo,w,h,d,0.18)`, max anisotropy + mipmaps |
+| Grain stretched (wide vs tall face differ) | `BoxGeometry` 0..1 UVs → `worldUV()` so texels-per-metre is constant on every face |
+| Sign text low-res / stretched | text baked into the `facadeTex` wall canvas (`k=48` px/m) → a dedicated `makeSign()` board at ~220 px/m × dpr on its own thin box off the wall |
+| Fake structure painted into a wall | a sign / window / door drawn into `facadeTex` → MODEL it as a thin box/plane in `addFacade` (foreground = model it; texture only flat grain) |
+| Neighbour textures clash at a seam | mismatched density/phase or two unrelated maps → ONE shared paper map, per-mesh tint, same `DENSITY`, world-space (`worldUV` or triplanar) phase |
+| Texture not QA'd at resolution | shoot every changed surface at the CLOSEST reachable distance + each sign straight-on; confirm crisp / uniform / seamless / blended / legible; add a `✓ texture density uniform` audit to `qa_shots.mjs` and require it before deploy |
 | Edits not showing on reload | browser cached `specs/world.json` → it's fetched `cache:'no-store'`; hard-reload |
 
 Debug hooks (all on `window`): `cameraQA.{static,path,transition,reach,walk}`,
