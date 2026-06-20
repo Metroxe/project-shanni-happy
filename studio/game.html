@@ -1,48 +1,138 @@
 <!doctype html><html><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#e9f1ea">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Shen">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" sizes="180x180" href="out/apple-touch-icon.png">
+<link rel="apple-touch-icon" sizes="167x167" href="out/apple-touch-icon-167.png">
+<link rel="apple-touch-icon" sizes="152x152" href="out/apple-touch-icon-152.png">
+<link rel="apple-touch-icon-precomposed" sizes="180x180" href="out/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="out/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="out/icon-192.png">
 <style>
   html,body{margin:0;height:100%;background:#e9f1ea;overflow:hidden;
     font-family:-apple-system,Segoe UI,Roboto,sans-serif;touch-action:none}
-  #c{display:block;position:fixed;inset:0;width:100vw;height:100vh}
+  /* nothing in the game is text-selectable — it's a game, not a document */
+  *{-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;user-select:none;
+    -webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
+  /* dvh keeps the canvas matched to the *visible* viewport as the mobile URL bar
+     shows/hides (100vh would over-extend under it); vh is the desktop fallback. */
+  #c{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100dvh}
   .panel{position:fixed;background:rgba(255,255,255,.74);border:1px solid #d6c9b2;
     border-radius:11px;padding:6px 11px;color:#5a564e;font-size:14px}
-  #hud{left:14px;top:12px}
-  #hud b{color:#c27d8b}
-  #hint{right:14px;top:12px;color:#7a756c;font-size:12px;background:rgba(255,255,255,.6)}
-  #bMenu{position:fixed;right:14px;top:44px;font-size:16px;padding:4px 11px;line-height:1.2;z-index:21}
-  /* pause menu */
-  #menu{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;
-    background:rgba(70,64,52,.28);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
-  #menu.on{display:flex}
-  #menuPanel{background:rgba(255,253,248,.97);border:1px solid #d6c9b2;border-radius:18px;
-    padding:20px 22px 18px;width:300px;max-width:calc(100vw - 36px);color:#5a564e;
-    box-shadow:0 12px 36px rgba(90,80,60,.26)}
-  #menuTitle{font-weight:700;color:#c27d8b;font-size:18px;letter-spacing:.5px;text-align:center;margin-bottom:16px}
-  #menu .row{display:flex;align-items:center;gap:11px;margin:10px 0;font-size:14px}
-  #menu .row>span:first-child{width:52px;color:#7a756c}
-  #volVal{width:38px;text-align:right;color:#b76b7d;font-variant-numeric:tabular-nums}
-  #menu input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:6px;border-radius:4px;
+  /* tiny time-of-day clock (top-left; the flowers HUD that used to sit here is gone) */
+  #clock{left:calc(14px + env(safe-area-inset-left));top:calc(12px + env(safe-area-inset-top));
+    display:flex;align-items:center;gap:5px;padding:4px 9px 4px 5px}
+  #clockFace{display:block}
+  #clockGlyph{font-size:12px;line-height:1}
+  #clockTime{color:#7a756c;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:.3px}
+  #clock.night{background:rgba(58,63,100,.78);border-color:#4a4f7e}
+  #clock.night #clockTime{color:#e7e6f2}
+  #hint{right:calc(14px + env(safe-area-inset-right));top:calc(12px + env(safe-area-inset-top));
+    color:#7a756c;font-size:12px;background:rgba(255,255,255,.6)}
+  #bMenu{position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(44px + env(safe-area-inset-top));
+    font-size:16px;padding:4px 11px;line-height:1.2;z-index:21}
+  /* fullscreen toggle: sits just left of the journal button, mobile-only (JS shows
+     it solely when the Fullscreen API is supported, so iPhone Safari never gets a
+     dead control). Inline-SVG corner glyph: expand when windowed, contract in FS. */
+  #bFull{position:fixed;top:calc(44px + env(safe-area-inset-top));
+    right:calc(58px + env(safe-area-inset-right));display:none;padding:5px 8px;line-height:0;z-index:21}
+  #bFull svg{width:18px;height:18px;display:block;stroke:currentColor;fill:none;
+    stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+  #bFull .fs-out{display:none}
+  #bFull.on .fs-in{display:none}#bFull.on .fs-out{display:block}
+  /* journal (book) — replaces the pause menu */
+  #journal{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;
+    background:rgba(70,64,52,.30);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
+  #journal.on{display:flex}
+  #book{position:relative;display:flex;align-items:stretch;perspective:2200px;
+    width:min(560px,calc(100vw - 26px));height:min(560px,calc(100vh - 92px))}
+  /* left binder-divider tabs */
+  #tabs{display:flex;flex-direction:column;gap:10px;padding-top:28px;z-index:2}
+  .jtab{position:relative;width:50px;height:58px;margin-right:-9px;border:1px solid #d6c9b2;border-right:none;
+    border-radius:13px 0 0 13px;background:#ece0cd;color:#9a8f7c;font-size:23px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;box-shadow:-3px 3px 8px rgba(90,80,60,.12);
+    transition:background .15s,color .15s,transform .15s;-webkit-tap-highlight-color:transparent}
+  .jtab:hover{color:#7a6f5c}
+  .jtab.active{background:#fffdf8;color:#c27d8b;transform:translateX(-5px);z-index:3}
+  /* book body + page */
+  #bookBody{position:relative;flex:1;background:#fffdf8;border:1px solid #d6c9b2;border-radius:6px 16px 16px 6px;
+    box-shadow:0 14px 40px rgba(90,80,60,.30);overflow:hidden;
+    background-image:linear-gradient(90deg,#efe6d4 0,#f7efe0 13px,#fffdf8 30px)}
+  #pages{position:absolute;inset:0;padding:22px 24px 20px 42px;box-sizing:border-box;overflow-y:auto;
+    transform-origin:left center;transform-style:preserve-3d;backface-visibility:hidden;
+    transition:transform .2s ease,opacity .2s ease}
+  #pages.flipping{transform:rotateY(-88deg);opacity:.25}
+  .jpage[hidden]{display:none}
+  .jh{font-weight:700;color:#c27d8b;font-size:20px;letter-spacing:.5px;margin:0 0 14px;
+    border-bottom:2px dotted #e6dcc8;padding-bottom:9px}
+  /* quests list */
+  #questList{display:flex;flex-direction:column;gap:9px}
+  .jempty{color:#9a948a;font-size:14px;text-align:center;margin-top:34px;line-height:1.9}
+  .jempty span{font-size:12.5px;color:#b3aa9a}
+  .questItem{border:1px solid #e6dcc8;border-radius:12px;background:rgba(255,255,255,.55);overflow:hidden}
+  .questItem.done{opacity:.82}
+  .qhead{display:flex;align-items:center;gap:9px;padding:11px 13px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+  .qmark{color:#d39bab;font-size:12px;width:14px;text-align:center}
+  .questItem.done .qmark{color:#8fb592}
+  .qtitle{flex:1;display:flex;flex-direction:column;line-height:1.25}
+  .qname{font-weight:600;color:#5a564e;font-size:15px}
+  .qgiver{font-size:11px;color:#a99e8b}
+  .qchev{color:#c8b9a0;font-size:13px;transition:transform .25s}
+  .questItem.open .qchev{transform:rotate(180deg)}
+  .qbody{max-height:0;overflow:hidden;transition:max-height .3s ease}
+  .questItem.open .qbody{max-height:560px}
+  .qsummary{padding:0 14px 4px 36px;font-size:12.5px;color:#7a756c;font-style:italic;line-height:1.5}
+  .qcurrent{margin:6px 14px 4px 36px;padding:9px 12px;border-radius:9px;background:#f7eef0;border:1px solid #efd9df}
+  .qcurlabel{font-size:10px;letter-spacing:.7px;text-transform:uppercase;color:#c490a0;font-weight:700;margin-bottom:3px}
+  .qcurdesc{font-size:13.5px;color:#5a564e;line-height:1.4}
+  .qprogtext{margin-top:6px;font-size:12px;color:#b76b7d;font-weight:600;font-variant-numeric:tabular-nums}
+  .qbar{margin-top:5px;height:7px;border-radius:5px;background:#ece2d0;overflow:hidden}
+  .qbarfill{height:100%;border-radius:5px;background:linear-gradient(90deg,#e6b9c6,#d99bb0);transition:width .35s ease}
+  .qdoneline{margin:4px 14px 2px 36px;font-size:13px;color:#7aa37e;font-weight:600}
+  .qsteps{display:flex;flex-direction:column;gap:4px;padding:8px 14px 13px 36px}
+  .qstep{display:flex;gap:8px;align-items:baseline;font-size:13px;line-height:1.4}
+  .qbox{width:14px;text-align:center;font-size:12px;flex:none}
+  .qstep.done .qbox{color:#8fb592}.qstep.done .qsteptext{color:#a59d8e;text-decoration:line-through}
+  .qstep.active .qbox{color:#c27d8b}.qstep.active .qsteptext{color:#5a564e;font-weight:600}
+  .qstep.future{opacity:.6}.qstep.future .qbox{color:#c8bca6}
+  /* settings page (sliders reused from the old pause menu) */
+  .srow{display:flex;align-items:center;gap:11px;margin:13px 0;font-size:14px}
+  .srow>span:first-child{width:52px;color:#7a756c}
+  .sval{width:40px;text-align:right;color:#b76b7d;font-variant-numeric:tabular-nums}
+  #journal input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:6px;border-radius:4px;
     background:#ece2d0;outline:none;cursor:pointer}
-  #menu input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;
+  #journal input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;
     background:#e6b9c6;border:2px solid #fffdf8;box-shadow:0 1px 4px rgba(90,80,60,.3);cursor:pointer}
-  #menu input[type=range]::-moz-range-thumb{width:18px;height:18px;border:2px solid #fffdf8;border-radius:50%;
+  #journal input[type=range]::-moz-range-thumb{width:18px;height:18px;border:2px solid #fffdf8;border-radius:50%;
     background:#e6b9c6;box-shadow:0 1px 4px rgba(90,80,60,.3);cursor:pointer}
   .mrow{display:flex;justify-content:space-between;align-items:center;width:100%;box-sizing:border-box;
-    margin:8px 0 2px;padding:9px 13px;border:1px solid #e0d4bf;border-radius:11px;
+    margin:14px 0 2px;padding:10px 13px;border:1px solid #e0d4bf;border-radius:11px;
     background:rgba(255,255,255,.6);color:#6a655c;font:inherit;font-size:14px;cursor:pointer}
   .mrow #muteState{font-weight:700;color:#7aa37e}
   .mrow.off{opacity:.75}
   .mrow.off #muteState{color:#c08a8a}
-  .menuHint{margin:14px 2px 4px;font-size:11.5px;color:#8a8579;text-align:center;line-height:1.6}
-  .menuBtns{display:flex;gap:10px;margin-top:14px}
+  .jhint{margin:16px 2px 4px;font-size:11.5px;color:#8a8579;text-align:center;line-height:1.7}
+  .menuBtns{display:flex;gap:10px;margin-top:16px}
   .menuBtns .btn{flex:1;padding:11px 0;font-size:14px}
   .menuBtns .primary{background:#f6e7ea;border-color:#e6b9c6;color:#b76b7d;font-weight:600}
-  #win{left:50%;top:24%;transform:translateX(-50%);opacity:0;transition:opacity .4s;
-    border-color:#e6c3cf;color:#c27d8b;font-size:18px;font-weight:600}
-  #dpad{position:fixed;left:18px;bottom:18px;display:grid;gap:6px;
+  /* journal-button badge + quest toast */
+  #bMenu.badge::after{content:'';position:absolute;top:-3px;right:-3px;width:10px;height:10px;border-radius:50%;
+    background:#e08aa0;border:2px solid #fffdf8;box-shadow:0 1px 3px rgba(90,80,60,.3)}
+  #qtoast{position:fixed;left:50%;top:54px;transform:translateX(-50%) translateY(-8px);z-index:30;
+    background:rgba(255,253,248,.96);border:1px solid #e6c3cf;border-radius:20px;padding:7px 16px;
+    color:#b76b7d;font-size:13px;font-weight:600;white-space:nowrap;pointer-events:none;
+    opacity:0;transition:opacity .25s,transform .25s;box-shadow:0 4px 14px rgba(90,80,60,.16)}
+  #qtoast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+  #dpad{position:fixed;left:calc(18px + env(safe-area-inset-left));
+    bottom:calc(18px + env(safe-area-inset-bottom));display:grid;gap:6px;
     grid-template-columns:repeat(3,50px);grid-template-rows:repeat(3,50px);
     grid-template-areas:". u ." "l m r" ". d .";}
-  #acts{position:fixed;right:18px;bottom:22px;display:flex;gap:10px}
+  #acts{position:fixed;right:calc(18px + env(safe-area-inset-right));
+    bottom:calc(22px + env(safe-area-inset-bottom));display:flex;gap:10px}
   button.btn{font:inherit;border-radius:12px;border:1px solid #d6c9b2;
     background:rgba(255,255,255,.85);color:#5a564e;cursor:pointer;user-select:none;touch-action:none}
   button.btn:active{background:#f0e6d8;transform:scale(.95)}
@@ -51,7 +141,7 @@
   #acts .btn{font-size:16px;padding:12px 18px}
   #bTalk.near{background:#f6e7ea;border-color:#e6b9c6;color:#b76b7d}
   /* dialogue */
-  #dlg{position:fixed;left:50%;bottom:18px;transform:translateX(-50%) translateY(14px);
+  #dlg{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(14px);
     width:min(680px,calc(100vw - 32px));box-sizing:border-box;
     background:rgba(255,253,248,.95);border:1px solid #d6c9b2;border-radius:16px;
     padding:14px 18px 18px;color:#5a564e;box-shadow:0 6px 22px rgba(90,80,60,.18);
@@ -126,8 +216,60 @@
   .tbtn.danger{background:#f7e3e3;border-color:#e6b9b9;color:#b76b6b}
   .tbtn[hidden]{display:none}
   #buildTag{margin-top:14px;font-size:11px;color:#bcb4a6;letter-spacing:.3px}
+  /* rotate-to-landscape overlay: only shown (via body.portrait-lock, set by JS on
+     touch devices held in portrait) over the whole screen; auto-hides on rotate. */
+  #rotate{position:fixed;inset:0;z-index:120;display:none;flex-direction:column;
+    align-items:center;justify-content:center;gap:20px;padding:28px;box-sizing:border-box;
+    text-align:center;background:radial-gradient(120% 120% at 50% 35%,#eef4ee,#e4ece4)}
+  body.portrait-lock #rotate{display:flex}
+  .rphone{width:78px;height:138px;border-radius:16px;border:3px solid #c8b9a0;background:#fffdf8;
+    position:relative;box-shadow:0 10px 26px rgba(90,80,60,.16);transform-origin:50% 50%;
+    animation:rtip 2.6s ease-in-out infinite}
+  .rphone::before{content:'';position:absolute;left:50%;top:9px;width:20px;height:3px;border-radius:2px;
+    background:#e6dcc8;transform:translateX(-50%)}
+  .rphone::after{content:'✿';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    color:#e6b9c6;font-size:34px}
+  #rotate h2{margin:0;font-size:21px;font-weight:700;color:#c27d8b;letter-spacing:.3px}
+  #rotate p{margin:0;font-size:13px;color:#9a948a;line-height:1.6}
+  @keyframes rtip{0%,32%{transform:rotate(0)}64%,100%{transform:rotate(-90deg)}}
+  @media (prefers-reduced-motion:reduce){.rphone{animation:none;transform:rotate(-90deg)}}
+  /* iOS Safari "Add to Home Screen" guide: shown via body.ios-web (set by JS only
+     on iPhone/iPad in a browser TAB, never in the installed standalone app, where
+     the rotate prompt takes over instead). The route to a chromeless iOS game. */
+  #a2hs{position:fixed;inset:0;z-index:130;display:none;flex-direction:column;
+    align-items:center;justify-content:safe center;gap:13px;padding:26px;box-sizing:border-box;
+    overflow-y:auto;text-align:center;background:radial-gradient(120% 120% at 50% 38%,#eef4ee,#e4ece4)}
+  body.ios-web #a2hs{display:flex}
+  #a2hs .ic{width:90px;height:90px;border-radius:21px;box-shadow:0 8px 22px rgba(90,80,60,.18)}
+  #a2hs h2{margin:2px 0 0;font-size:21px;font-weight:700;color:#c27d8b;letter-spacing:.3px}
+  #a2hs .lead{margin:0;font-size:13px;color:#9a948a;line-height:1.6;max-width:300px}
+  #a2hs .steps{display:flex;flex-direction:column;gap:9px;margin:3px 0 2px}
+  #a2hs .step{display:flex;align-items:center;gap:11px;font-size:14px;color:#5a564e;box-sizing:border-box;
+    background:rgba(255,255,255,.7);border:1px solid #e0d4bf;border-radius:13px;padding:10px 15px;max-width:320px}
+  #a2hs .step svg{width:25px;height:25px;flex:none;stroke:#c27d8b;fill:none;
+    stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+  #a2hs .step b{color:#b76b7d}
+  #a2hs .skip{margin-top:4px;font-size:13px;color:#a99e8b;background:none;border:none;
+    text-decoration:underline;cursor:pointer;font:inherit;-webkit-tap-highlight-color:transparent}
+  #a2hs .step span{text-align:left}
+  #a2hs .hint2{margin:3px 0 0;font-size:11.5px;color:#b3aa9a;line-height:1.65;max-width:300px}
+  /* touch devices: the on-screen controls replace the keyboard, so drop the
+     desktop key hint, and keep the dialogue box clear of the d-pad while talking. */
+  @media (pointer:coarse){
+    #hint{display:none}
+    body.talking #dpad{display:none}
+  }
+  /* short landscape (phones held sideways): trim the dialogue width so it never
+     tucks under the corner controls, and nudge it up off the home indicator. */
+  @media (max-height:520px) and (orientation:landscape){
+    #dlg{width:min(560px,calc(100vw - 230px))}
+    #dlgText{font-size:15px;min-height:2.7em}
+  }
 </style>
-<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}</script>
+<script type="importmap">{"imports":{
+  "three":"https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"
+}}</script>
 </head><body>
 <div id="loader">
   <div id="loadStage">
@@ -138,10 +280,21 @@
   <div id="loadText">shenning</div>
 </div>
 <canvas id="c"></canvas>
-<div class="panel" id="hud">flowers <b id="score">0</b> / <span id="total">6</span></div>
-<div class="panel" id="hint">arrows / WASD move · space hop · J joy · E talk · Esc menu</div>
-<button class="btn" id="bMenu" aria-label="menu" title="menu (Esc)">☰</button>
-<div class="panel" id="win">all flowers! ✿</div>
+<div class="panel" id="clock" title="time of day">
+  <svg id="clockFace" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+    <circle cx="12" cy="12" r="10.5" fill="#fff8ec" stroke="#d9b9c6" stroke-width="1.4"/>
+    <circle cx="12" cy="3.4" r="0.9" fill="#cdb9a4"/><circle cx="12" cy="20.6" r="0.9" fill="#cdb9a4"/>
+    <circle cx="3.4" cy="12" r="0.9" fill="#cdb9a4"/><circle cx="20.6" cy="12" r="0.9" fill="#cdb9a4"/>
+    <line id="clockHr" x1="12" y1="12" x2="12" y2="7.2" stroke="#8a7f6e" stroke-width="1.6" stroke-linecap="round"/>
+    <line id="clockMin" x1="12" y1="12" x2="12" y2="4.6" stroke="#b76b7d" stroke-width="1.3" stroke-linecap="round"/>
+    <circle cx="12" cy="12" r="1.1" fill="#8a7f6e"/>
+  </svg><span id="clockGlyph">☀</span><b id="clockTime">6:24</b></div>
+<div class="panel" id="hint">arrows / WASD move · space hop · E talk · Esc journal</div>
+<button class="btn" id="bMenu" aria-label="journal" title="journal (Esc)">📖</button>
+<button class="btn" id="bFull" aria-label="fullscreen" title="fullscreen">
+  <svg class="fs-in" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3H3v6"/><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M15 21h6v-6"/></svg>
+  <svg class="fs-out" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h6V3"/><path d="M21 9h-6V3"/><path d="M3 15h6v6"/><path d="M21 15h-6v6"/></svg>
+</button>
 <div id="dpad">
   <button class="btn" id="bU" aria-label="up">▲</button>
   <button class="btn" id="bL" aria-label="left">◀</button>
@@ -149,9 +302,8 @@
   <button class="btn" id="bD" aria-label="down">▼</button>
 </div>
 <div id="acts">
-  <button class="btn" id="bTalk">talk 💬</button>
+  <button class="btn" id="bTalk" hidden>talk 💬</button>
   <button class="btn" id="bHop">hop</button>
-  <button class="btn" id="bJoy">joy ✿</button>
 </div>
 <div id="dlg">
   <div id="dlgName"></div>
@@ -172,35 +324,93 @@
     <div id="buildTag"></div>
   </div>
 </div>
-<div id="menu">
-  <div id="menuPanel">
-    <div id="menuTitle">paused</div>
-    <div class="row"><span>volume</span><input type="range" id="vol" min="0" max="100" value="70"><span id="volVal">70%</span></div>
-    <button class="mrow" id="muteRow"><span>sound</span><span id="muteState">on</span></button>
-    <div class="menuHint">arrows / WASD move · space hop · J joy<br>E talk · Esc menu · M mute</div>
-    <div class="menuBtns">
-      <button class="btn" id="restartBtn">restart ✿</button>
-      <button class="btn primary" id="resumeBtn">resume</button>
+<div id="journal">
+  <div id="book">
+    <div id="tabs">
+      <button class="jtab active" data-tab="quests" aria-label="Quests" title="Quests"><span class="ico">📜</span></button>
+      <button class="jtab" data-tab="settings" aria-label="Settings" title="Settings"><span class="ico">⚙</span></button>
+    </div>
+    <div id="bookBody">
+      <div id="pages">
+        <section class="jpage" id="page-quests">
+          <div class="jh">Quests</div>
+          <div id="questList"></div>
+          <div class="jempty" id="questEmpty">No quests yet.<br><span>Find a friend in town who needs a hand. ✿</span></div>
+        </section>
+        <section class="jpage" id="page-settings" hidden>
+          <div class="jh">Settings</div>
+          <div class="srow"><span>volume</span><input type="range" id="vol" min="0" max="100" value="70"><span id="volVal" class="sval">70%</span></div>
+          <div class="srow"><span>effects</span><input type="range" id="sfxvol" min="0" max="100" value="100"><span id="sfxVal" class="sval">100%</span></div>
+          <div class="srow"><span>music</span><input type="range" id="musicvol" min="0" max="100" value="42"><span id="musicVal" class="sval">42%</span></div>
+          <button class="mrow" id="muteRow"><span>sound</span><span id="muteState">on</span></button>
+          <div class="jhint">arrows / WASD move · space hop<br>E talk · Esc journal · M mute</div>
+          <div class="menuBtns">
+            <button class="btn" id="restartBtn">restart ✿</button>
+            <button class="btn primary" id="resumeBtn">resume</button>
+          </div>
+        </section>
+      </div>
     </div>
   </div>
 </div>
+<div id="qtoast"></div>
+<div id="rotate">
+  <div class="rphone"></div>
+  <h2>Turn your phone sideways</h2>
+  <p>Shen's little world is wider that way. ✿<br>Rotate to landscape to play.</p>
+</div>
+<div id="a2hs">
+  <img class="ic" src="out/apple-touch-icon.png" alt="Shen app icon" width="90" height="90">
+  <h2>Add Shen to your Home Screen</h2>
+  <p class="lead">Play full-screen with no browser bars. In Safari:</p>
+  <div class="steps">
+    <div class="step">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.2" width="17" height="13.6" rx="4.2"/><path d="M7.6 10.5h8.8"/><path d="M7.6 13.9h5.4"/></svg>
+      <span>Tap the <b>menu button</b> just left of the URL (refresh is on the right)</span>
+    </div>
+    <div class="step">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 14.2V3.1"/><path d="M8.3 6.7 12 3 15.7 6.7"/><path d="M8 9.6H6.6A2.6 2.6 0 0 0 4 12.2v6.4A2.6 2.6 0 0 0 6.6 21.2h10.8A2.6 2.6 0 0 0 20 18.6v-6.4a2.6 2.6 0 0 0-2.6-2.6H16"/></svg>
+      <span>In that menu, tap <b>Share</b> (a box with an <b>↑</b> arrow)</span>
+    </div>
+    <div class="step">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.6" y="3.6" width="16.8" height="16.8" rx="5"/><path d="M12 8.1v7.8"/><path d="M8.1 12h7.8"/></svg>
+      <span>Scroll the menu and tap <b>Add to Home Screen</b></span>
+    </div>
+  </div>
+  <p class="hint2">On iOS 26 the Share button lives inside that menu, not on the bar. Easiest with your phone upright. ✿</p>
+  <button class="skip" id="a2hsSkip">play in the browser instead</button>
+</div>
 <script type="module">
 import * as THREE from 'three';
-import { WORLD, initState, step, setBounds } from './js/sim.js';
+import { WORLD, initState, step, setBounds, setColliders } from './js/sim.js';
 import { Dialogue } from './js/dialogue.js';
 import * as Save from './js/save.js';
 import { Sound } from './js/audio.js';
+import { Quests } from './js/quests.js';
+import { Sky } from './js/sky.js';
+import { FX } from './js/fx.js';
 
 const canvas=document.getElementById('c');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 const scene=new THREE.Scene();
-const cam=new THREE.PerspectiveCamera(42,1,0.1,200);
-const CAM_Y=5.0, CAM_D=10.6, CAM_LOOK_Y=1.7;
+const cam=new THREE.PerspectiveCamera(40,1,0.1,300);
 
-const SHEN_H=3.0, SHEN_W=SHEN_H*0.4634, GROUND_EPS=0.01;
-const WALK_HOP=0.36, JOY_H=2.2;
+const SHEN_H=1.9, SHEN_W=SHEN_H*0.4634, GROUND_EPS=0.02;
+const WALK_HOP=0.24, MAX_LIFT=1.5, FH=0.95, PLAYER_R=0.42;
+// Framing guardrails (enforced by cameraQA.framing): Shen's sprite must fill >= this
+// fraction of viewport height (never a tiny dot), and the view must sit <= this far
+// below horizontal (a 3/4 view, never a top-down plan view). Design AIM is comfortably
+// inside these: ~0.14 size, <= ~32 deg pitch. These are the hard floor/ceiling.
+const CAM_MIN_FRAC=0.125, CAM_MAX_PITCH=40*Math.PI/180;
 const TALK_R=2.4; const _tv=new THREE.Vector3();
+// Positional NPC/world sound: full volume within HEAR_NEAR, silent past HEAR_FAR
+// (squared rolloff). Ambient animation loops (e.g. Chrees' reps) are only audible
+// when the player is near — never across the whole map. (S is assigned in build().)
+const HEAR_NEAR=2.5, HEAR_FAR=9;
+const proxGain=(x,z)=>{ const t=(HEAR_FAR-Math.hypot(x-S.x,z-S.z))/(HEAR_FAR-HEAR_NEAR);
+  return t<=0?0:t>=1?1:t*t; };
 
 const loader=new THREE.TextureLoader();
 const tx=u=>new Promise(res=>loader.load(u,t=>{t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;
@@ -217,10 +427,7 @@ function billboard(tex,w,h,opts={}){
 function softCanvasTex(draw){const s=128,c=document.createElement('canvas');c.width=s;c.height=s;
   draw(c.getContext('2d'),s);return new THREE.CanvasTexture(c);}
 
-// sparkle + shadow + cloud + hill canvas textures
-const sparkTex=softCanvasTex((x,s)=>{x.translate(s/2,s/2);const g=x.createRadialGradient(0,0,0,0,0,s/2);
-  g.addColorStop(0,'rgba(255,255,255,.95)');g.addColorStop(.4,'rgba(255,255,255,.5)');g.addColorStop(1,'rgba(255,255,255,0)');
-  for(let i=0;i<4;i++){x.rotate(Math.PI/2);x.fillStyle=g;x.beginPath();x.moveTo(0,0);x.lineTo(4,-s/2);x.lineTo(-4,-s/2);x.fill();}});
+// shadow + cloud + hill canvas textures
 const shadowTex=softCanvasTex((x,s)=>{const g=x.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
   g.addColorStop(0,'rgba(60,52,40,.5)');g.addColorStop(.6,'rgba(60,52,40,.2)');g.addColorStop(1,'rgba(60,52,40,0)');
   x.fillStyle=g;x.fillRect(0,0,s,s);});
@@ -228,7 +435,7 @@ function blobTex(col){return softCanvasTex((x,s)=>{x.fillStyle=col;
   [[.5,.55,.34],[.32,.6,.24],[.68,.6,.24],[.42,.42,.2],[.6,.42,.2]].forEach(([a,b,r])=>{
     x.beginPath();x.ellipse(a*s,b*s,r*s,r*s*.8,0,0,7);x.fill();});});}
 
-let world, S, shen, mesh=null, shadow, sparkles=[], flowers=[], propsMesh=[], burst, burstT=-1, burstPos=new THREE.Vector3();
+let world, S, shen, mesh=null, shadow, pickups=[], propsMesh=[], burst, burstT=-1, burstPos=new THREE.Vector3();
 let npcs=[], nearNpc=null, talkCooldown=0;
 let started=false, BUILD='dev';
 
@@ -241,61 +448,520 @@ const damp=(cur,tgt,tau,dt)=>tgt+(cur-tgt)*Math.exp(-dt/Math.max(tau,1e-4));
 // flips / start-stop / mode changes ease instead of snapping. Height stays
 // crisp (jumps feel responsive); lean & squash ease a touch more.
 const D={yW:0,sx:1,sy:1,rot:0}; let Dinit=false;
-function joyPose(u){let y=0,sx=1,sy=1,rot=0,spark=0;
-  if(u<0.2){const p=u/0.2;sy=ease(1,0.78,p);sx=ease(1,1.14,p);}
-  else if(u<0.95){const p=(u-0.2)/0.75;y=Math.sin(p*Math.PI)*JOY_H;
-    sy=ease(1.22,1,smooth((u-0.2)/0.18));sx=1/Math.sqrt(Math.max(sy,.3));
-    rot=Math.sin((u-0.2)*9)*0.07*smooth(p);const l=(u-0.35)/0.5;spark=(l>0&&l<1)?l:0;}
-  else if(u<1.15){const p=(u-0.95)/0.2;sy=ease(1,0.72,p);sx=1/Math.sqrt(sy);}
-  else if(u<1.4){const p=(u-1.15)/0.25;y=Math.sin(p*Math.PI)*0.6;sy=ease(0.72,1.08,smooth(p));sx=1/Math.sqrt(sy);}
-  else{const p=clamp((u-1.4)/0.2,0,1);sy=ease(1.08,1,p);sx=1/Math.sqrt(sy);}
-  return {yW:y,sx,sy,rot,spark};}
 function pose(s){
-  if(s.mode==='joy')return joyPose(s.joyT);
-  if(s.mode==='air'){const sy=1+clamp(s.vy*0.022,-0.12,0.2);return{yW:s.y,sx:1/Math.sqrt(Math.max(sy,.4)),sy,rot:0,spark:0};}
+  if(s.mode==='air'){const sy=1+clamp(s.vy*0.022,-0.12,0.2);return{yW:s.y,sx:1/Math.sqrt(Math.max(sy,.4)),sy,rot:0};}
   if(s.mode==='walk'){const h=Math.abs(Math.sin(s.walkPhase));const sy=1+h*0.07-(1-h)*0.06;
-    return{yW:h*WALK_HOP,sx:1/Math.sqrt(sy),sy,rot:-0.04*s.facing,spark:0};}
+    return{yW:h*WALK_HOP,sx:1/Math.sqrt(sy),sy,rot:-0.04*s.facing};}
   const br=Math.sin(s.animClock*2.2);const sy=1+0.018*br;
-  return{yW:0,sx:1/Math.sqrt(sy),sy,rot:0.012*Math.sin(s.animClock*1.4),spark:0};}
+  return{yW:0,sx:1/Math.sqrt(sy),sy,rot:0.012*Math.sin(s.animClock*1.4)};}
+
+// ===== zone camera + terrain + paper material + QA (city scene) =====
+const clampn=clamp, lerp=(a,b,t)=>a+(b-a)*t;
+const easeInOutCubic=u=>u<0.5?4*u*u*u:1-Math.pow(-2*u+2,3)/2;
+const expK=(dt,k)=>1-Math.exp(-k*dt);
+const GRAIN=0.62, texCache={};
+function paperTex(h){ if(texCache[h])return texCache[h];
+  const s=256,cv=document.createElement('canvas');cv.width=cv.height=s;const x=cv.getContext('2d');
+  const c=new THREE.Color(h),R=c.r*255,G=c.g*255,B=c.b*255;
+  x.fillStyle='#'+c.getHexString();x.fillRect(0,0,s,s);
+  const amp=26*GRAIN,img=x.getImageData(0,0,s,s),d=img.data;
+  for(let i=0;i<d.length;i+=4){const n=(Math.random()-0.5)*amp*1.4;
+    d[i]=clamp(d[i]+n,0,255);d[i+1]=clamp(d[i+1]+n,0,255);d[i+2]=clamp(d[i+2]+n,0,255);}
+  x.putImageData(img,0,0);x.globalAlpha=0.20*GRAIN;
+  for(let i=0;i<200;i++){const lt=Math.random()<.5;
+    x.strokeStyle=`rgb(${clamp(R+(lt?30:-30),0,255)},${clamp(G+(lt?30:-30),0,255)},${clamp(B+(lt?30:-30),0,255)})`;
+    x.lineWidth=Math.random()*1.4+0.4;x.beginPath();
+    const y=Math.random()*s,len=30+Math.random()*120,xx=Math.random()*s,ang=(Math.random()-.5)*0.4;
+    x.moveTo(xx,y);x.lineTo(xx+Math.cos(ang)*len,y+Math.sin(ang)*len);x.stroke();}
+  x.globalAlpha=1;
+  const t=new THREE.CanvasTexture(cv);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(1.6,1.6);
+  t.anisotropy=4;t.colorSpace=THREE.SRGBColorSpace;texCache[h]=t;return t;}
+function paperMat(h,flat){const t=paperTex(h);
+  return new THREE.MeshStandardMaterial({color:new THREE.Color(h),roughness:0.97,metalness:0,
+    flatShading:flat!==false,emissive:new THREE.Color(h),emissiveIntensity:0.05,map:t,bumpMap:t,bumpScale:1.4});}
+const EDGEMAT=new THREE.LineBasicMaterial({color:'#fbf7f0'});
+function M(geo,col,flat,edge){const m=new THREE.Mesh(geo,paperMat(col,flat));
+  m.castShadow=true;m.receiveShadow=true;
+  if(edge===true)m.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo,38),EDGEMAT));
+  return m;}
+let SCENE,LEVEL={H:0},STAIRS=null,SCENE_COLLIDERS=[],BUILDING_MESHES=[],billboards=[],fountains=[];
+// Two-terrace city: a raised upper level (plaza + street + shops) at LEVEL.H, a
+// sunken park at y=0, joined by a descending stair notch in the central corridor.
+function groundHeight(x,z){
+  const H=LEVEL.H||0, ST=STAIRS;
+  if(!ST) return 0;
+  if(z<=ST.zTop) return H;                 // upper terrace (plaza/road/shops)
+  if(z>=ST.zBot) return 0;                 // park
+  if(x>=ST.x0&&x<=ST.x1){                   // on the descending stairs → smooth ramp
+    const t=(z-ST.zTop)/(ST.zBot-ST.zTop); return H*(1-smooth(t)); }
+  return H;                                 // plateau front edge beside the stairs (cliff top)
+}
+function zoneAxis(z){const a=z.axisDeg*Math.PI/180;return {fx:Math.sin(a),fz:-Math.cos(a)};}
+function zoneLocal(z,x,zc){const {fx,fz}=zoneAxis(z);const dx=x-z.center[0],dz=zc-z.center[1];
+  return {along:dx*fx+dz*fz,across:dx*(-fz)+dz*fx,fx,fz};}
+function pointInZone(z,x,zc){const {along,across}=zoneLocal(z,x,zc);
+  return Math.abs(along)<=z.halfLen&&Math.abs(across)<=z.halfWid;}
+let ZONES=[],activeZone=null;
+const CAMRIG={pos:new THREE.Vector3(),tgt:new THREE.Vector3(),fov:40,pitch:0};
+let blend=null;
+function rigFor(zone,s){ const {fx,fz}=zoneAxis(zone); const latx=-fz, latz=fx;
+  const L=zoneLocal(zone,s.x,s.z);
+  const a=clampn(L.along,-zone.halfLen,zone.halfLen);
+  // Open-area zones (trackWid>0) ALSO follow the player across the axis, clamped to
+  // +/-trackWid, so a wide sideways wander can't grow the camera distance — Shen keeps a
+  // stable on-screen size. Corridor zones leave trackWid unset (b=0) → ride the centerline
+  // (the angle is still fixed; this only TRANSLATES the eye, never an orbit/free follow).
+  const b=zone.trackWid?clampn(L.across,-zone.trackWid,zone.trackWid):0;
+  const cpx=zone.center[0]+fx*a+latx*b, cpz=zone.center[1]+fz*a+latz*b;
+  const gyCam=groundHeight(cpx,cpz), gyP=groundHeight(s.x,s.z);
+  return { pos:new THREE.Vector3(cpx-fx*zone.back+latx*zone.side, gyCam+zone.height, cpz-fz*zone.back+latz*zone.side),
+    tgt:new THREE.Vector3(s.x+fx*zone.lookAhead, gyP+zone.lookY, s.z+fz*zone.lookAhead),
+    fov:zone.fov, pitch:zone.pitchBias }; }
+function pickZone(x,zc){ const SKIRT=0.8;
+  if(activeZone){ const {along,across}=zoneLocal(activeZone,x,zc);
+    if(Math.abs(along)<=activeZone.halfLen+SKIRT&&Math.abs(across)<=activeZone.halfWid+SKIRT){
+      for(const z of ZONES){if(z===activeZone)break;if(pointInZone(z,x,zc))return z;} return activeZone; } }
+  for(const z of ZONES)if(pointInZone(z,x,zc))return z; return activeZone||ZONES[0]; }
+const _eye=new THREE.Vector3(),_tgt=new THREE.Vector3(),_dir=new THREE.Vector3();
+const WORLD_UP=new THREE.Vector3(0,1,0),_right=new THREE.Vector3(),_up=new THREE.Vector3();
+function applyCamera(){ _eye.copy(CAMRIG.pos); _tgt.copy(CAMRIG.tgt); _dir.copy(_tgt).sub(_eye);
+  if(_dir.lengthSq()<1e-6){const {fx,fz}=zoneAxis(activeZone);_dir.set(fx,-0.25,fz);_tgt.copy(_eye).add(_dir);}
+  let up=WORLD_UP;
+  if(Math.abs(_dir.clone().normalize().y)>0.99){const {fx,fz}=zoneAxis(activeZone);
+    _right.set(-fz,0,fx);_up.crossVectors(_dir,_right).normalize();up=_up;}
+  cam.position.copy(_eye);cam.up.copy(up);cam.lookAt(_tgt);
+  if(CAMRIG.pitch)cam.rotateX(CAMRIG.pitch);
+  if(Math.abs(cam.fov-CAMRIG.fov)>1e-3){cam.fov=CAMRIG.fov;cam.updateProjectionMatrix();} }
+function cameraFrame(s,dt){ dt=Math.min(dt,0.05); const next=pickZone(s.x,s.z);
+  if(activeZone&&next!==activeZone){ blend={fromZone:activeZone,pos:CAMRIG.pos.clone(),fov:CAMRIG.fov,pitch:CAMRIG.pitch,t:0,dur:next.blendIn}; }
+  activeZone=next; let want;
+  if(blend){ blend.t+=dt; const u=easeInOutCubic(clampn(blend.t/blend.dur,0,1));
+    const A=rigFor(blend.fromZone,s), B=rigFor(activeZone,s);
+    want={pos:blend.pos.clone().lerp(B.pos,u),tgt:A.tgt.clone().lerp(B.tgt,u),fov:lerp(blend.fov,B.fov,u),pitch:lerp(blend.pitch,B.pitch,u)};
+    if(blend.t>=blend.dur)blend=null;
+  } else want=rigFor(activeZone,s);
+  const k=expK(dt,activeZone.follow);
+  CAMRIG.pos.lerp(want.pos,k);CAMRIG.tgt.lerp(want.tgt,k);
+  CAMRIG.fov+=(want.fov-CAMRIG.fov)*k;CAMRIG.pitch+=(want.pitch-CAMRIG.pitch)*k; applyCamera(); }
+function camBasis(){ let fx=CAMRIG.tgt.x-CAMRIG.pos.x, fz=CAMRIG.tgt.z-CAMRIG.pos.z; const m=Math.hypot(fx,fz);
+  if(m<1e-4){const a=zoneAxis(activeZone);fx=a.fx;fz=a.fz;} else {fx/=m;fz/=m;}
+  return {fx,fz,rx:-fz,rz:fx}; }
+function faceYaw(o){o.rotation.y=Math.atan2(cam.position.x-o.position.x,cam.position.z-o.position.z);}
+// ===== city builder: two terraces, descending stairs, surfaces, storefronts, props =====
+// a box footprint -> a TIGHT PERIMETER RING of small circles that hugs the footprint.
+// (The old half-min-dimension chain made r=2 circles for a depth-4 building, bulging
+// ~2u past the corners INTO the adjacent walkway — an "invisible wall" that trapped
+// the player. Small overlapping circles on the perimeter seal every face with ≤r bulge.)
+function pushBoxColliders(cols,cx,cz,w,d){
+  const r=0.55, sp=r*1.5;
+  const nx=Math.max(1,Math.ceil(w/sp)), nz=Math.max(1,Math.ceil(d/sp));
+  for(let i=0;i<=nx;i++)for(let j=0;j<=nz;j++){
+    if(i>0&&i<nx&&j>0&&j<nz)continue;                 // perimeter only (interior is inside the box)
+    cols.push({x:cx-w/2+(i/nx)*w, z:cz-d/2+(j/nz)*d, r}); }
+}
+function contactShadow(x,z,r,gy){
+  const sh=new THREE.Mesh(new THREE.PlaneGeometry(r*2.4,r*2.4),
+    new THREE.MeshBasicMaterial({map:shadowTex,transparent:true,depthWrite:false,opacity:0.7}));
+  sh.rotation.x=-Math.PI/2; sh.position.set(x,(gy==null?groundHeight(x,z):gy)+GROUND_EPS,z); sh.renderOrder=1; scene.add(sh);
+}
+// upper terrace (3 blocks around the stair notch) + its front retaining wall
+function buildPlateau(cols){
+  const H=LEVEL.H, b=SCENE.bounds, ST=STAIRS, stone='#'+(LEVEL.stone||'ded8cc'), bottom=-2; if(!ST)return;
+  const blocks=[[b.xmin,ST.x0,b.zmin,ST.zBot],[ST.x1,b.xmax,b.zmin,ST.zBot],[ST.x0,ST.x1,b.zmin,ST.zTop]];
+  for(const [x0,x1,z0,z1] of blocks){ const w=x1-x0,d=z1-z0; if(w<=0.01||d<=0.01)continue;
+    const m=M(new THREE.BoxGeometry(w,H-bottom,d),stone,false,false);
+    m.position.set((x0+x1)/2,(bottom+H)/2,(z0+z1)/2); m.castShadow=false; scene.add(m); }
+  // retaining-wall colliders along the cliff edge (z=zBot) beside the stair gap —
+  // keeps the park player from climbing onto the plateau and vice-versa.
+  if(cols){ pushBoxColliders(cols,(b.xmin+ST.x0)/2,ST.zBot,(ST.x0-b.xmin),0.5,0.5);
+            pushBoxColliders(cols,(ST.x1+b.xmax)/2,ST.zBot,(b.xmax-ST.x1),0.5,0.5); }
+}
+// clean descending flight: stepped treads + riser caps + sloped banisters
+function buildStairs(){
+  const ST=STAIRS, H=LEVEL.H; if(!ST)return;
+  const n=ST.steps, x0=ST.x0, x1=ST.x1, w=x1-x0, run=ST.zBot-ST.zTop, dz=run/n, dy=H/n;
+  const tread='#'+(ST.tread||'e4ddcf'), riser='#'+(ST.riser||'d6cdba'), rail='#'+(ST.rail||'f4efe6');
+  for(let i=0;i<n;i++){ const topY=H-i*dy, z0=ST.zTop+i*dz;
+    const step=M(new THREE.BoxGeometry(w,Math.max(topY,0.12),dz*1.04),tread,false,false);
+    step.position.set((x0+x1)/2,Math.max(topY,0.12)/2,z0+dz/2); step.castShadow=false; scene.add(step);
+    const rf=M(new THREE.BoxGeometry(w+0.02,dy*0.96,0.05),riser,false,false);
+    rf.position.set((x0+x1)/2,topY-dy/2,z0+dz); scene.add(rf); }
+  const ang=Math.atan2(H,run), len=Math.hypot(run,H);
+  for(const sx of [x0+0.22, x1-0.22]){                       // INBOARD: on the steps, not in the walls
+    const r=M(new THREE.BoxGeometry(0.1,0.1,len),rail,false,false);
+    r.position.set(sx,H/2+0.92,(ST.zTop+ST.zBot)/2); r.rotation.x=ang; scene.add(r);
+    for(let p=0;p<=n;p+=2){ const py=H-p*dy; const post=M(new THREE.BoxGeometry(0.08,0.98,0.08),rail,false,false);
+      post.position.set(sx,py+0.49,ST.zTop+p*dz); scene.add(post); } }
+}
+// flat tinted ground: road / sidewalk / plaza disc / grass / path. Distinct y-eps
+// per kind (ordered) so overlapping surfaces never z-fight; no cream edges (they
+// read as stray outlines on the ground). Road draws ABOVE plaza so the disc rim
+// never shows across the road junction.
+const SURF_EPS={grass:0.010, plaza:0.020, road:0.034, sidewalk:0.048, path:0.060};
+function buildSurfaces(){
+  for(const s of (SCENE.surfaces||[])){
+    const geo=s.shape==='disc'?new THREE.CircleGeometry(s.r,64):new THREE.PlaneGeometry(s.w,s.d);
+    const m=M(geo,'#'+s.color,true,false); m.rotation.x=-Math.PI/2; m.castShadow=false;
+    m.position.set(s.x,(s.y||0)+(SURF_EPS[s.kind]??0.03),s.z); scene.add(m); }
+}
+// circular planter rim (visual arc segments + a dense containment collider ring)
+function buildRings(cols){
+  for(const rg of (SCENE.rings||[])){
+    const {cx,cz,r,segs,h,thick}=rg, col='#'+(rg.color||'dfe7d6'), gap=rg.gapDeg;
+    const inGap=am=>gap&&am>=gap[0]&&am<=gap[1];
+    for(let i=0;i<segs;i++){ const am=(i+0.5)/segs*360; if(inGap(am))continue;
+      const a=am*Math.PI/180, x=cx+r*Math.cos(a), z=cz+r*Math.sin(a), segLen=2*Math.PI*r/segs*1.04;
+      const m=M(new THREE.BoxGeometry(thick,h,segLen),col,false,false);
+      m.position.set(x,groundHeight(x,z)+h/2,z); m.rotation.y=-a; scene.add(m); }
+    const cn=Math.ceil(2*Math.PI*r/1.0);
+    for(let i=0;i<cn;i++){ const am=(i+0.5)/cn*360; if(inGap(am))continue;
+      const a=am*Math.PI/180; cols.push({x:cx+r*Math.cos(a),z:cz+r*Math.sin(a),r:0.7}); }
+  }
+}
+// low barriers (street hedges, park rails) that both decorate and contain
+function buildWalls(cols){
+  for(const w of (SCENE.walls||[])){ const h=w.h||0.7, gy=groundHeight(w.x,w.z);
+    const m=M(new THREE.BoxGeometry(w.w,h,w.d),'#'+(w.color||'cfdcc4'),false,false);
+    m.position.set(w.x,gy+h/2,w.z); scene.add(m); pushBoxColliders(cols,w.x,w.z,w.w,w.d,0.5); }
+}
+// procedural storefront facade: sign band + awning + upper windows + display bays/door
+function facadeTex(f,wWorld,hWorld){
+  const k=48, W=Math.max(96,Math.round(wWorld*k)), Hp=Math.max(96,Math.round(hWorld*k));
+  const cv=document.createElement('canvas'); cv.width=W; cv.height=Hp; const x=cv.getContext('2d');
+  const wall='#'+(f.wall||'e7d3cc'), trim='#'+(f.trim||'f4efe6'), win='#'+(f.window||'cfe0e6'),
+    sign='#'+(f.signBg||'c98f86'), aw='#'+(f.awning||'d99fa9'), door='#'+(f.signBg||'c2a07a');
+  x.fillStyle=wall; x.fillRect(0,0,W,Hp);
+  const signH=Hp*0.14; x.fillStyle=sign; x.fillRect(0,0,W,signH);
+  if(f.sign){ x.fillStyle=trim; x.font='700 '+Math.round(signH*0.5)+'px sans-serif';
+    x.textAlign='center'; x.textBaseline='middle'; x.fillText(f.sign,W/2,signH*0.55); }
+  const awY=signH, awH=Hp*0.05, seg=W/(f.bays*4);
+  for(let i=0;i<f.bays*4;i++){ x.fillStyle=(i%2)?aw:trim; x.fillRect(i*seg,awY,seg+1,awH); }
+  const storeTop=Hp*0.66, upperTop=signH+awH+Hp*0.03;
+  const cols2=Math.max(2,f.bays), rows=Math.max(1,Math.floor((storeTop-upperTop)/(Hp*0.18))), cw=W/cols2, ch=(storeTop-upperTop)/rows;
+  for(let r=0;r<rows;r++)for(let c=0;c<cols2;c++){ const wx=c*cw+cw*0.24,wy=upperTop+r*ch+ch*0.2,ww=cw*0.52,wh=ch*0.58;
+    x.fillStyle=trim; x.fillRect(wx-3,wy-3,ww+6,wh+6); x.fillStyle=win; x.fillRect(wx,wy,ww,wh); }
+  const bw=W/f.bays, sHt=Hp*0.92-storeTop, doorBay=Math.floor(f.bays/2);
+  for(let i=0;i<f.bays;i++){ const bx=i*bw, pad=bw*0.12;
+    x.fillStyle=trim; x.fillRect(bx+pad-3,storeTop-3,bw-2*pad+6,sHt+6);
+    x.fillStyle=win; x.fillRect(bx+pad,storeTop,bw-2*pad,sHt);
+    if(i===doorBay){ const dw=(bw-2*pad)*0.5,dx=bx+bw/2-dw/2,dh=sHt*0.94;
+      x.fillStyle=door; x.fillRect(dx,storeTop+sHt-dh,dw,dh);
+      x.fillStyle=trim; x.fillRect(dx+dw*0.42,storeTop+sHt-dh*0.55,dw*0.12,dh*0.1); }
+    else { x.strokeStyle=trim; x.lineWidth=2; x.beginPath(); x.moveTo(bx+bw/2,storeTop); x.lineTo(bx+bw/2,storeTop+sHt); x.stroke(); } }
+  const t=new THREE.CanvasTexture(cv); t.colorSpace=THREE.SRGBColorSpace; t.anisotropy=4; return t;
+}
+function buildBuildings(cols){
+  for(const bd of (SCENE.buildings||[])){
+    const base=groundHeight(bd.x,bd.z), top=base+bd.h, bottom=base;   // box sits ON the ground; NO downward extension (it would z-fight the retaining wall behind park-edge shops)
+    const m=M(new THREE.BoxGeometry(bd.w,top-bottom,bd.d),'#'+bd.color,false,false);  // no cream edge outline (read as artifacts)
+    m.position.set(bd.x,(bottom+top)/2,bd.z); m.userData.bn=(bd.facade&&bd.facade.sign)||('bld@'+bd.x+','+bd.z); scene.add(m); BUILDING_MESHES.push(m);
+    const roofCol=(bd.facade&&bd.facade.signBg)||bd.color;
+    const roof=M(new THREE.BoxGeometry(bd.w+0.3,0.4,bd.d+0.3),'#'+roofCol,false,false);
+    roof.position.set(bd.x,top+0.2,bd.z); roof.castShadow=false; scene.add(roof);
+    if(bd.facade){ const dirs=Array.isArray(bd.faceDir)?bd.faceDir:[bd.faceDir||'-z']; for(const d of dirs) addFacade(bd,base,top,d); }
+    pushBoxColliders(cols,bd.x,bd.z,bd.w,bd.d,0.5);
+  }
+}
+// one storefront face: panel spans base→top (above ground only) + a 3D awning ledge
+function addFacade(bd,base,top,dir){
+  const f=bd.facade, h=top-base, faceLen=(dir==='-x'||dir==='+x')?bd.d:bd.w, off=0.05;
+  const panel=new THREE.Mesh(new THREE.PlaneGeometry(faceLen,h),
+    new THREE.MeshStandardMaterial({map:facadeTex(f,faceLen,h),roughness:0.95,metalness:0}));
+  panel.position.set(bd.x,base+h/2,bd.z);
+  if(dir==='-x'){panel.position.x=bd.x-bd.w/2-off; panel.rotation.y=-Math.PI/2;}
+  else if(dir==='+x'){panel.position.x=bd.x+bd.w/2+off; panel.rotation.y=Math.PI/2;}
+  else if(dir==='-z'){panel.position.z=bd.z-bd.d/2-off; panel.rotation.y=Math.PI;}
+  else {panel.position.z=bd.z+bd.d/2+off;}
+  scene.add(panel);
+  const awY=base+h*0.80, depth=0.7, side=(dir==='-x'||dir==='+x');
+  const aw=M(side?new THREE.BoxGeometry(depth,0.1,faceLen*0.97):new THREE.BoxGeometry(faceLen*0.97,0.1,depth),'#'+(f.awning||'d99fa9'),false,false);
+  if(dir==='-x')aw.position.set(bd.x-bd.w/2-depth/2-off,awY,bd.z);
+  else if(dir==='+x')aw.position.set(bd.x+bd.w/2+depth/2+off,awY,bd.z);
+  else if(dir==='-z')aw.position.set(bd.x,awY,bd.z-bd.d/2-depth/2-off);
+  else aw.position.set(bd.x,awY,bd.z+bd.d/2+depth/2+off);
+  aw.castShadow=false; scene.add(aw);
+  // (entrances stay in world.json as future loading-zone hooks; no floating doormat decal)
+}
+// ---- papercraft props (no cream edges on rounded/small props → no stray outlines) ----
+function makeBush(p){ const g=new THREE.Group(), s=p.scale||1, col='#'+(p.color||'c7ddb8');
+  [[0,0,0,1.0],[-0.5,-0.08,0.18,0.72],[0.5,-0.08,-0.12,0.72],[0.08,0.32,0,0.62]].forEach(([dx,dy,dz,r])=>{
+    const b=M(new THREE.SphereGeometry(0.72*r*s,10,8),col,false,false); b.scale.set(1,0.82,1);
+    b.position.set(dx*s,0.5*s+dy*s,dz*s); g.add(b); });
+  return {group:g,h:1.1*s,rad:0.85*s}; }
+function makeTree(p){ const g=new THREE.Group(), s=p.scale||1, can='#'+(p.color||'b9d3b0');
+  const tr=M(new THREE.CylinderGeometry(0.18*s,0.23*s,1.5*s,7),'#'+(p.color2||'c2a98c'),false,false); tr.position.y=0.75*s; g.add(tr);
+  [[0,1.8,0,1.0],[-0.55,1.55,0.2,0.7],[0.55,1.6,-0.2,0.7],[0,2.25,0,0.72]].forEach(([dx,dy,dz,r])=>{
+    const c=M(new THREE.SphereGeometry(0.82*r*s,10,8),can,false,false); c.scale.set(1,0.9,1);
+    c.position.set(dx*s,dy*s,dz*s); g.add(c); });
+  return {group:g,h:2.7*s,rad:0.72*s}; }
+// orientation-free street lamp: post + cap + globe ON TOP (no side arm to face wrong way)
+function makeLamp(p){ const g=new THREE.Group(), s=p.scale||1, met='#'+(p.color||'cfcabd');
+  const foot=M(new THREE.CylinderGeometry(0.18*s,0.24*s,0.2*s,10),met,false,false); foot.position.y=0.1*s; g.add(foot);  // visible base on the ground
+  const post=M(new THREE.CylinderGeometry(0.08*s,0.11*s,2.8*s,8),met,false,false); post.position.y=1.4*s; g.add(post);
+  const cap=M(new THREE.CylinderGeometry(0.21*s,0.14*s,0.18*s,8),met,false,false); cap.position.y=2.93*s; g.add(cap);
+  const globe=new THREE.Mesh(new THREE.SphereGeometry(0.2*s,12,10),
+    new THREE.MeshStandardMaterial({color:hex('fdf3d6'),emissive:hex('f7e6b0'),emissiveIntensity:0.7,roughness:0.6}));
+  globe.position.y=2.78*s; g.add(globe);
+  return {group:g,h:3.0*s,rad:0.3*s,shadowR:0.5*s}; }
+function makeBench(p){ const g=new THREE.Group(), s=p.scale||1, col='#'+(p.color||'c2a98c');
+  const seat=M(new THREE.BoxGeometry(1.6*s,0.12*s,0.5*s),col,false,false); seat.position.y=0.45*s; g.add(seat);
+  const back=M(new THREE.BoxGeometry(1.6*s,0.5*s,0.1*s),col,false,false); back.position.set(0,0.72*s,-0.2*s); g.add(back);
+  [[-0.7,-0.18],[0.7,-0.18],[-0.7,0.18],[0.7,0.18]].forEach(([lx,lz])=>{const leg=M(new THREE.BoxGeometry(0.1*s,0.45*s,0.1*s),col,false,false);
+    leg.position.set(lx*s,0.22*s,lz*s); g.add(leg);});
+  return {group:g,h:1.0*s,rad:0.95*s}; }
+function makeFountain(p){ const g=new THREE.Group(), s=p.scale||1, stone='#'+(p.color||'ded8cc');
+  const basin=M(new THREE.CylinderGeometry(1.85*s,2.05*s,0.6*s,28),stone,false,false); basin.position.y=0.3*s; g.add(basin);
+  const w1=new THREE.Mesh(new THREE.CircleGeometry(1.6*s,28),new THREE.MeshStandardMaterial({color:hex('bcd9e6'),roughness:0.5,transparent:true,opacity:0.85}));
+  w1.rotation.x=-Math.PI/2; w1.position.y=0.57*s; g.add(w1);
+  const ped=M(new THREE.CylinderGeometry(0.4*s,0.52*s,0.95*s,16),stone,false,false); ped.position.y=0.95*s; g.add(ped);
+  const bowl=M(new THREE.CylinderGeometry(0.92*s,0.6*s,0.35*s,20),stone,false,false); bowl.position.y=1.5*s; g.add(bowl);
+  const w2=new THREE.Mesh(new THREE.CircleGeometry(0.8*s,20),new THREE.MeshStandardMaterial({color:hex('cfe6ef'),roughness:0.5,transparent:true,opacity:0.85}));
+  w2.rotation.x=-Math.PI/2; w2.position.y=1.69*s; g.add(w2);
+  const top=M(new THREE.CylinderGeometry(0.1*s,0.15*s,0.5*s,12),stone,false,false); top.position.y=1.92*s; g.add(top);
+  return {group:g,h:2.1*s,rad:2.0*s,shadowR:2.1*s}; }
+// playground: slide tower + canopy + slide w/ side rails + climbing arches. Solid
+// parts get their OWN colliders (cols[]) so you can't clip through the slide.
+function makePlayground(p){ const g=new THREE.Group(), s=p.scale||1;
+  const pad=M(new THREE.BoxGeometry(7*s,0.06*s,7*s),'#'+(p.color||'e6dcc8'),false,false); pad.position.y=0.03*s; pad.castShadow=false; g.add(pad);  // near-flush so the player doesn't sink into it
+  const c2='#'+(p.color2||'d99fa9'), legCol='#'+(p.color3||'c2a98c'), slideCol='#'+(p.color4||'9bb6c2');
+  const plat=M(new THREE.BoxGeometry(1.6*s,0.16*s,1.6*s),c2,false,false); plat.position.set(-1.5*s,1.5*s,-1.0*s); g.add(plat);
+  const roof=M(new THREE.ConeGeometry(1.45*s,0.85*s,4),c2,false,false); roof.position.set(-1.5*s,2.45*s,-1.0*s); roof.rotation.y=Math.PI/4; g.add(roof);
+  [[-2.2,-1.7],[-0.8,-1.7],[-2.2,-0.3],[-0.8,-0.3]].forEach(([lx,lz])=>{const leg=M(new THREE.BoxGeometry(0.14*s,1.5*s,0.14*s),legCol,false,false);leg.position.set(lx*s,0.75*s,lz*s);g.add(leg);});
+  const slide=M(new THREE.BoxGeometry(1.0*s,0.12*s,3.0*s),slideCol,false,false); slide.position.set(-1.5*s,0.8*s,0.95*s); slide.rotation.x=0.5; g.add(slide);
+  [-0.5,0.5].forEach(sx=>{const sr=M(new THREE.BoxGeometry(0.1*s,0.34*s,3.0*s),slideCol,false,false);sr.position.set((-1.5+sx)*s,0.95*s,0.95*s);sr.rotation.x=0.5;g.add(sr);});
+  const arch=M(new THREE.TorusGeometry(0.95*s,0.1*s,8,18,Math.PI),c2,false,false); arch.position.set(1.9*s,0,0.2*s); g.add(arch);
+  const arch2=arch.clone(); arch2.position.z=1.5*s; g.add(arch2);
+  const cols=[{dx:-1.5,dz:-1.0,r:1.05},{dx:-1.5,dz:1.0,r:0.8},{dx:1.9,dz:0.85,r:0.95}];
+  return {group:g,h:2.8*s,rad:1.3,shadowR:3.9*s,cols}; }
+// diagonal hazard-stripe texture so the barrier reads UNMISTAKABLY as a road barricade
+// (the old plain amber board + grey stripe read as a bench/sign).
+function barrierTex(){ if(texCache.__barrier)return texCache.__barrier;
+  const w=256,h=44,cv=document.createElement('canvas');cv.width=w;cv.height=h;const x=cv.getContext('2d');
+  x.fillStyle='#e8b86a';x.fillRect(0,0,w,h); x.fillStyle='#f4efe6'; const sw=20;
+  for(let i=-h;i<w;i+=sw*2){ x.beginPath(); x.moveTo(i,0); x.lineTo(i+h,h); x.lineTo(i+h+sw,h); x.lineTo(i+sw,0); x.closePath(); x.fill(); }
+  const t=new THREE.CanvasTexture(cv);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;texCache.__barrier=t;return t; }
+function makeBarrier(p){ const g=new THREE.Group(), s=p.scale||1, W=3.4*s;
+  const board=new THREE.Mesh(new THREE.BoxGeometry(W,0.5*s,0.14*s),
+    new THREE.MeshStandardMaterial({map:barrierTex(),roughness:0.95,metalness:0})); board.position.y=0.8*s; board.castShadow=true; g.add(board);
+  const board2=board.clone(); board2.position.y=0.3*s; board2.scale.y=0.6; g.add(board2);   // lower rail
+  [-1,1].forEach(sx=>{ const px=sx*W*0.45;
+    const post=M(new THREE.CylinderGeometry(0.08*s,0.08*s,1.05*s,8),'#'+(p.color3||'cfcabd'),false,false); post.position.set(px,0.5*s,0); g.add(post);
+    const foot=M(new THREE.BoxGeometry(0.45*s,0.12*s,0.62*s),'#'+(p.color3||'cfcabd'),false,false); foot.position.set(px,0.06*s,0); g.add(foot); });
+  return {group:g,h:1.05*s,rad:W*0.5,shadowR:W*0.55}; }
+const PROP={bush:makeBush,tree:makeTree,lamp:makeLamp,bench:makeBench,fountain:makeFountain,playground:makePlayground,barrier:makeBarrier};
+function buildProps(cols){
+  for(const p of (SCENE.props||[])){ const mk=PROP[p.type]; if(!mk)continue;
+    const r=mk(p), gy=groundHeight(p.x,p.z), rot=p.rot||0, ca=Math.cos(rot), sa=Math.sin(rot);
+    r.group.position.set(p.x,gy,p.z); if(rot)r.group.rotation.y=rot; scene.add(r.group);
+    contactShadow(p.x,p.z,r.shadowR||r.rad||0.7,gy);
+    if(p.solid){ if(r.cols){ for(const c of r.cols) cols.push({x:p.x+c.dx*ca-c.dz*sa, z:p.z+c.dx*sa+c.dz*ca, r:c.r}); }
+                 else cols.push({x:p.x,z:p.z,r:r.rad||0.7}); }
+    if(p.type==='fountain')fountains.push({x:p.x,z:p.z,y:gy,h:r.h}); }
+}
+// backdrop city: filler buildings beyond the playable bounds so no sightline ever
+// hits the void. No colliders, no shadows; fog fades the far rings. Deterministic.
+function buildBackdrop(){
+  const b=SCENE.bounds; let seed=20260618>>>0; const rnd=()=>{seed=(seed*1664525+1013904223)>>>0; return seed/4294967296;};
+  const palette=['cdd3da','d8d0c6','d2c7cf','c9d2cb','dcd4c4','cbcfd6','d6cdc2','d0c8d2'];
+  const rings=[{pad:6, step:8.5, h:[8,17]},{pad:18, step:12, h:[13,27]},{pad:33, step:16, h:[18,34]}];
+  for(const rg of rings){
+    // extra pad on the +z (south/park) side: the park camera dollies far south
+    // looking north, so backdrop there must stay BEHIND it, never between it and the park.
+    const x0=b.xmin-rg.pad, x1=b.xmax+rg.pad, z0=b.zmin-rg.pad, z1=b.zmax+rg.pad+18;
+    const place=(x,z)=>{ const w=rg.step*(0.4+0.3*rnd()), d=rg.step*(0.4+0.3*rnd()), h=rg.h[0]+(rg.h[1]-rg.h[0])*rnd();  // <1 step → adjacent fillers don't overlap (no distant z-fight)
+      const m=M(new THREE.BoxGeometry(w,h+3,d),'#'+palette[Math.floor(rnd()*palette.length)],false,false);
+      m.position.set(x,(h-3)/2,z); m.castShadow=false; m.receiveShadow=false; scene.add(m); };
+    for(let x=x0;x<=x1;x+=rg.step){ place(x+(rnd()-.5)*3,z0); place(x+(rnd()-.5)*3,z1); }
+    for(let z=z0;z<=z1;z+=rg.step){ place(x0,z+(rnd()-.5)*3); place(x1,z+(rnd()-.5)*3); }
+  }
+}
+function buildCity(){
+  LEVEL=SCENE.level||{H:0}; STAIRS=SCENE.stairs||null;
+  const cols=[];
+  buildPlateau(cols); buildStairs(); buildSurfaces();
+  buildRings(cols); buildWalls(cols); buildBuildings(cols); buildProps(cols); buildBackdrop();
+  SCENE_COLLIDERS=cols; setColliders(cols);
+}
+// free-look debug camera for visual QA (orbit/low-angle shots). Stops the auto
+// loop, frames a target, renders one frame. window.__look() does angle+distance.
+window.__freecam=(px,py,pz,tx,ty,tz)=>{ if(window.__stopAuto)window.__stopAuto();
+  cam.position.set(px,py,pz); cam.up.set(0,1,0); cam.fov=55; cam.lookAt(tx,ty,tz); cam.updateProjectionMatrix();
+  renderer.render(scene,cam); return {px:+px.toFixed(1),py:+py.toFixed(1),pz:+pz.toFixed(1)}; };
+window.__look=(tx,ty,tz,yawDeg,pitchDeg,dist)=>{ const ya=yawDeg*Math.PI/180, pa=pitchDeg*Math.PI/180;
+  return window.__freecam(tx+dist*Math.cos(pa)*Math.sin(ya), ty+dist*Math.sin(pa), tz+dist*Math.cos(pa)*Math.cos(ya), tx,ty,tz); };
+// camera QA harness (invariant: Shen visible from every reachable spot + transition)
+const _ray=new THREE.Raycaster();
+function _warp(x,z){S.x=x;S.z=z;S.vx=0;S.vz=0;activeZone=pickZone(x,z);blend=null;
+  const r=rigFor(activeZone,S);CAMRIG.pos.copy(r.pos);CAMRIG.tgt.copy(r.tgt);CAMRIG.fov=r.fov;CAMRIG.pitch=r.pitch;applyCamera();}
+function _reachable(stepSz){ stepSz=stepSz||1.0; const B=SCENE.bounds,seen=new Set(),out=[];
+  const key=(x,z)=>Math.round(x/stepSz)+','+Math.round(z/stepSz);
+  const blocked=(x,z)=>{if(x<=B.xmin||x>=B.xmax||z<=B.zmin||z>=B.zmax)return true;
+    for(const c of SCENE_COLLIDERS){const dx=x-c.x,dz=z-c.z;if(dx*dx+dz*dz<(c.r+PLAYER_R)*(c.r+PLAYER_R))return true;}return false;};
+  const sx=SCENE.spawn?SCENE.spawn.x:0, sz=SCENE.spawn?SCENE.spawn.z:0;
+  const stk=[[sx,sz]];seen.add(key(sx,sz));
+  while(stk.length){const [x,z]=stk.pop();out.push([x,z]);
+    for(const [dx,dz] of [[stepSz,0],[-stepSz,0],[0,stepSz],[0,-stepSz]]){const nx=x+dx,nz=z+dz,k=key(nx,nz);
+      if(seen.has(k)||blocked(nx,nz))continue;seen.add(k);stk.push([nx,nz]);}}
+  return out;}
+function shenVisible(){ cam.updateMatrixWorld();cam.matrixWorldInverse.copy(cam.matrixWorld).invert();
+  const gy=groundHeight(S.x,S.z),chest=new THREE.Vector3(S.x,gy+SHEN_H*0.5,S.z),c=chest.clone().project(cam);
+  if(c.z>1)return {ok:false,why:'behind-camera'};
+  if(Math.abs(c.x)>0.9||Math.abs(c.y)>0.9)return {ok:false,why:'off-screen'};
+  if(new THREE.Vector3(S.x,gy+SHEN_H*0.95,S.z).project(cam).y>1.0)return {ok:false,why:'head-cut'};
+  if(new THREE.Vector3(S.x,gy+0.1,S.z).project(cam).y<-1.0)return {ok:false,why:'feet-cut'};
+  if(cam.position.distanceTo(chest)<2.4)return {ok:false,why:'too-close'};
+  const dir=chest.clone().sub(cam.position),dl=dir.length();dir.normalize();
+  _ray.set(cam.position,dir);_ray.far=dl-0.4;_ray.near=0;
+  const hit=_ray.intersectObjects(BUILDING_MESHES,false);
+  if(hit.length)return {ok:false,why:'occluded',occ:hit[0].object.userData.bn||'?'};
+  return {ok:true};}
+// FRAMING QA — separate from visibility: measures whether Shen is well-FRAMED at rest.
+// size = sprite height as a fraction of the viewport (project foot->head, NDC y spans 2);
+// pitch = how far below horizontal the camera looks. Guardrails: not a tiny dot, not top-down.
+function shenFraming(){ cam.updateMatrixWorld();cam.matrixWorldInverse.copy(cam.matrixWorld).invert();
+  const gy=groundHeight(S.x,S.z);
+  const foot=new THREE.Vector3(S.x,gy+0.04,S.z).project(cam);
+  const head=new THREE.Vector3(S.x,gy+SHEN_H,S.z).project(cam);
+  const size=Math.abs(head.y-foot.y)/2;
+  cam.getWorldDirection(_dir);
+  const pitch=Math.asin(clampn(-_dir.y,-1,1));
+  const r={size:+size.toFixed(3),pitchDeg:+(pitch*180/Math.PI).toFixed(1)};
+  if(size<CAM_MIN_FRAC)return Object.assign({ok:false,why:'too-small'},r);
+  if(pitch>CAM_MAX_PITCH)return Object.assign({ok:false,why:'too-steep'},r);
+  return Object.assign({ok:true},r); }
+window.cameraQA={
+  warp:(x,z)=>_warp(x,z),
+  static:(stepSz)=>{const cells=_reachable(stepSz),fails=[];
+    for(const [x,z] of cells){_warp(x,z);const v=shenVisible();if(!v.ok)fails.push({x:+x.toFixed(1),z:+z.toFixed(1),why:v.why});}
+    _warp(SCENE.spawn.x,SCENE.spawn.z);
+    return {cells:cells.length,fails:fails.length,byReason:fails.reduce((a,f)=>((a[f.why]=(a[f.why]||0)+1),a),{}),sample:fails.slice(0,30)};},
+  // FRAMING sweep: at every reachable cell, assert Shen is big enough + not viewed top-down.
+  // Reports minSize / maxPitch across the map so you can tune back/height/fov to the AIM.
+  framing:(stepSz)=>{const cells=_reachable(stepSz),fails=[];let minSize=9,maxPitch=0;
+    for(const [x,z] of cells){_warp(x,z);const f=shenFraming();
+      if(f.size<minSize)minSize=f.size; if(f.pitchDeg>maxPitch)maxPitch=f.pitchDeg;
+      if(!f.ok)fails.push({x:+x.toFixed(1),z:+z.toFixed(1),why:f.why,size:f.size,pitchDeg:f.pitchDeg,zone:activeZone&&activeZone.id});}
+    _warp(SCENE.spawn.x,SCENE.spawn.z);
+    return {cells:cells.length,fails:fails.length,minSize:+minSize.toFixed(3),maxPitch:+maxPitch.toFixed(1),
+      byReason:fails.reduce((a,f)=>((a[f.why]=(a[f.why]||0)+1),a),{}),
+      byZone:fails.reduce((a,f)=>((a[f.zone]=(a[f.zone]||0)+1),a),{}),sample:fails.slice(0,30)};},
+  transition:(from,to,steps)=>{steps=steps||700;const ws=started;started=true;_warp(from[0],from[1]);
+    held.up=held.down=held.left=held.right=false;aiTarget={x:to[0],z:to[1]};const fails=[];let reached=false;
+    for(let i=0;i<steps;i++){S=step(S,resolveInput(),1/60);cameraFrame(S,1/60);
+      const v=shenVisible();if(!v.ok)fails.push({x:+S.x.toFixed(1),z:+S.z.toFixed(1),why:v.why});
+      if(Math.hypot(S.x-to[0],S.z-to[1])<0.3){reached=true;break;}}
+    aiTarget=null;started=ws;_warp(SCENE.spawn.x,SCENE.spawn.z);
+    return {reached,fails:fails.length,sample:fails.slice(0,20)};},
+  path:(wps,steps)=>{steps=steps||500;const ws=started;started=true;_warp(wps[0][0],wps[0][1]);
+    held.up=held.down=held.left=held.right=false;const fails=[];
+    for(let w=1;w<wps.length;w++){aiTarget={x:wps[w][0],z:wps[w][1]};
+      for(let i=0;i<steps;i++){S=step(S,resolveInput(),1/60);cameraFrame(S,1/60);
+        const v=shenVisible();if(!v.ok)fails.push({x:+S.x.toFixed(1),z:+S.z.toFixed(1),leg:w,why:v.why,occ:v.occ,az:activeZone&&activeZone.id});
+        if(Math.hypot(S.x-wps[w][0],S.z-wps[w][1])<0.3)break;}}
+    aiTarget=null;started=ws;_warp(SCENE.spawn.x,SCENE.spawn.z);
+    const occs={}; for(const f of fails){const k=(f.occ||f.why)+'/'+f.az; occs[k]=(occs[k]||0)+1;}
+    return {fails:fails.length,byOcc:occs,sample:fails.slice(0,8)};},
+  // REACHABILITY QA — flood from spawn (real collider radii) and assert every
+  // must-reach landmark is reachable. Catches "an invisible collider walls off the
+  // road/park" — a blockage silently SHRINKS the reachable set, which camera QA
+  // alone never flags. Pass targets=[{name,x,z}]; returns the unreachable ones.
+  reach:(targets,stepSz)=>{ stepSz=stepSz||0.5; const cells=_reachable(stepSz);
+    const key=(x,z)=>Math.round(x/stepSz)+','+Math.round(z/stepSz);
+    const seen=new Set(cells.map(([x,z])=>key(x,z))), miss=[];
+    for(const t of (targets||[])){ let ok=false;
+      for(let dx=-1.5;dx<=1.5&&!ok;dx+=stepSz)for(let dz=-1.5;dz<=1.5&&!ok;dz+=stepSz)
+        if(seen.has(key(t.x+dx,t.z+dz)))ok=true;
+      if(!ok)miss.push(t); }
+    return {reachableCells:cells.length, unreachable:miss}; },
+  // WALK PROBE — drive the CONTINUOUS player (real step()/collision) from a→b; if it
+  // stalls before arriving, return where it got stuck (the blocking spot). Catches
+  // pinch-points too narrow for the player that the grid flood can hop over.
+  walk:(from,to,steps)=>{ steps=steps||1500; const ws=started; started=true; aiMove=null; _warp(from[0],from[1]);
+    held.up=held.down=held.left=held.right=false; aiTarget={x:to[0],z:to[1]};
+    let last={x:S.x,z:S.z}, stall=0, stuckAt=null, joyAt=[], lastJoy=-99;
+    for(let i=0;i<steps;i++){ S=step(S,resolveInput(),1/60); cameraFrame(S,1/60);
+      if(Math.hypot(S.x-to[0],S.z-to[1])<0.45){ aiTarget=null;started=ws;_warp(SCENE.spawn.x,SCENE.spawn.z); return {reached:true, joyFreezes:joyAt}; }
+      if(S.mode==='joy'){ stall=0; if(i-lastJoy>90)joyAt.push({x:+S.x.toFixed(1),z:+S.z.toFixed(1)}); lastJoy=i; last={x:S.x,z:S.z}; continue; } // celebrate ≠ blocked
+      const moved=Math.hypot(S.x-last.x,S.z-last.z); stall=moved<0.0015?stall+1:0; last={x:S.x,z:S.z};
+      if(stall>40){ stuckAt={x:+S.x.toFixed(2),z:+S.z.toFixed(2)}; break; } }   // real block: stalled while NOT celebrating
+    aiTarget=null;started=ws;_warp(SCENE.spawn.x,SCENE.spawn.z);
+    return {reached:!stuckAt, stuckAt, joyFreezes:joyAt}; },
+};
+// list solid colliders near a point — debug the "invisible circle" directly
+window.__colliders=(x,z,rad)=>{ rad=rad||6; return SCENE_COLLIDERS
+  .filter(c=>x==null||Math.hypot(c.x-x,c.z-z)<=rad)
+  .map(c=>({x:+c.x.toFixed(2),z:+c.z.toFixed(2),r:+c.r.toFixed(2)})); };
+// FOOTPRINT OVERLAP AUDIT — overlapping building/stair footprints are exactly what
+// causes z-fighting flicker (coplanar walls) AND visible clipping. This is a pure
+// geometry check (no screenshot needed): any pair returned must be separated.
+window.__overlaps=()=>{ const B=SCENE.buildings||[], ST=SCENE.stairs, out=[];
+  const box=b=>({x0:b.x-b.w/2,x1:b.x+b.w/2,z0:b.z-b.d/2,z1:b.z+b.d/2,
+    name:(b.facade&&b.facade.sign)||('bld@'+b.x+','+b.z)});
+  const boxes=B.map(box);
+  if(ST)boxes.push({x0:ST.x0,x1:ST.x1,z0:ST.zTop,z1:ST.zBot,name:'STAIRS'});
+  for(let i=0;i<boxes.length;i++)for(let j=i+1;j<boxes.length;j++){ const a=boxes[i],b=boxes[j];
+    const ix=Math.min(a.x1,b.x1)-Math.max(a.x0,b.x0), iz=Math.min(a.z1,b.z1)-Math.max(a.z0,b.z0);
+    if(ix>0.02&&iz>0.02)out.push({a:a.name,b:b.name,overlapX:+ix.toFixed(2),overlapZ:+iz.toFixed(2)}); }
+  return out; };
+// every placed thing (props + buildings) with its ground height + size, so the QA
+// harness can frame EACH one individually for a per-object close-up screenshot.
+window.__items=()=>{ const out=[];
+  (SCENE.props||[]).forEach((p,i)=>out.push({kind:p.type, x:p.x, z:p.z, y:groundHeight(p.x,p.z), size:2, face:null, label:p.type+'_'+i}));
+  (SCENE.buildings||[]).forEach((b,i)=>{ const fd=Array.isArray(b.faceDir)?b.faceDir[0]:(b.faceDir||'-z');
+    out.push({kind:'building', x:b.x, z:b.z, y:groundHeight(b.x,b.z), size:Math.max(b.w,b.d,b.h), face:fd,
+      label:'bld_'+((b.facade&&b.facade.sign)||i).toString().replace(/\s+/g,'')}); });
+  return out; };
+
 
 async function build(){
   world=await (await fetch('specs/world.json')).json();
+  SCENE=world; LEVEL=world.level||{H:0}; STAIRS=world.stairs||null; ZONES=world.zones||[];
   setBounds(world.bounds);
-  scene.background=hex(world.sky);
-  scene.fog=new THREE.Fog(hex(world.sky),world.fog[0],world.fog[1]);
+  // sky + lighting: the day/night cycle owns the gradient skydome, arcing sun + moon,
+  // drifting paper clouds, soft stars, dynamic background/fog, and BOTH lights (directional
+  // sun/moon + hemisphere fill). Driven by a single day phase on a wall clock. See sky.js.
+  Sky.build(scene, Object.assign({fog:world.fog}, world.sky||{}));
+  // optional post-processing finishing pass (off|minimal|diorama|full). Degrades to plain
+  // render if the composer can't build. window.__fx(name) switches live. Sky.update reasserts
+  // scene.background each frame, so the day/night sky wins over FX's static gradient.
+  FX.init({renderer,scene,camera:cam,skyColor:'cfe0f2',groundColor:world.ground});
+  window.__fx=(name)=>{const p=FX.setPreset(name);resize();return p;};
+  // base ground (underlies the sunken park) + the two-terrace L-city (plaza/streets/stairs/park,
+  // storefronts, props, backdrop, collider chains). See buildCity() + groundHeight().
+  const ground=new THREE.Mesh(new THREE.PlaneGeometry(400,400),
+    new THREE.MeshStandardMaterial({color:hex(world.ground),roughness:1,metalness:0}));
+  ground.rotation.x=-Math.PI/2; ground.receiveShadow=true; scene.add(ground);
+  buildCity();
 
-  const ground=new THREE.Mesh(new THREE.PlaneGeometry(120,120),
-    new THREE.MeshBasicMaterial({color:hex(world.ground)}));
-  ground.rotation.x=-Math.PI/2; scene.add(ground);
+  // collectible pickups (billboard sprites, grounded): hamsters for Adrian's
+  // quest. One mesh per collectible, kept index-aligned to S.collectibles so the
+  // draw loop pairs them. Per-mesh half-height in userData.hh.
+  const htex=await tx('out/hamster-paper.png'); const HAM_H=0.62; const hw=HAM_H*(htex.image.width/htex.image.height);
+  world.collectibles.forEach(c=>{
+    const m=billboard(htex,hw,HAM_H);
+    m.position.set(c.x,groundHeight(c.x,c.z)+HAM_H/2,c.z);
+    m.userData={x:c.x,z:c.z,hh:HAM_H/2,kind:c.kind||'hamster'}; scene.add(m); pickups.push(m); billboards.push(m);});
 
-  (world.hills||[]).forEach(h=>{const m=billboard(blobTex('#'+h.color),h.w,h.h,{soft:true});
-    m.position.set(h.x,h.h*0.32,h.z); m.renderOrder=-2; scene.add(m);});
-  (world.clouds||[]).forEach(c=>{const m=billboard(blobTex('#ffffff'),c.s*2.4,c.s,{soft:true,opacity:.9});
-    m.position.set(c.x,c.y,c.z); m.renderOrder=-1; scene.add(m);});
-
-  const man=await (await fetch('out/sprites/manifest.json')).json();
-  const texCache={};
-  for(const p of world.props){const sp=man[p.sprite];
-    if(!texCache[p.sprite])texCache[p.sprite]=await tx(sp.file);
-    const w=p.h*(sp.w/sp.h); const m=billboard(texCache[p.sprite],w,p.h);
-    m.position.set(p.x,p.h/2,p.z); scene.add(m); propsMesh.push(m);}
-
-  // collectible flowers
-  const fsp=man.flower; const ftex=await tx(fsp.file); const fh=1.15, fw=fh*(fsp.w/fsp.h);
-  world.collectibles.forEach(c=>{const m=billboard(ftex,fw,fh);
-    m.position.set(c.x,fh/2,c.z); m.userData={x:c.x,z:c.z}; scene.add(m); flowers.push(m);});
-  document.getElementById('total').textContent=world.collectibles.length;
-
-  // NPCs (talk targets) — billboard + grounded group + contact shadow
+  // NPCs (talk targets) — billboard + grounded group + contact shadow.
+  // An NPC may carry a `poses` map {name:texUrl} + a `rep` loop {seq,beat,sfxOn}
+  // for Paper-Mario-style HARD image swaps (no tween): the breathing/greet motion
+  // below is unchanged; only the drawn pose flips. All pose images share one
+  // canvas + foot baseline + body scale (registered by register_poses.py), so the
+  // swap can't resize or unground the character — width is derived once and holds.
   for(const nd of (world.npcs||[])){
-    const ntex=await tx(nd.tex);
+    const poses={}; let defTex=null;
+    if(nd.poses){ for(const[k,u] of Object.entries(nd.poses)) poses[k]=await tx(u);
+      defTex=poses[(nd.rep&&nd.rep.seq&&nd.rep.seq[0])||Object.keys(poses)[0]]; }
+    const ntex=defTex||await tx(nd.tex);
     const nw=nd.h*(ntex.image.width/ntex.image.height);
-    const g=new THREE.Group(); g.position.set(nd.x,0,nd.z);
+    const ny=groundHeight(nd.x,nd.z);
+    const g=new THREE.Group(); g.position.set(nd.x,ny,nd.z);
     const m=billboard(ntex,nw,nd.h); m.position.y=nd.h/2; g.add(m); scene.add(g);
     const sh=new THREE.Mesh(new THREE.PlaneGeometry(nw*1.4,nw*1.4),
       new THREE.MeshBasicMaterial({map:shadowTex,transparent:true,depthWrite:false}));
-    sh.rotation.x=-Math.PI/2; sh.position.set(nd.x,GROUND_EPS,nd.z); sh.renderOrder=1; scene.add(sh);
-    npcs.push({data:nd,group:g,mesh:m,h:nd.h,phase:Math.random()*6.28,greet:0});
+    sh.rotation.x=-Math.PI/2; sh.position.set(nd.x,ny+GROUND_EPS,nd.z); sh.renderOrder=1; scene.add(sh);
+    npcs.push({data:nd,group:g,mesh:m,h:nd.h,ny,phase:Math.random()*6.28,greet:0,
+      poses,rep:nd.rep||null,repIdx:0,repT:0});
   }
   Dialogue.init();
   Dialogue.onEnd=()=>{ talkCooldown=0.3; };
@@ -304,8 +970,12 @@ async function build(){
   Dialogue.onChoiceOpen=()=>Sound.sfx('move');
   Dialogue.onChoiceMove=()=>Sound.sfx('move');
   Dialogue.onChoicePick=()=>Sound.sfx('select');
+  // a dialogue node may carry "verb:arg" (e.g. "start:q_hamsters") → drive the quest engine
+  Dialogue.onAction=(a)=>{ const i=a.indexOf(':'),verb=i<0?a:a.slice(0,i),arg=i<0?'':a.slice(i+1);
+    if(verb==='start')Quests.start(arg); else if(verb==='complete')Quests.complete(arg); else if(verb==='advance')Quests.advance(arg);
+    persist(); };
 
-  // shadow + shen + sparkles + burst
+  // shadow + shen + burst
   shadow=new THREE.Mesh(new THREE.PlaneGeometry(SHEN_W*1.5,SHEN_W*1.5),
     new THREE.MeshBasicMaterial({map:shadowTex,transparent:true,depthWrite:false}));
   shadow.rotation.x=-Math.PI/2; shadow.position.y=GROUND_EPS; shadow.renderOrder=1; scene.add(shadow);
@@ -314,62 +984,100 @@ async function build(){
   const st=await tx('out/shen-paper.png');
   mesh=billboard(st,SHEN_W,SHEN_H); mesh.position.y=SHEN_H/2; shen.add(mesh);
 
-  const SP=['#f3b6c3','#bcd9c4','#f4e2b8','#d7c3e0','#f3b6c3'];
-  for(let i=0;i<5;i++){const sp=billboard(sparkTex,0.55,0.55,{soft:true,tint:SP[i]});
-    sp.visible=false;sp.renderOrder=3;scene.add(sp);sparkles.push(sp);}
   burst=billboard(softCanvasTex((x,s)=>{const g=x.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
     g.addColorStop(0,'rgba(255,255,255,0)');g.addColorStop(.7,'rgba(243,182,195,.5)');
     g.addColorStop(.85,'rgba(243,182,195,.7)');g.addColorStop(1,'rgba(243,182,195,0)');x.fillStyle=g;x.fillRect(0,0,s,s);}),
     1,1,{soft:true}); burst.visible=false;burst.renderOrder=3;scene.add(burst);
 
-  S=initState(world.collectibles);
+  S=initState(world.collectibles, world.spawn);
   try{const r=await fetch('build.json',{cache:'no-store'});if(r.ok){const j=await r.json();BUILD=j.sha||'dev';}}catch{}
+  Sound.quietInDev(BUILD==='dev');   // dev worktree boots silent — effects + music off until you choose a level
   const saved=Save.load(world);
   if(saved)Save.apply(S,saved);          // preview at the saved spot behind the title
+  // quests — the engine reads the LIVE collected set + collectible kinds (closures
+  // over S, so they survive a New Game's S reassignment). Restore persisted progress;
+  // init re-evaluates it against the world as it is now.
+  const kindMap={}; world.collectibles.forEach(c=>kindMap[c.id]=c.kind||'flower');
+  Quests.init(world.quests, saved&&saved.quests, {
+    collectedIds:()=>new Set(S.collectibles.filter(c=>c.got).map(c=>c.id)),
+    kindOf:(id)=>kindMap[id]||null });
+  Quests.onStart   =(d)=>questEvent('✶ New quest — '+d.name,'quest');
+  Quests.onAdvance =(d)=>questEvent('✦ '+d.name+' — task updated','questStep');
+  Quests.onComplete=(d)=>questEvent('✓ Quest complete — '+d.name,'questDone');
   setupTitle(!!saved);
   window.__ready=true; resize(); startAuto();
   const ld=document.getElementById('loader');
   if(ld){ld.classList.add('done'); setTimeout(()=>ld.remove(),600);}
 }
 
-const SP_OFF=[[-.55,1.9],[.6,2.2],[-.35,2.6],[.45,1.6],[.15,2.4]];
+// tiny time-of-day clock — analog hands + digital read-out; refreshed only when the
+// in-game minute changes (cheap), and tinted to night when the sun is down.
+let _clkMin=-1; const _clk={};
+function updateClock(){
+  if(!Sky.ready)return;
+  const c=Sky.clock(), key=c.h24*60+c.m; if(key===_clkMin)return; _clkMin=key;  // refresh on any minute change (incl. hour rollover)
+  if(!_clk.box){_clk.box=document.getElementById('clock');_clk.hr=document.getElementById('clockHr');
+    _clk.min=document.getElementById('clockMin');_clk.t=document.getElementById('clockTime');_clk.g=document.getElementById('clockGlyph');}
+  _clk.hr.setAttribute('transform','rotate('+c.hourDeg.toFixed(1)+' 12 12)');
+  _clk.min.setAttribute('transform','rotate('+c.minDeg.toFixed(1)+' 12 12)');
+  _clk.t.textContent=c.hhmm; _clk.g.textContent=c.isDay?'☀':'☾';
+  _clk.box.classList.toggle('night',!c.isDay);
+}
+
 function draw(dt){
-  if(!mesh){renderer.render(scene,cam);return;}
+  Sky.update(dt,cam);                       // advance day/night (wall clock — runs even while paused)
+  if(!mesh){FX.render();return;}
   if(talkCooldown>0)talkCooldown-=dt;
   if(playing)Dialogue.tick(dt);
+  cameraFrame(S,dt);
   const q=pose(S);
   if(!Dinit){D.yW=q.yW;D.sx=q.sx;D.sy=q.sy;D.rot=q.rot;Dinit=true;}
   D.yW =damp(D.yW, q.yW, 0.035,dt);   // height: snappy so jumps stay responsive
   D.sx =damp(D.sx, q.sx, 0.05, dt);   // squash/stretch: light easing
   D.sy =damp(D.sy, q.sy, 0.05, dt);
   D.rot=damp(D.rot,q.rot,0.09, dt);   // lean: eased most → direction flips swing
-  shen.position.set(S.x,GROUND_EPS,S.z);
+  const gy=groundHeight(S.x,S.z);
+  shen.position.set(S.x,gy+GROUND_EPS,S.z); faceYaw(shen);
   mesh.position.y=SHEN_H/2+D.yW; shen.scale.set(D.sx,D.sy,1); shen.rotation.z=D.rot;
-  const k=clamp(D.yW/2.0,0,1);
-  shadow.position.set(S.x,GROUND_EPS,S.z); const ss=1-0.5*k; shadow.scale.set(ss,ss,1);
+  const k=clamp(D.yW/MAX_LIFT,0,1);
+  shadow.position.set(S.x,gy+GROUND_EPS,S.z); const ss=1-0.5*k; shadow.scale.set(ss,ss,1);
   shadow.material.opacity=(1-0.55*k);
-  sparkles.forEach((sp,i)=>{ if(q.spark<=0){sp.visible=false;return;} sp.visible=true;
-    const[ox,oy]=SP_OFF[i]; sp.position.set(S.x+ox*0.7,SHEN_H/2+D.yW+oy*0.7+q.spark*0.5,S.z+0.3);
-    const sc=0.55+0.5*Math.sin(q.spark*Math.PI);sp.scale.set(sc,sc,1);
-    sp.material.opacity=Math.sin(q.spark*Math.PI);});
-  flowers.forEach((f,i)=>{const c=S.collectibles[i]; f.visible=!c.got;
-    f.position.y=1.15/2+0.08*Math.sin(S.animClock*3+i);});
-  if(S.justGot>=0){const c=S.collectibles[S.justGot];burstPos.set(c.x,1.0,c.z);burstT=0;persist();}
-  if(burstT>=0){burstT+=dt;const p=burstT/0.45;burst.visible=p<1;burst.position.copy(burstPos);
+  pickups.forEach((f,i)=>{const c=S.collectibles[i]; f.visible=!c.got;
+    const hh=(f.userData&&f.userData.hh)||FH/2;
+    f.position.y=groundHeight(c.x,c.z)+hh+0.08*Math.sin(S.animClock*3+i);});
+  if(S.justGot>=0){const c=S.collectibles[S.justGot];burstPos.set(c.x,groundHeight(c.x,c.z)+0.7,c.z);burstT=0;
+    Quests.note({type:'collect',kind:c.kind,id:c.id});          // may advance/complete a quest
+    if(c.kind==='hamster'){
+      if(Quests.started('q_hamsters')){const f=S.collectibles.filter(k=>k.kind==='hamster'&&k.got).length,
+        t=S.collectibles.filter(k=>k.kind==='hamster').length; toast('🐹 '+f+' / '+t+' hamsters');}
+      else toast('🐹 a stray hamster!');}
+    persist();}
+  if(burstT>=0){burstT+=dt;const p=burstT/0.45;burst.visible=p<1;burst.position.copy(burstPos);burst.quaternion.copy(cam.quaternion);
     const sc=0.6+p*2.4;burst.scale.set(sc,sc,1);burst.material.opacity=(1-p)*0.8;if(p>=1)burstT=-1;}
   // NPCs: gentle paper breathing + greet hop
   npcs.forEach(o=>{
     const t=S.animClock+o.phase;
+    // discrete pose swap (Paper-Mario style: a hard image flip, no tween). The
+    // breathing/greet transforms below keep running on whichever image is shown.
+    if(o.rep&&o.rep.seq&&o.rep.seq.length>1){ o.repT+=dt;
+      if(o.repT>=o.rep.beat){ o.repT=0; o.repIdx=(o.repIdx+1)%o.rep.seq.length;
+        const nm=o.rep.seq[o.repIdx], tex=o.poses[nm];
+        if(tex){ o.mesh.material.map=tex; o.mesh.material.needsUpdate=true; }
+        if(o.rep.sfxOn===nm){ const pg=proxGain(o.data.x,o.data.z); if(pg>0) Sound.sfx('lift',pg); } } }
     let sy=1+0.02*Math.sin(t*2.0), yW=0;
     if(o.greet>0){o.greet=Math.max(0,o.greet-dt);const p=1-o.greet/0.5;
       yW=Math.sin(p*Math.PI)*0.5; sy=1+0.06*Math.sin(p*Math.PI);}
+    faceYaw(o.group);
     o.group.scale.set(1/Math.sqrt(sy),sy,1);
     o.group.rotation.z=0.012*Math.sin(t*1.3);
     o.mesh.position.y=o.h/2+yW;
   });
+  billboards.forEach(faceYaw);   // pickups + NPCs yaw to the rotating camera
 
-  // follow camera (keeps Shen centred)
-  cam.position.set(S.x,CAM_Y,S.z+CAM_D); cam.lookAt(S.x,CAM_LOOK_Y,S.z);
+  // ambient fountain water — a spatial world sound: level = proximity to the nearest
+  // fountain (silent at the plaza edge, full right beside it). Routes through the SFX
+  // sub-bus, so the effects + master sliders already scale it (see audio.js setWaterLevel).
+  if(fountains.length){let wl=0;for(const f of fountains){const g=proxGain(f.x,f.z);if(g>wl)wl=g;}Sound.setWaterLevel(wl);}
 
   // proximity → nearest talkable NPC + floating prompt
   nearNpc=null;
@@ -384,35 +1092,41 @@ function draw(dt){
     tp.textContent='💬 Talk to '+nearNpc.data.name;
     tp.classList.add('on');
   } else tp.classList.remove('on');
-  document.getElementById('bTalk').classList.toggle('near',!!nearNpc||Dialogue.active);
+  // the Talk action button only appears when you're beside someone to talk to;
+  // mid-conversation it doubles as a clear "advance" affordance.
+  const talkable=!!nearNpc||Dialogue.active, bTalk=document.getElementById('bTalk');
+  bTalk.hidden=!talkable; bTalk.classList.toggle('near',talkable);
+  const bLbl=Dialogue.active?'next ▾':'talk 💬';
+  if(bTalk.textContent!==bLbl)bTalk.textContent=bLbl;
+  // on touch, hide the d-pad mid-conversation (movement is gated; choices are tapped
+  // directly + Talk advances) so it never overlaps the dialogue box on small screens
+  document.body.classList.toggle('talking',Dialogue.active);
 
-  document.getElementById('score').textContent=S.score;
-  if(S.event==='win'){const w=document.getElementById('win');w.style.opacity=1;setTimeout(()=>w.style.opacity=0,2400);}
-  renderer.render(scene,cam);
+  updateClock();
+  FX.render();
 }
 
 // ---------- audio: map sim-state transitions to one-shot SFX ----------
 const aprev={onGround:true,mode:'idle',walkSeg:0};
 function audioStep(s){
-  if(s.event==='win')Sound.sfx('win');
-  else if(s.event==='collect'||s.justGot>=0)Sound.sfx('collect');
+  if(s.justGot>=0)Sound.sfx('squeak');                       // picked up a hamster
   if(aprev.onGround&&!s.onGround)Sound.sfx('hop');           // jump launch
   if(!aprev.onGround&&s.onGround)Sound.sfx('land');          // touchdown
-  if(s.mode==='joy'&&aprev.mode!=='joy'&&s.justGot<0)Sound.sfx('joy'); // joy (not via pickup)
   const seg=Math.floor(s.walkPhase/Math.PI);                 // walk contact = each half-cycle
-  if(s.mode==='walk'&&seg!==aprev.walkSeg)Sound.sfx('step');
+  if(s.mode==='walk'&&seg!==aprev.walkSeg)                    // sunken park terrace = grass → softer, duller footstep
+    Sound.sfx(groundHeight(s.x,s.z)<2.0?'stepSoft':'step');
   aprev.onGround=s.onGround; aprev.mode=s.mode; aprev.walkSeg=seg;
 }
 
 // ---------- input (human + AI share one path) ----------
-const held={up:false,down:false,left:false,right:false}; let edgeJump=false,edgeJoy=false,edgeTalk=false;
-let aiMove=null, aiTarget=null, aiJump=false, aiJoy=false;
+const held={up:false,down:false,left:false,right:false}; let edgeJump=false,edgeTalk=false;
+let aiMove=null, aiTarget=null, aiJump=false;
 addEventListener('keydown',e=>{const k=e.key.toLowerCase();
   if(!started)return;                        // title screen owns input until play begins
   Sound.resume();                            // browsers gate audio behind a gesture
-  if(k==='escape'&&!e.repeat){e.preventDefault();toggleMenu();return;}
+  if(k==='escape'&&!e.repeat){e.preventDefault();toggleJournal();return;}
   if(k==='m'&&!e.repeat){Sound.toggle();syncMenu();return;}
-  if(menuOpen())return;                      // paused menu eats other keys
+  if(journalOpen())return;                   // open journal eats other keys
   if(Dialogue.active){                       // talking: advance / pick — but movement keys fall through so you can walk away
     if(k===' '||k==='enter'||k==='e'){Dialogue.advance();e.preventDefault();return;}
     if(Dialogue.choiceMode){                 // an open choice menu owns up/down; left/right still walk you out
@@ -425,7 +1139,6 @@ addEventListener('keydown',e=>{const k=e.key.toLowerCase();
   else if(k==='arrowleft'||k==='a')held.left=true; else if(k==='arrowright'||k==='d')held.right=true;
   else if((k===' ')&&!e.repeat)edgeJump=true;
   else if((k==='e'||k==='enter')&&!e.repeat)edgeTalk=true;
-  else if((k==='j')&&!e.repeat)edgeJoy=true;
   if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k))e.preventDefault();});
 addEventListener('keyup',e=>{const k=e.key.toLowerCase();
   if(k==='arrowup'||k==='w')held.up=false; else if(k==='arrowdown'||k==='s')held.down=false;
@@ -433,25 +1146,114 @@ addEventListener('keyup',e=>{const k=e.key.toLowerCase();
 // resume audio on the first touch/click too (mobile has no keydown)
 addEventListener('pointerdown',()=>Sound.resume(),{passive:true});
 
-// ---------- pause menu (volume slider + mute + controls) ----------
-const menu=document.getElementById('menu'), vol=document.getElementById('vol'), muteRow=document.getElementById('muteRow');
-const menuOpen=()=>menu.classList.contains('on');
-function paintVol(){const v=+vol.value; vol.style.background=`linear-gradient(90deg,#e6b9c6 ${v}%,#ece2d0 ${v}%)`;}
-function syncMenu(){const v=Math.round(Sound.volume*100);
-  vol.value=v; document.getElementById('volVal').textContent=v+'%'; paintVol();
+// ---------- journal (book: Quests + Settings tabs, page-flip) ----------
+const journal=document.getElementById('journal'), pagesEl=document.getElementById('pages');
+const vol=document.getElementById('vol'), sfxvol=document.getElementById('sfxvol'),
+  musicvol=document.getElementById('musicvol'), muteRow=document.getElementById('muteRow');
+const journalOpen=()=>journal.classList.contains('on');
+let curTab='quests', listDirty=true;
+
+// --- settings sliders (same behaviour as the old pause menu, relocated) ---
+function paintSlider(el){const v=+el.value; el.style.background=`linear-gradient(90deg,#e6b9c6 ${v}%,#ece2d0 ${v}%)`;}
+function setSlider(el,valId,frac){const v=Math.round(frac*100);
+  el.value=v; document.getElementById(valId).textContent=v+'%'; paintSlider(el);}
+function syncMenu(){
+  setSlider(vol,'volVal',Sound.volume);
+  setSlider(sfxvol,'sfxVal',Sound.sfxVolume);
+  setSlider(musicvol,'musicVal',Sound.musicVolume);
   document.getElementById('muteState').textContent=Sound.muted?'off':'on';
   muteRow.classList.toggle('off',Sound.muted);}
-function openMenu(){Sound.resume(); playing=false; held.up=held.down=held.left=held.right=false;
-  menu.classList.add('on'); syncMenu();}
-function closeMenu(){menu.classList.remove('on'); edgeJump=edgeJoy=edgeTalk=false; last=null; playing=true;}
-function toggleMenu(){Sound.resume(); menuOpen()?closeMenu():openMenu();}
+
+// --- quest page rendering (from Quests.list()) ---
+function mk(tag,cls,txt){const e=document.createElement(tag); if(cls)e.className=cls; if(txt!=null)e.textContent=txt; return e;}
+function renderQuests(){
+  const list=Quests.list();
+  document.getElementById('questEmpty').style.display=list.length?'none':'block';
+  const wrap=document.getElementById('questList'); wrap.innerHTML='';
+  list.forEach((q,qi)=>{
+    const item=mk('div','questItem'+(q.status==='done'?' done':''));
+    const head=mk('div','qhead');
+    head.appendChild(mk('span','qmark',q.status==='done'?'✓':'◆'));
+    const title=mk('span','qtitle'); title.appendChild(mk('span','qname',q.name));
+    if(q.giver)title.appendChild(mk('span','qgiver',q.giver));
+    head.appendChild(title); head.appendChild(mk('span','qchev','▾'));
+    const body=mk('div','qbody');
+    if(q.summary)body.appendChild(mk('div','qsummary',q.summary));
+    if(q.current){
+      const cur=mk('div','qcurrent');
+      cur.appendChild(mk('div','qcurlabel','Current task'));
+      cur.appendChild(mk('div','qcurdesc',q.current.desc));
+      if(q.current.prog){const p=q.current.prog,pct=Math.round(100*p.have/Math.max(1,p.need));
+        cur.appendChild(mk('div','qprogtext',p.have+' / '+p.need));
+        const bar=mk('div','qbar'),fill=mk('div','qbarfill'); fill.style.width=pct+'%'; bar.appendChild(fill); cur.appendChild(bar);}
+      body.appendChild(cur);
+    } else if(q.status==='done') body.appendChild(mk('div','qdoneline','Completed ✓'));
+    const steps=mk('div','qsteps');
+    q.steps.forEach(s=>{const row=mk('div','qstep'+(s.done?' done':s.active?' active':' future'));
+      row.appendChild(mk('span','qbox',s.done?'✓':s.active?'◆':'○'));
+      let t=s.desc; if(s.prog)t+=' ('+s.prog.have+'/'+s.prog.need+')';
+      row.appendChild(mk('span','qsteptext',t)); steps.appendChild(row);});
+    body.appendChild(steps);
+    head.addEventListener('click',()=>{item.classList.toggle('open'); Sound.sfx('move');});
+    item.appendChild(head); item.appendChild(body);
+    if(qi===0&&q.status==='active')item.classList.add('open');   // first active quest open by default
+    wrap.appendChild(item);
+  });
+}
+
+// --- tabs / page-flip ---
+function setActiveTab(name){document.querySelectorAll('.jtab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name));}
+function showPage(name){
+  document.getElementById('page-quests').hidden=name!=='quests';
+  document.getElementById('page-settings').hidden=name!=='settings';
+  if(name==='quests'&&listDirty){renderQuests(); listDirty=false;}
+  if(name==='settings')syncMenu();
+}
+function switchTab(name){
+  if(name===curTab)return; curTab=name; setActiveTab(name); Sound.sfx('flip');
+  pagesEl.classList.add('flipping');                              // turn the page edge-on...
+  setTimeout(()=>{showPage(name); pagesEl.classList.remove('flipping');},200);   // ...swap, turn back
+}
+document.querySelectorAll('.jtab').forEach(t=>t.addEventListener('click',e=>{e.preventDefault();Sound.resume();switchTab(t.dataset.tab);}));
+
+function openJournal(tab){Sound.resume(); playing=false; held.up=held.down=held.left=held.right=false;
+  const name=tab||curTab||'quests'; curTab=name; setActiveTab(name);
+  pagesEl.classList.remove('flipping'); listDirty=true; showPage(name);
+  document.getElementById('bMenu').classList.remove('badge');
+  journal.classList.add('on'); Sound.sfx('book');}
+function closeJournal(){journal.classList.remove('on'); edgeJump=edgeTalk=false; last=null; playing=true; Sound.sfx('bookClose');}
+function toggleJournal(){Sound.resume(); journalOpen()?closeJournal():openJournal();}
+
+// --- quest toast (milestones + hamster count) ---
+let toastT=null;
+function toast(msg){const t=document.getElementById('qtoast'); t.textContent=msg; t.classList.add('on');
+  if(toastT)clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('on'),2200);}
+function questEvent(msg,sfx){toast(msg); Sound.sfx(sfx); listDirty=true;
+  if(journalOpen())renderQuests(); else document.getElementById('bMenu').classList.add('badge');}
+
+// pick a state-aware dialogue entry node for an NPC tied to a quest
+function entryNode(npc){
+  const qid=npc.quest; if(!qid||!Quests.defs[qid])return undefined;     // no quest → tree default
+  const N=npc.dialogue.nodes, status=Quests.status(qid);
+  if(status==='unstarted')return undefined;                            // intro / offer
+  if(status==='done')return N.done?'done':undefined;
+  const g=Quests.currentGoal(qid);                                     // active
+  if(g&&g.type==='talk'&&g.npc===npc.name)return N.ready?'ready':undefined;   // returning to the giver
+  return N.progress?'progress':undefined;                             // still working on it
+}
+
+// settings listeners
 vol.addEventListener('input',()=>{Sound.resume();Sound.setVolume(+vol.value/100);syncMenu();});
-vol.addEventListener('change',()=>Sound.sfx('select'));  // preview the level on release
+vol.addEventListener('change',()=>Sound.sfx('select'));      // preview overall level on release
+sfxvol.addEventListener('input',()=>{Sound.resume();Sound.setSfxVolume(+sfxvol.value/100);syncMenu();});
+sfxvol.addEventListener('change',()=>Sound.sfx('select'));   // preview the SFX level on release
+musicvol.addEventListener('input',()=>{Sound.resume();Sound.setMusicVolume(+musicvol.value/100);syncMenu();});
 muteRow.addEventListener('click',e=>{e.preventDefault();Sound.resume();Sound.toggle();syncMenu();});
-document.getElementById('resumeBtn').addEventListener('click',e=>{e.preventDefault();closeMenu();});
-document.getElementById('restartBtn').addEventListener('click',e=>{e.preventDefault();Save.wipe();S=initState(world.collectibles);persist();Sound.sfx('move');closeMenu();});
-document.getElementById('bMenu').addEventListener('click',e=>{e.preventDefault();toggleMenu();});
-menu.addEventListener('pointerdown',e=>{if(e.target===menu)closeMenu();}); // backdrop closes
+document.getElementById('resumeBtn').addEventListener('click',e=>{e.preventDefault();closeJournal();});
+document.getElementById('restartBtn').addEventListener('click',e=>{e.preventDefault();Save.wipe();S=initState(world.collectibles, world.spawn);
+  Quests.init(world.quests,null,Quests.ctx); listDirty=true; renderQuests(); persist(); Sound.sfx('move'); closeJournal();});
+document.getElementById('bMenu').addEventListener('click',e=>{e.preventDefault();toggleJournal();});
+journal.addEventListener('pointerdown',e=>{if(e.target===journal)closeJournal();}); // backdrop closes
 syncMenu();
 function holdBtn(id,set){const b=document.getElementById(id);
   b.addEventListener('pointerdown',e=>{e.preventDefault();set(true);});
@@ -463,29 +1265,45 @@ function navBtn(id,dir,set){const b=document.getElementById(id);
 navBtn('bU',-1,v=>held.up=v); navBtn('bD',1,v=>held.down=v);
 holdBtn('bL',v=>held.left=v);holdBtn('bR',v=>held.right=v);
 document.getElementById('bHop').addEventListener('click',()=>{if(!Dialogue.active)edgeJump=true;});
-document.getElementById('bJoy').addEventListener('click',()=>{if(!Dialogue.active)edgeJoy=true;});
 document.getElementById('bTalk').addEventListener('click',()=>{
   if(Dialogue.active)Dialogue.advance(); else edgeTalk=true;});
+// ----- tap to progress dialogue (mobile-friendly) -----
+// Tapping the dialogue box OR the scene advances the line, the way every mobile
+// game works. Choices are tapped directly, so ignore taps on a choice / while the
+// choice menu is open (there you pick an option, you don't "continue").
+function tapAdvance(e){
+  if(!Dialogue.active) return;
+  if(e&&e.target&&e.target.closest&&e.target.closest('.dlgChoice')) return; // choice handles itself
+  if(Dialogue.choiceMode) return;                                          // pick a choice, don't advance
+  if(e) e.preventDefault();
+  Sound.resume();
+  Dialogue.advance();
+}
+document.getElementById('dlg').addEventListener('pointerdown',tapAdvance);
+canvas.addEventListener('pointerdown',e=>{ if(started) tapAdvance(e); });
 function resolveInput(){
-  if(!started) return {moveX:0,moveZ:0,jump:false,joy:false};
-  let mx=(held.right?1:0)-(held.left?1:0), mz=(held.down?1:0)-(held.up?1:0);
-  if(mx===0&&mz===0){
-    if(aiMove){mx=aiMove.x;mz=aiMove.z;}
-    else if(aiTarget){const dx=aiTarget.x-S.x,dz=aiTarget.z-S.z,d=Math.hypot(dx,dz);
-      if(d<0.18)aiTarget=null; else{mx=dx/d;mz=dz/d;}}}
-  if(Dialogue.active){                       // talking: walking away ends the conversation; no hop/joy mid-chat
+  if(!started) return {moveX:0,moveZ:0,jump:false};
+  // camera-relative: UP = into the screen (where the camera looks), LEFT/RIGHT = screen-relative
+  const fwd=(held.up?1:0)-(held.down?1:0), stf=(held.right?1:0)-(held.left?1:0);
+  let mx=0,mz=0;
+  if(fwd||stf){const b=camBasis();mx=b.fx*fwd+b.rx*stf;mz=b.fz*fwd+b.rz*stf;const mm=Math.hypot(mx,mz);if(mm>1){mx/=mm;mz/=mm;}}
+  else if(aiMove){mx=aiMove.x;mz=aiMove.z;}
+  else if(aiTarget){const dx=aiTarget.x-S.x,dz=aiTarget.z-S.z,d=Math.hypot(dx,dz);
+    if(d<0.18)aiTarget=null; else{mx=dx/d;mz=dz/d;}}
+  if(Dialogue.active){                       // talking: walking away ends the conversation; no hop mid-chat
     if(mx!==0||mz!==0)Dialogue.end();
-    edgeJump=edgeJoy=aiJump=aiJoy=false;
-    return {moveX:mx,moveZ:mz,jump:false,joy:false};}
+    edgeJump=aiJump=false;
+    return {moveX:mx,moveZ:mz,jump:false};}
   const jump=edgeJump||aiJump; edgeJump=false;aiJump=false;
-  const joy=edgeJoy||aiJoy; edgeJoy=false;aiJoy=false;
-  return {moveX:mx,moveZ:mz,jump,joy};}
+  return {moveX:mx,moveZ:mz,jump};}
 
 // ---------- loop: fixed-timestep accumulator ----------
 const FIXED=1/60; let playing=true,timer=null,last=null,acc=0;
 function frame(){const now=performance.now();if(last===null)last=now;
   let e=(now-last)/1000;last=now; if(e>0.5)e=0.5;
-  if(started&&edgeTalk){edgeTalk=false; if(playing&&!Dialogue.active&&nearNpc){nearNpc.greet=0.5; Sound.sfx('talk'); Dialogue.start(nearNpc.data);}}
+  if(started&&edgeTalk){edgeTalk=false; if(playing&&!Dialogue.active&&nearNpc){const npc=nearNpc.data;
+    nearNpc.greet=0.5; Sound.sfx('talk'); Dialogue.start(npc, entryNode(npc));   // entry node BEFORE noting
+    if(npc.name)Quests.note({type:'talk',npc:npc.name});}}
   if(playing){acc+=e;let n=0;while(acc>=FIXED&&n<40){S=step(S,resolveInput(),FIXED);audioStep(S);acc-=FIXED;n++;}}
   draw(e);}
 function startAuto(){if(!timer){last=null;acc=0;timer=setInterval(frame,16);}}
@@ -519,7 +1337,12 @@ function onNew(){
 }
 function beginGame(fresh){
   Sound.resume();                           // first gesture — unlock audio
-  if(fresh){Save.wipe(); S=initState(world.collectibles);}
+  // Auto-loop the ambient track only on a real deploy (build.json present → BUILD
+  // is a git sha). In a local dev worktree (no build.json → BUILD==='dev') it's
+  // armed but silent; the music slider still starts it if you want it.
+  Sound.startMusic('out/music/calm.ogg', BUILD!=='dev');
+  if(fresh){Save.wipe(); S=initState(world.collectibles, world.spawn);
+    Quests.init(world.quests,null,Quests.ctx); listDirty=true;}   // New Game resets quests too
   started=true; titleEl.classList.add('off');
   persist();                                // stamp a save the moment play begins
 }
@@ -532,40 +1355,117 @@ addEventListener('keydown',e=>{
 });
 
 // autosave: on hide / pagehide (true "exit any time") + a 10s crash backstop.
-function persist(){if(!started)return;try{Save.write(S,world,BUILD);}catch{}}
+function persist(){if(!started)return;try{Save.write(S,world,BUILD,{quests:Quests.serialize()});}catch{}}
 addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')persist();});
 addEventListener('pagehide',persist);
 setInterval(persist,10000);
 
-function resize(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h,false);
-  cam.aspect=w/h;cam.updateProjectionMatrix();}
+function resize(){const w=innerWidth||1280,h=innerHeight||800;renderer.setSize(w,h,false);
+  cam.aspect=w/h;cam.updateProjectionMatrix();FX.setSize(w,h);}
 addEventListener('resize',resize);
+
+// ---------- mobile: iOS install guide + rotate-to-landscape + fullscreen ----------
+// "touch device" = coarse pointer / no hover. We only ever nag-to-rotate or show
+// the fullscreen button on these; a narrow desktop window is left alone.
+const isTouch=()=> (matchMedia('(pointer:coarse)').matches || matchMedia('(hover:none)').matches
+  || 'ontouchstart' in window);
+const UA=navigator.userAgent||'';
+// iPadOS 13+ reports as "MacIntel" with a touch screen, so sniff that too.
+const isIPad=()=> /ipad/i.test(UA) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+const isIOS=()=> /ip(hone|od)/i.test(UA) || isIPad();
+// "standalone" = launched from the Home Screen (iOS) or installed PWA (Android).
+const isStandalone=()=> navigator.standalone===true
+  || matchMedia('(display-mode: standalone)').matches
+  || matchMedia('(display-mode: fullscreen)').matches;
+const A2HS_SKIP='shen.a2hs.skip';
+const skipA2HS=()=>{try{return localStorage.getItem(A2HS_SKIP)==='1';}catch(e){return false;}};
+
+// Decide which (if any) full-screen overlay applies. Precedence:
+//   iOS Safari tab (not installed) → "Add to Home Screen" guide (any orientation),
+//   otherwise (incl. the installed iOS app + Android) → rotate prompt when portrait.
+function updateOrientation(){
+  const portrait=(innerHeight>innerWidth);
+  const a2hs=isIOS() && !isStandalone() && !skipA2HS();
+  document.body.classList.toggle('ios-pad', a2hs && isIPad());
+  document.body.classList.toggle('ios-web', a2hs);
+  document.body.classList.toggle('portrait-lock', !a2hs && isTouch() && portrait);
+}
+updateOrientation();
+addEventListener('orientationchange',updateOrientation);
+addEventListener('resize',updateOrientation);
+// "play in the browser instead": remember the choice so we don't nag on return
+const a2hsSkip=document.getElementById('a2hsSkip');
+if(a2hsSkip)a2hsSkip.addEventListener('click',e=>{e.preventDefault();
+  try{localStorage.setItem(A2HS_SKIP,'1');}catch(err){} updateOrientation();});
+
+// Fullscreen API is absent on iPhone Safari (only iPad/desktop/Android expose it),
+// so the button is shown ONLY where it actually works, never a dead control.
+const fsBtn=document.getElementById('bFull'), fsEl=document.documentElement;
+const reqFs=fsEl.requestFullscreen||fsEl.webkitRequestFullscreen;
+const fsSupported=!!reqFs && (document.fullscreenEnabled||document.webkitFullscreenEnabled||false);
+const inFullscreen=()=> !!(document.fullscreenElement||document.webkitFullscreenElement);
+function applyFsIcon(){fsBtn.classList.toggle('on',inFullscreen());
+  fsBtn.title=inFullscreen()?'exit fullscreen':'fullscreen';}
+async function toggleFullscreen(){
+  Sound.resume(); Sound.sfx('fs');
+  try{
+    if(!inFullscreen()){
+      const p=reqFs.call(fsEl); if(p&&p.then)await p;
+      try{await screen.orientation.lock('landscape');}catch(e){}   // best-effort (Android in FS)
+    }else{
+      const ex=document.exitFullscreen||document.webkitExitFullscreen; if(ex){const p=ex.call(document);if(p&&p.then)await p;}
+      try{screen.orientation.unlock();}catch(e){}
+    }
+  }catch(e){/* user dismissed or unsupported gesture, ignore */}
+}
+if(fsSupported && isTouch()) fsBtn.style.display='block';
+fsBtn.addEventListener('click',e=>{e.preventDefault();toggleFullscreen();});
+['fullscreenchange','webkitfullscreenchange'].forEach(ev=>
+  document.addEventListener(ev,()=>{applyFsIcon();resize();}));
+applyFsIcon();
 
 // ---------- AI / debug control surface ----------
 window.game={
   state:()=>({x:+S.x.toFixed(2),z:+S.z.toFixed(2),y:+S.y.toFixed(2),mode:S.mode,
-    onGround:S.onGround,score:S.score,joyT:+S.joyT.toFixed(2),target:aiTarget,
+    onGround:S.onGround,target:aiTarget,
     collectibles:S.collectibles.map(c=>({x:c.x,z:c.z,got:c.got})),world:WORLD}),
   goTo:(x,z)=>{aiTarget={x:+x,z:+z};return 'goTo '+x+','+z;},
   setMove:(x,z)=>{aiMove={x:Math.sign(x||0),z:Math.sign(z||0)};return 'move';},
   stop:()=>{aiTarget=null;aiMove=null;return 'stop';},
   jump:()=>{aiJump=true;return 'jump';},
-  joy:()=>{aiJoy=true;return 'joy';},
   talk:()=>{ if(Dialogue.active){Dialogue.advance();return 'advance';} edgeTalk=true; return 'talk'; },
   dialogue:()=>({active:Dialogue.active,near:nearNpc&&nearNpc.data.name||null}),
   disp:()=>({yW:+D.yW.toFixed(3),sx:+D.sx.toFixed(3),sy:+D.sy.toFixed(3),rot:+D.rot.toFixed(4)}),
-  reset:()=>{Save.wipe();S=initState(world.collectibles);return 'reset';},
+  reset:()=>{Save.wipe();S=initState(world.collectibles, world.spawn);return 'reset';},
   pause:()=>{playing=false;return 'paused';},play:()=>{playing=true;return 'playing';},
   start:(fresh)=>{beginGame(!!fresh);return started?'started':'no';},
   save:()=>{persist();return 'saved';},
   wipe:()=>{Save.wipe();return 'wiped';},
   saveData:()=>Save.load(world),
+  // quests + journal debug surface
+  quests:()=>Quests.list(),
+  startQuest:(id)=>Quests.start(id)?('started '+id):'no',
+  noteTalk:(npc)=>Quests.note({type:'talk',npc}),
+  journal:(tab)=>{if(journalOpen())closeJournal();else openJournal(tab);return journalOpen()?('open:'+curTab):'closed';},
+  tab:(name)=>{if(!journalOpen())openJournal(name);else switchTab(name);return curTab;},
   // audio debug surface
-  audio:()=>({ready:Sound.ready,muted:Sound.muted}),
+  audio:()=>({ready:Sound.ready,muted:Sound.muted,volume:Sound.volume,effects:Sound.sfxVolume,
+    music:Sound.musicVolume,musicOn:Sound.musicOn,musicPlaying:Sound.musicPlaying}),
   sfx:(n)=>{Sound.resume();return Sound.sfx(n)||('sfx '+n);},
+  effects:(v)=>{Sound.resume();return Sound.setSfxVolume(+v);},
+  music:(v)=>{Sound.resume();return v===undefined?Sound.toggleMusic():Sound.setMusicVolume(+v);},
   say:(t='Hello there, friend!',who='Chrees')=>{Sound.resume();Sound.newLine();
     [...String(t)].forEach((c,i)=>setTimeout(()=>Sound.blip(c,who),i*60));return 'say';},
+  // mobile debug surface
+  mobile:()=>({touch:isTouch(),ios:isIOS(),ipad:isIPad(),standalone:isStandalone(),
+    a2hs:document.body.classList.contains('ios-web'),portraitLock:document.body.classList.contains('portrait-lock'),
+    fsSupported,inFullscreen:inFullscreen(),btnShown:fsBtn.style.display==='block'}),
+  fs:()=>{toggleFullscreen();return 'fs-toggle';},
+  // sky / day-night debug surface
+  time:(p)=>p===undefined?Sky.getTime():Sky.setTime(+p),        // 0=sunrise .25=noon .5=sunset .75=midnight
+  dayLength:(s)=>s===undefined?Sky.dayLength:Sky.setDayLength(+s),
 };
+window.sky=Sky;
 window.audio=Sound;
 build().catch(e=>{window.__err=String(e&&e.stack||e);console.error(e);
   const ld=document.getElementById('loader'); if(ld){ld.classList.add('err');

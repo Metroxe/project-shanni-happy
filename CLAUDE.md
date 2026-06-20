@@ -9,11 +9,18 @@ Flat, minimal, **clean** Paper-Mario papercraft. NOT realistic, NOT anime, NOT n
 (noir was tried and dropped). "High fidelity" to this user = clean execution: no
 clutter, no clashing colours, no stray lines/artifacts, calm negative space.
 
-- One static graphic per NPC (chibi, generated in Gemini). The texture NEVER changes.
-- ALL animation = the paper cutout physically moving: hop-walk (squash on contact,
-  stretch in air, slight lean), jump-for-joy (crouch → launch → airborne apex with
-  tilt-wiggle + pastel sparkles → fall → big squash → rebound), contact shadow that
-  shrinks/fades with height. Personality is in the motion, not the texture.
+- One base graphic per NPC (chibi, generated in Gemini), static by default. A *few*
+  characters add a SMALL set (1–3) of alternate **pose images** for the rare moment the
+  drawing itself must change (e.g. Chrees curling a dumbbell). These **hard-swap** —
+  instant, no tween, Paper-Mario style. Every pose image of a character shares ONE
+  canvas + foot baseline + body scale (registered by `studio/register_poses.py`,
+  vision-checked by `studio/qa_vision.py`) so the swap can't resize or unground them.
+  Most characters still have exactly one image. See the `papercraft-asset` skill §4.
+- ALL motion = the paper cutout physically moving: hop-walk (squash on contact, stretch
+  in air, slight lean), jump (squash → launch → airborne → land squash), contact shadow
+  that shrinks/fades with height. Personality is in the motion (and, sparingly, a pose
+  swap) — **never a tween between two drawings.** (The old "jump-for-joy" celebration +
+  pastel sparkles were removed at the user's request — do NOT re-add them.)
 - Character **Shen** = `studio/refs/shen-chibi-4.png` (pink bucket hat, round glasses,
   dark braids, dusty-rose jacket over gray tee, cream floral skirt).
 - Environments use the same flat pastel paper set (flat bands, soft rounded hills,
@@ -42,27 +49,79 @@ is a bug, not a "later." Stay on-aesthetic: soft, warm, calm pastel — never ha
 master chain caps level, but still pick gentle params). Like the art, personality lives in
 motion + sound, not in louder.
 
-**The system:** all audio is **procedural Web Audio**, synthesized at play time in
-`studio/js/audio.js` — **no audio asset files** (same ethos as the art: programmatic, no
-hand-authoring). The module exports `Sound`; it's already wired into `game.html`, so new
-sounds plug into existing seams rather than new plumbing.
+**The second rule: world sounds are spatial.** A sound that comes from a *place* in the world
+— an NPC's animation loop, an ambient prop, a distant event — **must be attenuated by the
+player's distance to it**: full only when the player is near, fading with distance, and **not
+fired at all** once they're far. A world sound audible across the whole map is a bug, exactly
+like a silent interaction is. (Player-centric sounds — the player's own footsteps / jumps —
+and UI / dialogue sounds are *not* spatial; they play full.) Mechanism: pass a 0..1
+multiplier to `Sound.sfx(name, mul)`; `proxGain(x,z)` in `game.html` is the standard rolloff
+(full ≤~2.5u, squared falloff to silent ~9u, skips the call past the edge). **When you add any
+sound, ask: does it come from a spot in the world? If yes, gate it through `proxGain` in the
+same change** — same reflex as shipping its sound at all.
+
+**The third rule: sounds are contextually correct (right sound, right loudness).** A sound must
+match its *source* — don't reuse a sound that merely exists. (Christopher flagged this: the fish
+tanks used the **fountain water** ambient — wrong identity AND wrong level, "fountains are
+obviously louder than fish"; "remember this general concept, not this exact example.") So pick the
+SFX that fits the object and scale its base level to how loud that object really is (a fish tank is
+a soft `bubble`, quieter than a fountain). **Music is per-scene/contextual too:** each area gets a
+track that fits it, the **overworld track is exclusive to the overworld**, and an interior track may
+be **shared across like rooms** (e.g. every pet-shop-style indoor). Switch the track on the scene
+change and never let one scene's music bleed into another (the music swap ships with the
+loading-zone change).
+
+**The system:** all **SFX + the dialogue voice** are **procedural Web Audio**, synthesized at
+play time in `studio/js/audio.js` — **no asset files for those** (same ethos as the art:
+programmatic, no hand-authoring). The module exports `Sound`; it's already wired into
+`game.html`, so new sounds plug into existing seams rather than new plumbing. The one
+**exception is background music** — a single seamless ~26s loop **generated programmatically
+with MusicGen** (`gen_music.py` + `make_loop.py`, NOT hand-authored) and committed as one small
+OGG (`out/music/calm.ogg`), because real-time music synthesis isn't practical. It plays through a
+**music sub-bus** under the master, so the volume slider + mute already scale it.
 
 - **Add a new SFX:** write a tiny synth fn in the `SFX` map in `audio.js` (use the `note()`
   and `noise()` helpers; set its level in `CFG.sfx`), then trigger it with `Sound.sfx('name')`.
 - **Trigger it — two patterns, pick by where the event lives:**
-  1. **Sim-driven** (emerges from the deterministic sim/physics: footsteps, jump, land, joy,
-     collect, win) → detect the **state transition** in `audioStep(s)` in `game.html`, comparing
-     against `aprev` (mode / onGround / walkPhase / score). It runs every fixed step, so fire on
+  1. **Sim-driven** (emerges from the deterministic sim/physics: footsteps, jump, land,
+     hamster pickup `squeak`) → detect the **state transition** in `audioStep(s)` in `game.html`,
+     comparing against `aprev` (mode / onGround / walkPhase). It runs every fixed step, so fire on
      the *edge* (changed-since-last), never every frame.
   2. **Discrete UI/events** (menus, buttons, dialogue, transitions) → call `Sound.sfx('name')`
      right at the event site, or wire a `Dialogue.on*` hook (`onReveal`, `onChoiceOpen/Move/Pick`,
      `onLine`, `onEnd`) in `game.html`.
+- **Positional sounds are proximity-gated** — see the "world sounds are spatial" rule above; any
+  world-anchored sound goes through `proxGain` (Chrees' rep `lift` does), with the multiplier passed
+  to `Sound.sfx(name, mul)`.
 - **Dialogue voice:** the Charlie-Brown muted-brass "wah" is `Sound.blip(ch, speaker)`, one per
   revealed glyph (fired from `Dialogue.onReveal`). A new speaker gets its timbre in `VOICES`.
 - **Gesture gate:** browsers block audio until a user gesture — `Sound.resume()` is already
   wired to the title **Start** / first key / first tap, so new triggers don't handle it.
-- **Volume + mute are automatic** (master bus + pause-menu slider, persisted to `shen.vol` /
-  `shen.muted`). Never gate or scale a sound yourself — just call `Sound.sfx` / `Sound.blip`.
+- **Background music:** `Sound.startMusic(url, autoplay=true)` (called from `beginGame()`,
+  after the gesture) fetches+decodes once and loops a single `AudioBufferSourceNode` (gapless —
+  NOT an `<audio>` element) through the music sub-bus. **Auto-plays only on a real deploy:**
+  `beginGame` passes `BUILD!=='dev'`, so the loop starts itself on GitHub Pages (where `build.json`
+  exists → `BUILD` is a git sha) but stays **silent in a local dev worktree** (no `build.json` →
+  `BUILD==='dev'`). `autoplay=false` only *arms* the track (sets URL + preloads); the music slider
+  (`setMusicVolume`) still starts it on demand, so it isn't a dead control in dev. `Sound.stopMusic()` /
+  `Sound.setMusicVolume(0..1)` (0 = off) / `Sound.toggleMusic()`; the **music** pause-menu slider
+  drives it, persisted to `shen.musicvol` (own key — NOT in the save blob). Decode failure degrades
+  to "no music", never a crash.
+- **⚠️ Background music MUST loop seamlessly — every time, no exceptions.** A loop with an audible
+  seam/click/gap is a bug, not "good enough." MusicGen (and most generators) do NOT loop natively,
+  so you always run the loop step: render a little long (~30s), then `make_loop.py` does an
+  **equal-power crossfade of the tail back over the head** so the wrap lands on two
+  originally-consecutive samples (no click) with a continuous envelope (no level jump). NEVER commit
+  a raw generated clip as the loop. **VERIFY the seam** before shipping (don't trust your ear over a
+  background tab): decode the OGG in an `OfflineAudioContext` and check the wrap discontinuity
+  `|x[0]-x[N-1]|` sits within the clip's own adjacent-sample-delta distribution (well under its max)
+  — that's a numeric proof the loop is gapless. To make a NEW loop, follow the `gen_music.py` →
+  `make_loop.py` flow in `requirements-music.txt`.
+- **Three independent levels, all automatic** — **master** "volume" + mute (`shen.vol`/`shen.muted`,
+  scales everything), **effects** (`shen.sfxvol`, the SFX+voice sub-bus), **music** (`shen.musicvol`,
+  the music sub-bus). Each has its own pause-menu slider. Never gate or scale a sound yourself —
+  SFX/`blip` route through the effects sub-bus and music through the music sub-bus, both under the
+  master, so just call `Sound.sfx` / `Sound.blip` / `Sound.startMusic` and the sliders cover it.
 - **Verify in preview** (don't assume): spy on `Sound.sfx` / `Sound.blip`, drive the interaction,
   assert the event fired the sound, console clean. (Exactly how the audio work verified
   step/collect/blip — wrap the fn, push calls to a log, read it back.)
@@ -71,8 +130,13 @@ sounds plug into existing seams rather than new plumbing.
 
 ```sh
 python3 -m venv studio/.venv && studio/.venv/bin/pip install -r studio/requirements.txt
+npm install && npx playwright install chromium   # once per worktree — the QA scripts + Stop hook need it
 .claude/serve.sh            # prints http://localhost:<port>/game.html for THIS worktree
 ```
+The `npm`/playwright step powers `studio/qa_audit.mjs`, `studio/qa_shots.mjs`, and
+`test/smoke.mjs` (all headless-Chromium). The committed **Stop hook** won't let a turn end
+with un-audited world changes, and clearing it runs `qa_audit.mjs` — so without playwright
+local QA can't pass. (See the **QA reflex** section.)
 Then `preview_start` the **`game`** config and open the printed URL (e.g.
 `/game.html` or `/env-live.html`). The asset pipeline is the `papercraft-asset`
 skill (`.claude/skills/papercraft-asset/`).
@@ -126,14 +190,189 @@ always `git fetch origin main` and check for peers before acting.
   git-ignored** (holds this worktree's unique port + absolute `studio/` path) — never
   commit it or hardcode a port.
 
+## QA reflex — a problem pointed out ONCE becomes a permanent check (not optional)
+
+Christopher reports a visual/world/interaction problem **once**. He should never have to
+report the same *class* of problem twice. When he points one out, the job is not just to fix
+*that instance* — it is to make sure that kind of defect is **caught automatically, forever,
+before anything is ever called done.** This is the standing reflex; treat every bug report as
+"add a permanent check," not "patch this spot."
+
+**The four-step reflex — do all four, every time he flags something:**
+1. **Fix** the instance he pointed at.
+2. **Generalize** it to the class. "This hamster sits on the centre-line and freezes me" →
+   "no pickup may sit on a forced corridor." "These two shops flicker where they touch" →
+   "no two footprints overlap." Name the *category*, not the coordinate.
+3. **Promote it to a check — prefer DETERMINISTIC code over an eyeball.** This is the most
+   important step and the one that keeps the system from rotting:
+   - **If it can be detected in code (geometry, reachability, framing, boot), write a
+     deterministic assertion** that fails loudly — like `window.__overlaps()` or
+     `cameraQA.reach()`. Add it as **a new file in `studio/qa/checks/`** (auto-discovered by
+     `qa_audit.mjs` — no central file to edit, so branches never conflict; add a `window.__*`
+     probe in `game.html` if the check needs one). Write it **generically** — "no overlaps in
+     general", never "this one example". Code never forgets, runs in seconds, gates
+     automatically. **Always try this first.** See `studio/qa/README.md`.
+   - **Only if it is genuinely subjective** (colour clash, "reads as the wrong object",
+     "looks web-ish") does it go into the **visual sweep as a NAMED line** — append it to the
+     `TAXONOMY` in `.claude/skills/papercraft-env-qa/visual-qa.workflow.js` and the
+     recurring-failure-modes table below, as "we were burned by X — specifically check X." A
+     generic "look for clipping" is weaker than a named past failure.
+4. **Record it** — the failure-modes table in the World/asset QA gate section below + a
+   `feedback` memory, so it survives across sessions. See [[shanni-world-qa-gate]] and
+   [[shanni-qa-capture-reflex]].
+
+**Two tiers of QA, and the gate runs them automatically:**
+- **Deterministic audit (fast, always-correct, never forgets):** `node studio/qa_audit.mjs`
+  is a thin runner over an **auto-discovered registry** — every `studio/qa/checks/*.mjs`
+  (boot, geometry, reachability, camera framing/visibility today). **Exit 1 on any failure**;
+  on a clean pass it writes `.claude/.qa-stamp` (the world-file hash). Runs on **every**
+  world-touching change — it is cheap. New deterministic checks are **new files** in
+  `studio/qa/checks/`. All QA scripts boot via the shared `studio/qa/harness.mjs`
+  (`withGamePage`, free port — never copy-paste a server or hardcode a port).
+- **Visual sweep (needs EYES — screenshots, seriously looked at):** `node studio/qa_shots.mjs`
+  (full screenshot battery + per-object close-ups, exit-coded + stamps) → the **multi-agent
+  picture sweep** (`/papercraft-env-qa`). **The best way to catch a visual problem is to take
+  a screenshot and actually study it** — a deterministic check is NOT a substitute for
+  looking. Run this for **any** visual/world change (not deploy-only) and **always** before
+  `/deploy` + `/done`. This is the "really big sub-agent QA run" — scale it up freely;
+  thoroughness over brevity. Full contract + how to add checks/scenarios: `studio/qa/README.md`.
+
+**The hard gate (enforced, not just documented):** a committed **Stop hook**
+(`.claude/settings.json` → `.claude/hooks/qa-gate.mjs`) refuses to let a turn end while
+`studio/game.html`, `studio/specs/world.json`, or `studio/js/*` are **dirty vs `HEAD` AND
+have not passed the deterministic audit since the last edit** (it compares the live world
+hash to `.claude/.qa-stamp`). The hook is instant — it never launches a browser, it just
+checks git + the stamp. **To clear a block: run `node studio/qa_audit.mjs`** (fix anything it
+reports; it re-stamps on a clean pass). The hook fails *open* on any internal error, so it can
+never wedge a session, and it self-limits to one block per stop via `stop_hook_active`. The
+shared world-file list + hash live in `.claude/hooks/qa-lib.mjs` (imported by both the audit
+and the hook so they can't drift). See [[shanni-qa-capture-reflex]].
+
+## Cameras — ALWAYS QA them (not optional)
+
+Whenever you add, move, or tune a camera/zone, you MUST run the camera QA as part of
+building it — it is part of "done", not a follow-up. Invoke the **`/zone-camera`** skill
+(`.claude/skills/zone-camera/`) and enforce its cardinal rule:
+
+> **Shen must be visible from every reachable spot and through every transition.**
+
+But **visible is the floor, not the goal** — also enforce the **framing rules**:
+> **Shen is never a tiny dot (≥ ~13% of the screen, AIM ~15%+), and never looked
+> down on top-down (3/4 view, angle ≤ ~32°).** She sits BEHIND and slightly above,
+> not overhead. For an open area where she'd drift far, DON'T zoom out — keep the camera
+> close and use a zone **`trackWid`** so the eye follows her across the field (constant
+> size). The hard floor/ceiling are `CAM_MIN_FRAC` / `CAM_MAX_PITCH` in `game.html`.
+
+Three design rules: **one fixed camera per zone** (never vary the angle by travel
+direction — that flips the eye into a wall on reversal), **contain the player** so
+every reachable spot is inside a zone, and **keep her big + low-angle** (small-ish
+`back`, `height` ≲ ~0.7×`back`; pulling `back` way out to flatten the angle is the trap
+that shrinks her and walks the eye into neighbouring buildings).
+
+Workflow every time: author the camera → serve the worktree on localhost (never
+`file://`) → in the preview run `cameraQA.static()` (visibility) AND `cameraQA.framing()`
+(size + angle; reports `minSize`/`maxPitch`), `cameraQA.transition([a],[b])` for
+cross-junction pairs, AND `cameraQA.path([...])` for **round-trips** (down a road and
+back, up the stairs and back — reversals hit transitions a one-way sweep misses; they
+also catch a blend grazing a building that `static` won't) → `cameraQA.warp(x,z)` +
+screenshot any failure → fix → re-run until **0 failures** on both. (The occlusion
+check raycasts BUILDINGS only, so eyeball prop-heavy areas — a tree between camera and
+Shen won't be flagged.) A camera change with unrun or failing QA is not finished.
+Reference + harness: `studio/test-scene.html`.
+
+## World/asset QA gate — RUN EVERY PUSH that touches a world or asset (not optional)
+
+Whenever you add/move/retexture buildings, props, surfaces, terrain, colliders, or a new
+asset, you MUST run this gate before calling it done / before `/deploy`. `/zone-camera`
+proves Shen is *visible*; it does NOT prove the world *looks right* or is *traversable*.
+These bugs recur every build — audit for ALL of them, every time. Full how-to +
+detection commands + root-cause code refs live in the **`/papercraft-env-qa`** skill
+(this is the standing summary so it's not forgotten between sessions).
+
+**The gate (all must pass):**
+0. `node studio/qa_audit.mjs` → the fast deterministic audit (boot + `__overlaps` + `reach`
+   + `framing` + `static`), **exit 0 = clean** (and it stamps `.claude/.qa-stamp`, clearing
+   the Stop hook). This is the always-run floor; run it after every world edit. The steps
+   below are the heavy battery on top of it.
+1. `node test/smoke.mjs studio` → green (boots, no JS errors).
+2. `node studio/qa_shots.mjs` → captures the zone battery + flicker pairs + a **per-object
+   close-up of EVERY placed prop & building** (`studio/out/qa/props/`) AND prints
+   **`✓ geometry audit clean`** (`window.__overlaps()`=`[]` and `cameraQA.reach()` all
+   reachable). Footprint overlaps = z-fight/clipping; unreachable = a wall blocks a route.
+   **Every single thing placed in a session must be screenshotted and looked at** — zone
+   shots hide per-object defects (a barrier that reads as a bench, a prop facing wrong, a
+   shrub clipping a wall). Inspect the `props/` close-ups, not just the wide shots.
+3. In the preview (`/zone-camera`): `cameraQA.static()`=0 + `cameraQA.path()` round-trips=0,
+   AND `cameraQA.walk([a],[b])` on every corridor (`stuckAt` null).
+4. **Multi-agent picture sweep** over `studio/out/qa/*.png` (template
+   `.claude/skills/papercraft-env-qa/visual-qa.workflow.js`) — but trust the geometric
+   audit over the sweep's synthesizer (it once mis-dismissed a real z-fight as a "hedge join").
+   Fix everything found → re-shoot → repeat until clean.
+
+**Two cardinal rules:** (1) **Never the abyss** — no reachable spot/angle may see off the
+edge of the world; build PAST the edge, ring open areas with buildings, block with
+believable objects (hedges / construction `barrier`), backfill with `buildBackdrop()` + fog.
+(2) **Stay on the locked look** — no clipping, no stray outlines, no clashing colours.
+
+**Recurring failure modes → root cause → fix (audit for each):**
+| Symptom | Cause → Fix |
+|---|---|
+| Windows/door sunk into ground | building `base`=`groundHeight`; box `bottom=base` (NO downward extension) |
+| Dark squares / mottled patch / flicker on a park-edge wall | box extended below base INTO the retaining wall (vertical z-fight) → `bottom=base` |
+| Two buildings/stairs flicker where they meet | overlapping footprints → `window.__overlaps()` must be `[]`; separate them |
+| Road/plaza/sidewalk shimmer seam | coplanar surfaces same height → distinct per-kind `y`-eps (+ `lift`) |
+| Stray white/cream outline lines | `EdgesGeometry` on the wrong thing → `edge=false` on buildings + rounded/small props (keep only as deliberate die-cut) |
+| "Invisible circle" blocks a path | coarse box collider (`r=0.5·min(w,d)` → r=2 bulge) → tight perimeter ring (~0.55); confirm with `cameraQA.walk` |
+| Silent unreachable area | a stray collider walled it off → `cameraQA.reach()` `unreachable` must be `[]` |
+| Clip THROUGH a prop (slide/climber) | one centre collider → per-part `cols:[{dx,dz,r}]` |
+| Prop faces the wrong way | make it orientation-free (lamp = top globe) or set per-prop `rot` |
+| Props that don't belong / overlap | bushes on a road, bench on a bush → streets = lamps/trees, park = bushes; space props ≥~3u; the `placement` lens |
+| Edits not showing on reload | browser cached `specs/world.json` → it's fetched `cache:'no-store'`; hard-reload |
+| Interior: door covered by a wall, fish tank inside a shelf | interior pieces overlap/z-fight → `checks/interior-overlap.mjs` (`window.__interiorOverlaps()`=`[]`); expose interior pieces to an overlap audit like buildings |
+| Floor bleeds past the room/zone seam (visible past the wall) | floor extent > zone bounds → floor must END at the wall (`bottom`/extent clamped); `checks/floor-bounds.mjs` (`window.__floorOverruns()`=`[]`) |
+| Pitch-white / blank loading-zone background | a scene with no skybox/clear-colour → every zone sets an intentional non-white bg; `checks/scene-background.mjs` |
+| Blurry / mis-aligned building textures | big stretched maps → MODEL foreground structure as separated thin geometry, texture only for flat grain + distant backdrop; uniform texel density; `checks/texture-density.mjs` |
+| Hard seam where two textures/materials meet | adjacent maps don't blend → named sweep line; share a palette/tile, soften the join |
+| Sky/light seeping through a gap between adjacent shopfronts | facade gap to the void → close the gap / build city behind it (abyss rule); named sweep line |
+
+Debug hooks (all on `window`): `cameraQA.{static,framing,path,transition,reach,walk,warp}`,
+`__overlaps()`, `__colliders(x,z,r)`, `__freecam/__look` (free-cam for QA shots).
+
 ## Status / next
 
-- DONE: character cutout + die-cut; walk + jump-for-joy; 6 environment moods;
+- DONE: **QA capture reflex + hard gate** — a problem Christopher reports once becomes a
+  permanent check (fix → generalize → promote to a **deterministic** assertion → record).
+  New **`studio/qa/`** = the single QA home: a shared `harness.mjs` (`withGamePage`, free
+  port — kills the copy-pasted server + the `PORT=8788` collision) and an **auto-discovered
+  check registry** (`qa/checks/*.mjs`); `studio/qa_audit.mjs` is now a thin runner over it,
+  exit-coded, stamps `.claude/.qa-stamp` on a clean pass. **Add a check = add a file** (no
+  central edit → branches don't conflict). `qa_shots.mjs` exit-codes + stamps. Contract +
+  per-branch fold-in: `studio/qa/README.md`. A committed **Stop hook**
+  (`.claude/settings.json` → `.claude/hooks/qa-gate.mjs`, shared hash in
+  `.claude/hooks/qa-lib.mjs`) **blocks finishing a turn while world files are dirty + un-audited**
+  (instant: git + stamp, never launches a browser; fails open; one block per stop). Clear it
+  with `node studio/qa_audit.mjs`. Heavy multi-agent sweep runs on every `/deploy` + geometry
+  change. Verified end-to-end (clean→pass, dirty→block exit 2, re-audit→clear). See the **QA
+  reflex** section above + [[shanni-qa-capture-reflex]].
+- DONE: **Camera framing pass** — every zone retuned to a calmer 3/4 view (no top-down;
+  the worst, the `corner`, went from ~56° to ~26°) and a bigger Shen (min ~13%, AIM ~15%+
+  of screen). New **`trackWid`** zone field gives the open `park` a 2D follow so she stays
+  a constant size wherever she roams (was a tiny dot off-centre). New **`cameraQA.framing()`**
+  + `CAM_MIN_FRAC`/`CAM_MAX_PITCH` guardrails in `game.html` make "not too small / not
+  top-down" permanent 0-failure gates. Full QA green (framing, visibility, round-trips).
+  Rules written into `/zone-camera` (SKILL + REFERENCE) and the Cameras section above.
+- DONE: character cutout + die-cut; walk + jump (hop); 6 environment moods;
   pipeline migrated into the repo; **3D Paper-Mario game loop** (`studio/game.html`
   + `studio/js/sim.js`) — perspective follow-camera (Shen always centred),
   full-window responsive, 2D ground movement, depth-sorted billboard props
-  (walk behind/in front), d-pad + keyboard, 6 collectible flowers; `/deploy` skill
+  (walk behind/in front), d-pad + keyboard; `/deploy` skill
   + GitHub Pages. **Live: https://metroxe.github.io/project-shanni-happy/**
+- DONE: **Removed flower collecting + jump-for-joy** (user request). No more flower
+  collectibles, no score/win HUD, no joy mode/button/`J` key/sound. The only
+  collectibles are hamsters (Adrian's quest). The **Talk** action button is now
+  contextual (shows only when beside an NPC); **hop** is always shown. Chrees kept as
+  a flavour NPC with rewritten (non-flower, non-quest) dialogue. No `SAVE_VERSION`
+  bump (removed ids drop via sanitize; the removed `q_chrees` is ignored on load).
 - DONE: **NPC dialogue system** (`studio/js/dialogue.js`) — walk-up proximity prompt
   over the NPC, bottom dialogue box with typewriter reveal, advance-on-button, and
   branching **choice menus** (↑/↓ or d-pad to pick; Talk/Enter/Space/click to confirm).
@@ -190,8 +429,51 @@ always `git fetch origin main` and check for peers before acting.
   (`Sound.blip`, per-speaker `VOICES`). **Pause menu** (Esc / ☰) with a master volume slider +
   mute, persisted (`shen.vol` / `shen.muted`); audio unlocks on first gesture. See the
   **Sound** section above for the "every interaction makes a sound" rule + how to add one.
-- NEXT (ideas): more NPCs/quests; conversation state (remember choices) — persist into the
-  reserved `npcs:{}` slot already in the save blob; more zones/goals;
-  background music (local MusicGen loops — SFX already done); idle polish. NOTE: photos in the macOS **Photos library** are unreadable from bash
+- DONE: **Background music** (`studio/out/music/calm.ogg`) — one seamless ~26s ambient loop,
+  generated programmatically with **MusicGen-medium** (`gen_music.py` → 30s clips, `make_loop.py`
+  → equal-power crossfade loop + `oggenc`; env in `requirements-music.txt`. Generated on **CPU** —
+  PyTorch MPS crashed mid-generate on this M4 Pro). Plays through a **music sub-bus** in `audio.js`
+  (`Sound.startMusic`/`stopMusic`/`setMusicVolume`), a gapless looping `AudioBufferSourceNode`
+  started from `beginGame()` after the gesture. Decode failure degrades to "no music", never a crash.
+- DONE: **Independent volume mix** — `audio.js` now has **two sub-buses under the master**: SFX +
+  dialogue-voice route through `sfxGain`, music through `musicGain`. **Three pause-menu sliders** —
+  master **volume** (`shen.vol`/`shen.muted`), **effects** (`shen.sfxvol`), **music**
+  (`shen.musicvol`, 0 = off) — each its own key, none in the save blob. `Sound.setSfxVolume` /
+  `setMusicVolume` / `setVolume`; defaults reproduce the old single-volume behaviour exactly.
+- DONE: **Quest system + journal book** (`studio/js/quests.js` + the journal UI in `game.html`).
+  - **Engine** (`Quests`, UI-agnostic like `dialogue.js`): data-driven quests in `world.json`
+    `quests[]` (`{id, name, giver?, summary?, steps:[{desc, goal?}]}`). Goal types auto-advance
+    against the live world: `collect` (`{kind?,ids?,count?}` — counted from the collected set, so
+    progress is **derived on load**, never stored), `talk` (`{npc}`), `reach` (`{x,z,r?}`),
+    `manual`. State is compact (`{status,step}` per quest) + persisted in the save blob's new
+    `quests` field (additive — **no `SAVE_VERSION` bump**; absent → fresh). Hooks `onStart/onAdvance/
+    onComplete` drive sound + toasts. `Quests.note({type,...})` is fed from game seams; `Quests.list()`
+    feeds the journal.
+  - **Wiring**: dialogue nodes carry an optional `action` (`"start:q_hamsters"`) fired via
+    `Dialogue.onAction`; NPCs get a `quest` field + `entryNode()` picks a **state-aware greeting**
+    (default intro / `progress` / `ready` / `done` nodes by quest status). Collecting feeds
+    `note('collect')`; talking feeds `note('talk')`.
+  - **Journal** = the pause menu replacement (Esc / 📖). A **book** with **left binder-divider tabs**
+    (📜 Quests, ⚙ Settings) and a **page-flip** on switch (`#pages` rotateY). Quests tab = expandable
+    list (name + giver → summary, rose "current task" box with a progress bar, done/active/future
+    step rows). Settings tab = the three volume sliders + mute + restart/resume (relocated, same ids).
+    Quest milestones show a `#qtoast` + a badge dot on the 📖 button when closed.
+  - **Content (Rocky-themed town)**: **Adrian** the shy pet-shop clerk (`out/adrian-paper.png`, Gemini
+    chibi → `cutout.py`) gives **Hamster Roundup** — find 5 escaped **hamsters** (`out/hamster-paper.png`,
+    collectible `kind:"hamster"`, scattered) and return them. This is now the **only** quest —
+    **Chrees** is a flavour-only NPC (his "Bloom the Block" flower quest was removed with flowers).
+  - **Sounds** (all procedural, `audio.js`): `squeak` (hamster), `quest`/`questStep`/`questDone`,
+    `book`/`bookClose`/`flip`. Verified in preview: full lifecycle (accept→auto-track→complete),
+    real dialogue acceptance for both NPCs, journal DOM + page-flip, save round-trip, **camera QA 0 fails**.
+- IN FLIGHT: **Premium look overhaul** (make it less "web-ish"). Working brief + A–Z of style
+  directions + concerns + method: **`studio/PREMIUM_LOOK.md`** — READ IT before doing visual work.
+  Two pieces already exist: (1) a post-processing finishing lens `studio/js/fx.js` (`EffectComposer`
+  presets `off|minimal|diorama|full`, toggle `window.__fx('diorama')`; **diorama accepted as the final
+  10% lens**; SSAO parked — billboard halo); (2) the **`papercraft-texture`** skill that fixes the
+  blurry/stretched surfaces (256px fixed-`repeat` → crisp seamless tiles + world-space UVs). The brief
+  says the real win is in the **bones** (palette, textures, toon, UI skin, character rim), not the lens.
+- NEXT (ideas): more NPCs/quests (drop-in: add art + a `world.json` npc/quest); conversation state
+  (remember choices) — persist into the reserved `npcs:{}` slot already in the save blob; more zones/goals;
+  per-mood music loops (6 palettes in `specs/all.json`); idle polish. NOTE: photos in the macOS **Photos library** are unreadable from bash
   (TCC blocks `cp`/`sips`/`qlmanage` on `~/Pictures/Photos Library.photoslibrary/originals/…`)
   — have the user drag the image into chat or export it to `studio/refs/` to use as a gen ref.

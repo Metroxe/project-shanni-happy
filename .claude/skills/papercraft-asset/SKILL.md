@@ -80,8 +80,46 @@ IMPORTANT: the Claude preview tab suspends `requestAnimationFrame`. Playback is 
 by a `setInterval` clock keyed off `performance.now()` (`__startAuto`). For deterministic
 capture, call `__stopAuto()` then `__render(t)`.
 
+## 4. Pose set — discrete swap animation (no tween)
+
+For the rare character that needs to *change its drawing* (Chrees curling a dumbbell,
+not just squashing), give it a SMALL set of pose images the engine **hard-swaps**
+between — instant, Paper-Mario style, never a tween. The squash/hop/breathing transforms
+keep running on whichever image is shown; the swap is just the picture.
+
+1. Generate each pose with `gen_image.py`, passing the character's OWN existing image as
+   an extra `--ref` (identity lock) and prompting ONLY the pose change. Keep the action
+   from rising above the head (a curl, not an overhead press) — registration anchors on
+   feet→crown. Flat mint background as usual. Fan out variants, pick the cleanest.
+2. `cutout.py <src> <name>-<pose>` per pose → `out/<name>-<pose>-cut.png`.
+3. `register_poses.py <name> <pose1> <pose2> …` — normalizes the cuts onto ONE shared
+   canvas + foot baseline + body scale, re-adds the die-cut border, writes
+   `out/<name>-<pose>-paper.png` + `out/<name>-poses.json`, and runs the geometry QA
+   (canvas / baseline / scale / crown identical across poses). Non-zero exit on drift.
+4. `qa_vision.py <name> <pose1> <pose2> …` — the AI check: Gemini confirms same character,
+   same size, only the action region differs. Ship a pose set only when BOTH pass.
+5. In `world.json` give the NPC `poses:{name:"out/<name>-<pose>-paper.png", …}` + a
+   `rep:{seq:[…], beat:<sec>, sfxOn:<poseName>}` loop. The renderer (`game.html`) preloads
+   the textures and hard-swaps `mesh.material.map` on the beat. Sound it — every
+   interaction makes a sound; the curl's is the `lift` SFX in `audio.js`, played at
+   **proximity volume** (`proxGain` in `game.html`) so it's only audible when the player
+   is near, never across the whole map.
+
 ## Showing the user
 
 Inline `Read` of a single small PNG renders in the GUI; GIFs do NOT animate via Read,
 and localhost URLs aren't reachable from the user's browser. To show motion live, use
 the Claude preview pane pointed at the served HTML. The user often opens files directly.
+
+## After building/placing — run the QA gate (required)
+
+A new asset, prop, building, or world layout is NOT done until it passes QA. Adding
+geometry repeatedly introduces the same bugs: z-fighting from overlapping/extending
+geometry, stray cream outlines, the abyss past the map edge, "invisible circle"
+colliders that block paths, props clipping or placed where they don't belong. So after
+any placement:
+- run **`/zone-camera`** (Shen visible from everywhere + every transition → 0 fails), and
+- run **`/papercraft-env-qa`** (the picture battery + geometric overlap/reachability audits
+  + multi-agent sweep) until clean.
+The full failure-mode checklist is in CLAUDE.md ("World/asset QA gate") and the
+`/papercraft-env-qa` skill. Do not `/deploy` a world/asset change that hasn't passed it.

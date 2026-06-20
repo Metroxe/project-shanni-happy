@@ -1,0 +1,125 @@
+<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  html,body{margin:0;height:100%;background:#e9f1ea;overflow:hidden;
+    font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#5a564e}
+  #c{display:block;position:fixed;inset:0;width:100vw;height:100vh}
+  #lab{position:fixed;left:0;right:0;top:5%;text-align:center}
+  #lab b{display:block;font-size:24px}#lab small{font-size:14px;color:#8a857c}
+</style>
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}</script>
+</head><body>
+<canvas id="c"></canvas>
+<div id="lab"><b id="labT">…</b><small id="labS"></small></div>
+<script type="module">
+import * as THREE from 'three';
+const P=new URLSearchParams(location.search);
+const GRAIN=+(P.get('grain')??'0.6');     // 0..1 fiber/tooth strength
+const EDGES=P.get('edges')!=='0';          // cut-paper cream edges
+const STYLE=P.get('style')||'matte';       // matte | toon
+const SUBJECT=P.get('subject')||'house';   // house | scene
+const ZOOM=+(P.get('zoom')??'2.4');        // ortho half-width (smaller = closer)
+const DEG=+(P.get('deg')??'24');
+
+const canvas=document.getElementById('c');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true,preserveDrawingBuffer:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+
+const scene=new THREE.Scene(); scene.background=new THREE.Color('#e9f1ea');
+const RW=1440,RH=900;
+const cam=new THREE.OrthographicCamera(-ZOOM,ZOOM,ZOOM*RH/RW,-ZOOM*RH/RW,0.1,100);
+cam.position.set(5.2,5.4,9); cam.lookAt(0,0.85,0);
+
+scene.add(new THREE.HemisphereLight(0xffffff,0xdfe7d6,1.7));
+const sun=new THREE.DirectionalLight(0xfff6ea,2.3);
+sun.position.set(5,9,7); sun.castShadow=true; sun.shadow.mapSize.set(2048,2048);
+sun.shadow.bias=-0.0004;
+const sc=sun.shadow.camera;sc.left=-6;sc.right=6;sc.top=6;sc.bottom=-6;sc.near=1;sc.far=40;scene.add(sun);
+
+const ground=new THREE.Mesh(new THREE.PlaneGeometry(60,60),
+  new THREE.MeshStandardMaterial({color:'#cfe1c2',roughness:1,metalness:0}));
+ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);
+
+function toonRamp(){const cv=document.createElement('canvas');cv.width=4;cv.height=1;
+  const x=cv.getContext('2d');[90,150,205,255].forEach((v,i)=>{x.fillStyle=`rgb(${v},${v},${v})`;x.fillRect(i,0,1,1);});
+  const t=new THREE.CanvasTexture(cv);t.minFilter=t.magFilter=THREE.NearestFilter;return t;}
+const TOON=toonRamp();
+
+// colored paper texture: base hex + visible fibers + speckle (used as map AND bump)
+function paperTex(hex){
+  const s=256,cv=document.createElement('canvas');cv.width=cv.height=s;const x=cv.getContext('2d');
+  const c=new THREE.Color(hex), R=c.r*255,G=c.g*255,B=c.b*255;
+  x.fillStyle=hex;x.fillRect(0,0,s,s);
+  const amp=26*GRAIN;
+  // speckle
+  const img=x.getImageData(0,0,s,s),d=img.data;
+  for(let i=0;i<d.length;i+=4){const n=(Math.random()-0.5)*amp*1.4;
+    d[i]=Math.max(0,Math.min(255,d[i]+n));d[i+1]=Math.max(0,Math.min(255,d[i+1]+n));d[i+2]=Math.max(0,Math.min(255,d[i+2]+n));}
+  x.putImageData(img,0,0);
+  // fibers
+  x.globalAlpha=0.20*GRAIN;
+  for(let i=0;i<260;i++){const lighter=Math.random()<.5;
+    x.strokeStyle=`rgb(${R+(lighter?30:-30)},${G+(lighter?30:-30)},${B+(lighter?30:-30)})`;
+    x.lineWidth=Math.random()*1.4+0.4;x.beginPath();
+    const y=Math.random()*s,len=30+Math.random()*120,xx=Math.random()*s,ang=(Math.random()-.5)*0.4;
+    x.moveTo(xx,y);x.lineTo(xx+Math.cos(ang)*len,y+Math.sin(ang)*len);x.stroke();}
+  x.globalAlpha=1;
+  const t=new THREE.CanvasTexture(cv);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(1.6,1.6);t.anisotropy=8;
+  t.colorSpace=THREE.SRGBColorSpace;return t;}
+
+function paper(hex,flat=true){
+  const tex=GRAIN>0?paperTex(hex):null;
+  let m;
+  if(STYLE==='toon') m=new THREE.MeshToonMaterial({color:new THREE.Color(hex),gradientMap:TOON,map:tex});
+  else m=new THREE.MeshStandardMaterial({color:new THREE.Color(hex),roughness:0.97,metalness:0,
+    flatShading:flat,emissive:new THREE.Color(hex),emissiveIntensity:0.05,map:tex});
+  if(tex){m.bumpMap=tex;m.bumpScale=2.2*GRAIN;}
+  return m;}
+const EDGEMAT=new THREE.LineBasicMaterial({color:'#fffaf0'});
+function withEdges(mesh,on){ if(!EDGES||!on) return mesh;
+  const e=new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry,38),EDGEMAT);
+  mesh.add(e); return mesh; }
+function M(geo,hex,flat=true,edge=true){const m=new THREE.Mesh(geo,paper(hex,flat));
+  m.castShadow=true;m.receiveShadow=true;return withEdges(m,edge);}
+
+function pHouse(){
+  const g=new THREE.Group();
+  const body=M(new THREE.BoxGeometry(1.35,1.05,1.15),'#f3e7d2',false);body.position.y=0.53;g.add(body);
+  const roof=M(new THREE.ConeGeometry(1.08,0.82,4),'#e4b3c1');roof.position.y=1.46;roof.rotation.y=Math.PI/4;g.add(roof);
+  const door=M(new THREE.BoxGeometry(0.34,0.56,0.08),'#b98aa6',false);door.position.set(0,0.3,0.6);g.add(door);
+  const win=M(new THREE.BoxGeometry(0.32,0.32,0.06),'#fbf5e6',false);win.position.set(-0.4,0.62,0.6);g.add(win);
+  return g;}
+function pTree(){const g=new THREE.Group();
+  const trunk=M(new THREE.CylinderGeometry(0.17,0.22,1.15,8),'#c7a279',true,false);trunk.position.y=0.57;g.add(trunk);
+  const c1=M(new THREE.IcosahedronGeometry(0.98,1),'#aed0b6',true,false);c1.position.y=1.9;c1.scale.set(1.05,0.92,1.05);g.add(c1);
+  const c2=M(new THREE.IcosahedronGeometry(0.62,1),'#cce6cf',true,false);c2.position.set(0.18,2.5,0.1);g.add(c2);
+  return g;}
+function pRock(){const g=new THREE.Group();
+  const r1=M(new THREE.DodecahedronGeometry(0.52,0),'#c8c5be',true,false);r1.position.y=0.3;r1.scale.set(1.15,0.72,0.98);r1.rotation.y=0.6;g.add(r1);
+  const r2=M(new THREE.DodecahedronGeometry(0.3,0),'#d4d1ca',true,false);r2.position.set(0.55,0.18,0.2);r2.scale.set(1.1,0.7,1);g.add(r2);
+  return g;}
+function shadowDisc(r){const s=128,cv=document.createElement('canvas');cv.width=s;cv.height=s;
+  const x=cv.getContext('2d');const gr=x.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
+  gr.addColorStop(0,'rgba(60,52,40,.3)');gr.addColorStop(.6,'rgba(60,52,40,.12)');gr.addColorStop(1,'rgba(60,52,40,0)');
+  x.fillStyle=gr;x.fillRect(0,0,s,s);
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(r,r),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(cv),transparent:true,depthWrite:false}));
+  m.rotation.x=-Math.PI/2;m.position.y=0.02;return m;}
+function place(node,x,z,r){node.position.x=x;node.position.z=z;scene.add(node);
+  const s=shadowDisc(r);s.position.set(x,0.02,z);scene.add(s);}
+
+if(SUBJECT==='scene'){
+  place(pTree(),-3.4,-0.3,2.6);
+  const h=pHouse();h.rotation.y=DEG*Math.PI/180;place(h,0.2,0.2,2.4);
+  place(pRock(),3.5,0.1,1.7);
+  cam.lookAt(0,0.9,0);
+}else{
+  const h=pHouse();h.rotation.y=DEG*Math.PI/180;place(h,0,0,2.6);
+}
+renderer.setSize(RW,RH,false);
+document.getElementById('labT').textContent=`${STYLE} · grain ${GRAIN} · edges ${EDGES?'on':'off'}`;
+document.getElementById('labS').textContent=SUBJECT==='scene'?'tree · house · rock — bold-matte across the set':'zoomed close-up so the surface actually reads';
+function render(){renderer.render(scene,cam);}
+render();window.__ready=true;window.__render=render;window.__keep=setInterval(render,140);
+</script></body></html>

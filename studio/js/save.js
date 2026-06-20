@@ -9,8 +9,8 @@
 //      genuinely breaks old saves (see migrate() for what bumping does). Most
 //      updates don't need a bump — the defensive load below absorbs them.
 //   2. Stable collectible ids — guard CONTENT. Progress is stored as a SET of
-//      collected flower ids, NEVER array indices, so editing world.json
-//      (moving / adding / removing flowers) can't silently mis-map progress:
+//      collected pickup ids, NEVER array indices, so editing world.json
+//      (moving / adding / removing collectibles) can't silently mis-map progress:
 //      a removed id drops out, a new id defaults to uncollected, a moved id
 //      stays collected.
 // Under both, sanitize() clamps & defaults every field and the whole load path
@@ -23,7 +23,7 @@ const KEY = 'shanni-happy:save';
 const BACKUP_KEY = 'shanni-happy:save:backup';
 // The save-compatibility version. WE bump this — not the deploy. See migrate()
 // and the "Bump rule" in CLAUDE.md before changing it.
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 3;   // bumped: world rebuilt as the L-shaped city (new coords/bounds/spawn would misplace old x/z)
 
 const clampNum = (v, lo, hi, d) =>
   Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d;
@@ -51,7 +51,9 @@ function backup(rawStr) {
 
 // Serialize live sim state → on-disk blob. Only durable fields; transient
 // physics/animation is intentionally dropped (recomputed fresh on load).
-export function write(S, world, build) {
+// `extra` carries owned-elsewhere durable state (e.g. quest progress from the
+// Quests engine) — a plain object that load() passes back through untouched.
+export function write(S, world, build, extra) {
   const s = store(); if (!s) return;
   const data = {
     v: SAVE_VERSION,
@@ -59,6 +61,7 @@ export function write(S, world, build) {
     t: Date.now(),                  // savedAt (ms); informational
     player: { x: round(S.x), z: round(S.z), facing: S.facing === -1 ? -1 : 1 },
     collected: S.collectibles.filter(c => c.got && c.id != null).map(c => c.id),
+    quests: (extra && extra.quests && typeof extra.quests === 'object') ? extra.quests : {},
     npcs: {},                       // reserved: future conversation state
   };
   try { s.setItem(KEY, JSON.stringify(data)); } catch {}
@@ -120,15 +123,17 @@ function sanitize(raw, world) {
   const valid = new Set((world.collectibles || []).map(c => c.id).filter(id => id != null));
   const collected = new Set(
     (Array.isArray(raw.collected) ? raw.collected : []).filter(id => valid.has(id)));
-  return { player, collected };
+  // quest progress is owned by the Quests engine; pass the blob through (it
+  // validates/clamps per-quest on its own init). Missing → empty (fresh quests).
+  const quests = (raw.quests && typeof raw.quests === 'object' && !Array.isArray(raw.quests)) ? raw.quests : {};
+  return { player, collected, quests };
 }
 
-// Apply a sanitized save onto a fresh sim state (mutates S). Score is RECOMPUTED
-// from the merged set — the collected-id set is the single source of truth.
+// Apply a sanitized save onto a fresh sim state (mutates S). The collected-id
+// set is the single source of truth; quest progress is re-derived from it.
 export function apply(S, saved) {
   if (!saved) return S;
   S.x = saved.player.x; S.z = saved.player.z; S.facing = saved.player.facing;
   for (const c of S.collectibles) c.got = saved.collected.has(c.id);
-  S.score = S.collectibles.filter(c => c.got).length;
   return S;
 }
