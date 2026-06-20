@@ -406,7 +406,12 @@ const cam=new THREE.PerspectiveCamera(40,1,0.1,300);
 
 const SHEN_H=1.9, SHEN_W=SHEN_H*0.4634, GROUND_EPS=0.02;
 const WALK_HOP=0.24, MAX_LIFT=1.5, FH=0.95, PLAYER_R=0.42;
-const TALK_R=2.6; const _tv=new THREE.Vector3();
+// Framing guardrails (enforced by cameraQA.framing): Shen's sprite must fill >= this
+// fraction of viewport height (never a tiny dot), and the view must sit <= this far
+// below horizontal (a 3/4 view, never a top-down plan view). Design AIM is comfortably
+// inside these: ~0.14 size, <= ~32 deg pitch. These are the hard floor/ceiling.
+const CAM_MIN_FRAC=0.125, CAM_MAX_PITCH=40*Math.PI/180;
+const TALK_R=2.6; const _tv=new THREE.Vector3();   // 2.6: talk to Adrian across the pet-shop counter
 // Positional NPC/world sound: full volume within HEAR_NEAR, silent past HEAR_FAR
 // (squared rolloff). Ambient animation loops (e.g. Chrees' reps) are only audible
 // when the player is near — never across the whole map. (S is assigned in build().)
@@ -523,10 +528,16 @@ function pointInZone(z,x,zc){const {along,across}=zoneLocal(z,x,zc);
 let ZONES=[],activeZone=null;
 const CAMRIG={pos:new THREE.Vector3(),tgt:new THREE.Vector3(),fov:40,pitch:0};
 let blend=null;
-function rigFor(zone,s){ const {fx,fz}=zoneAxis(zone);
-  const a=clampn(zoneLocal(zone,s.x,s.z).along,-zone.halfLen,zone.halfLen);
-  const cpx=zone.center[0]+fx*a, cpz=zone.center[1]+fz*a;
-  const gyCam=groundHeight(cpx,cpz), gyP=groundHeight(s.x,s.z), latx=-fz, latz=fx;
+function rigFor(zone,s){ const {fx,fz}=zoneAxis(zone); const latx=-fz, latz=fx;
+  const L=zoneLocal(zone,s.x,s.z);
+  const a=clampn(L.along,-zone.halfLen,zone.halfLen);
+  // Open-area zones (trackWid>0) ALSO follow the player across the axis, clamped to
+  // +/-trackWid, so a wide sideways wander can't grow the camera distance — Shen keeps a
+  // stable on-screen size. Corridor zones leave trackWid unset (b=0) → ride the centerline
+  // (the angle is still fixed; this only TRANSLATES the eye, never an orbit/free follow).
+  const b=zone.trackWid?clampn(L.across,-zone.trackWid,zone.trackWid):0;
+  const cpx=zone.center[0]+fx*a+latx*b, cpz=zone.center[1]+fz*a+latz*b;
+  const gyCam=groundHeight(cpx,cpz), gyP=groundHeight(s.x,s.z);
   return { pos:new THREE.Vector3(cpx-fx*zone.back+latx*zone.side, gyCam+zone.height, cpz-fz*zone.back+latz*zone.side),
     tgt:new THREE.Vector3(s.x+fx*zone.lookAhead, gyP+zone.lookY, s.z+fz*zone.lookAhead),
     fov:zone.fov, pitch:zone.pitchBias }; }
@@ -807,7 +818,7 @@ function buildInterior(cols){
   // reads as a hard floating edge / soft abyss. The area beyond the walls is the interior
   // background colour (set in Sky.setInterior — NEVER pitch white), not more floor.
   const floor=M(new THREE.PlaneGeometry((x1-x0)+th,(zF-zB)+th),'#'+(R.floor||'d8bd97'),true,false);
-  floor.rotation.x=-Math.PI/2; floor.castShadow=false; floor.position.set((x0+x1)/2,0.01,(zB+zF)/2); sceneRoot.add(floor);
+  floor.rotation.x=-Math.PI/2; floor.castShadow=false; floor.userData.floor=true; floor.position.set((x0+x1)/2,0.01,(zB+zF)/2); sceneRoot.add(floor);
   // walls: back + left + right (front is OPEN toward the camera, dollhouse style)
   const wall='#'+(R.wall||'cdd9cf'), base='#'+(R.base||'bfb09a');
   const mkWall=(w,h,d,x,z)=>{ const m=M(new THREE.BoxGeometry(w,h,d),wall,false,false);
@@ -1030,12 +1041,36 @@ function shenVisible(){ cam.updateMatrixWorld();cam.matrixWorldInverse.copy(cam.
   const hit=_ray.intersectObjects(BUILDING_MESHES,false);
   if(hit.length)return {ok:false,why:'occluded',occ:hit[0].object.userData.bn||'?'};
   return {ok:true};}
+// FRAMING QA — separate from visibility: measures whether Shen is well-FRAMED at rest.
+// size = sprite height as a fraction of the viewport (project foot->head, NDC y spans 2);
+// pitch = how far below horizontal the camera looks. Guardrails: not a tiny dot, not top-down.
+function shenFraming(){ cam.updateMatrixWorld();cam.matrixWorldInverse.copy(cam.matrixWorld).invert();
+  const gy=groundHeight(S.x,S.z);
+  const foot=new THREE.Vector3(S.x,gy+0.04,S.z).project(cam);
+  const head=new THREE.Vector3(S.x,gy+SHEN_H,S.z).project(cam);
+  const size=Math.abs(head.y-foot.y)/2;
+  cam.getWorldDirection(_dir);
+  const pitch=Math.asin(clampn(-_dir.y,-1,1));
+  const r={size:+size.toFixed(3),pitchDeg:+(pitch*180/Math.PI).toFixed(1)};
+  if(size<CAM_MIN_FRAC)return Object.assign({ok:false,why:'too-small'},r);
+  if(pitch>CAM_MAX_PITCH)return Object.assign({ok:false,why:'too-steep'},r);
+  return Object.assign({ok:true},r); }
 window.cameraQA={
   warp:(x,z)=>_warp(x,z),
   static:(stepSz)=>{const cells=_reachable(stepSz),fails=[];
     for(const [x,z] of cells){_warp(x,z);const v=shenVisible();if(!v.ok)fails.push({x:+x.toFixed(1),z:+z.toFixed(1),why:v.why});}
     _warp(SCENE.spawn.x,SCENE.spawn.z);
     return {cells:cells.length,fails:fails.length,byReason:fails.reduce((a,f)=>((a[f.why]=(a[f.why]||0)+1),a),{}),sample:fails.slice(0,30)};},
+  // FRAMING sweep: at every reachable cell, assert Shen is big enough + not viewed top-down.
+  // Reports minSize / maxPitch across the map so you can tune back/height/fov to the AIM.
+  framing:(stepSz)=>{const cells=_reachable(stepSz),fails=[];let minSize=9,maxPitch=0;
+    for(const [x,z] of cells){_warp(x,z);const f=shenFraming();
+      if(f.size<minSize)minSize=f.size; if(f.pitchDeg>maxPitch)maxPitch=f.pitchDeg;
+      if(!f.ok)fails.push({x:+x.toFixed(1),z:+z.toFixed(1),why:f.why,size:f.size,pitchDeg:f.pitchDeg,zone:activeZone&&activeZone.id});}
+    _warp(SCENE.spawn.x,SCENE.spawn.z);
+    return {cells:cells.length,fails:fails.length,minSize:+minSize.toFixed(3),maxPitch:+maxPitch.toFixed(1),
+      byReason:fails.reduce((a,f)=>((a[f.why]=(a[f.why]||0)+1),a),{}),
+      byZone:fails.reduce((a,f)=>((a[f.zone]=(a[f.zone]||0)+1),a),{}),sample:fails.slice(0,30)};},
   transition:(from,to,steps)=>{steps=steps||700;const ws=started;started=true;_warp(from[0],from[1]);
     held.up=held.down=held.left=held.right=false;aiTarget={x:to[0],z:to[1]};const fails=[];let reached=false;
     for(let i=0;i<steps;i++){S=step(S,resolveInput(),1/60);cameraFrame(S,1/60);
@@ -1101,11 +1136,10 @@ window.__overlaps=()=>{ const B=SCENE.buildings||[], ST=SCENE.stairs, out=[];
 // SURFACE contact — a tank SITTING on a shelf, a door/shelf/sign PROUD of (mounted on)
 // a wall — overlaps in ≤2 axes (the contact axis ≈ 0) and is NOT flagged. Pure geometry,
 // no screenshot. Must return [] before shipping an interior. (See the /papercraft-env-qa skill.)
-window.__clips=(eps)=>{ eps=eps==null?0.08:eps; const groups=[];
-  // per-MESH AABBs within each fixture, so a tank SITTING in a shelf's open volume (its
-  // mesh boxes don't touch the shelf's boards/panel) is not a false clip, while a shelf
-  // board passing THROUGH a tank (mesh-vs-mesh interpenetration) still is.
-  if(sceneRoot) sceneRoot.traverse(o=>{ if(o.userData&&o.userData.fx){ const meshes=[];
+// per-MESH AABB interpenetration audit of a group's fx-tagged fixtures (so a tank SITTING
+// in a shelf's open volume is not a false clip, while a board passing THROUGH a tank is).
+function clipsOf(root,eps){ eps=eps==null?0.08:eps; const groups=[];
+  if(root) root.traverse(o=>{ if(o.userData&&o.userData.fx){ const meshes=[];
     o.traverse(m=>{ if(m.isMesh&&m.geometry){ const b=new THREE.Box3().setFromObject(m); if(!b.isEmpty())meshes.push(b); } });
     if(meshes.length) groups.push({name:o.userData.fx,meshes}); } });
   const pen=(A,B)=>Math.min(Math.min(A.max.x,B.max.x)-Math.max(A.min.x,B.min.x),
@@ -1115,6 +1149,45 @@ window.__clips=(eps)=>{ eps=eps==null?0.08:eps; const groups=[];
     if(groups[i].name.startsWith('wall@')&&groups[j].name.startsWith('wall@')) continue;  // walls meet at corners
     let mx=0; for(const A of groups[i].meshes)for(const B of groups[j].meshes){ const p=pen(A,B); if(p>mx)mx=p; }
     if(mx>eps) out.push({a:groups[i].name,b:groups[j].name,penetration:+mx.toFixed(2)}); }
+  return out; }
+window.__clips=(eps)=>clipsOf(sceneRoot,eps);   // live current scene
+// Build an interior spec's geometry into a DETACHED throwaway group (never added to the
+// scene → not rendered), run fn(group), then fully restore every global the builders touch.
+// Synchronous (the interior builders don't load textures), so the live draw loop can't
+// interleave. Lets the deterministic audit (which boots in TOWN) inspect interior scenes.
+function withScratchInterior(spec,fn){
+  const s={root:sceneRoot,scene:SCENE,level:LEVEL,stairs:STAIRS,por:portals,amb:ambients}, savFish=ifish.slice();
+  const temp=new THREE.Group();
+  sceneRoot=temp; SCENE=spec; LEVEL=spec.level||{H:0}; STAIRS=spec.stairs||null;
+  portals=spec.portals||[]; ambients=[]; ifish.length=0;
+  try{ buildInterior([]); buildPortalDoors([]); temp.updateMatrixWorld(true);   // never rendered → update world matrices by hand before AABBs
+    return fn(temp); }
+  finally{ sceneRoot=s.root; SCENE=s.scene; LEVEL=s.level; STAIRS=s.stairs; portals=s.por; ambients=s.amb;
+    ifish.length=0; for(const f of savFish) ifish.push(f); }
+}
+// ---- interior QA probes (contracts in studio/qa/README.md; activate the defensive checks) ----
+// no fixture passes through another, in EVERY interior scene (door-in-wall, board-through-tank).
+window.__interiorOverlaps=()=>{ const out=[];
+  for(const id in SPECS){ const sp=SPECS[id]; if(!sp.interior)continue;
+    withScratchInterior(sp, t=>{ for(const c of clipsOf(t)) out.push({a:id+'/'+c.a, b:c.b, penetration:c.penetration}); }); }
+  return out; };
+// no interior floor runs past its room walls (the floor must STOP at the wall, not float past).
+window.__floorOverruns=()=>{ const out=[];
+  for(const id in SPECS){ const sp=SPECS[id]; if(!sp.interior)continue; const R=sp.room||{};
+    const x0=(R.x&&R.x[0])??-7, x1=(R.x&&R.x[1])??7, zB=R.zBack??-8, zF=R.zFront??3, m=0.6;  // m: tucking under the wall is fine
+    withScratchInterior(sp, t=>{ let fl=null; t.traverse(o=>{ if(o.userData&&o.userData.floor)fl=o; }); if(!fl)return;
+      const b=new THREE.Box3().setFromObject(fl);
+      const over=Math.max((x0-b.min.x)-m,(b.max.x-x1)-m,(zB-b.min.z)-m,(b.max.z-zF)-m);
+      if(over>0.2) out.push({zone:id, overrun:+over.toFixed(2)}); }); }
+  return out; };
+// every scene has an intentional, non-white background (interiors resolve their bg the SAME
+// way Sky.setInterior does — a bare hex w/o '#' parses to WHITE, the original pitch-white bug).
+window.__sceneBackgrounds=()=>{ const out=[];
+  for(const id in SPECS){ const sp=SPECS[id];
+    if(!sp.interior){ out.push({scene:id, isWhiteOrUnset:false}); continue; }   // outdoor = day/night sky, never white
+    const bg=sp.sky&&sp.sky.bg; let white;
+    if(!bg){ white=true; } else { const c=new THREE.Color(bg[0]==='#'?bg:'#'+bg); white=(c.r>0.93&&c.g>0.93&&c.b>0.93); }
+    out.push({scene:id, isWhiteOrUnset:white}); }
   return out; };
 // each tagged interior fixture's world-AABB centre + size, so the QA harness can frame a
 // per-object close-up of EVERY fixture (the "look at every single thing" pass, interiors).
@@ -1179,6 +1252,7 @@ async function build(){
     1,1,{soft:true}); burst.visible=false;burst.renderOrder=3;scene.add(burst);
 
   try{const r=await fetch('build.json',{cache:'no-store'});if(r.ok){const j=await r.json();BUILD=j.sha||'dev';}}catch{}
+  Sound.quietInDev(BUILD==='dev');   // dev worktree boots silent — effects + music off until you choose a level
 
   // restore save (multi-scene): seed the GLOBAL collected set, then boot into the saved scene.
   const saved=Save.load(SPECS);

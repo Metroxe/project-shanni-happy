@@ -129,33 +129,33 @@
   "zones": [
     { "id": "plaza",
       "center": [-20, -50], "axisDeg": 0, "halfLen": 10, "halfWid": 11,
-      "height": 11, "back": 14.5, "side": 0, "lookAhead": 0, "lookY": 1.5,
-      "fov": 54, "pitchBias": -0.045, "follow": 5.0, "blendIn": 0.9 },
+      "height": 7, "back": 10.5, "side": 0, "lookAhead": 0, "lookY": 1.5,
+      "fov": 47, "pitchBias": -0.01, "follow": 5.0, "blendIn": 0.9 },
 
     { "id": "vroad",
       "center": [-20, -22], "axisDeg": 0, "halfLen": 16, "halfWid": 6,
-      "height": 6.0, "back": 13, "side": 0, "lookAhead": 1.5, "lookY": 1.3,
+      "height": 6.0, "back": 11, "side": 0, "lookAhead": 1.5, "lookY": 1.3,
       "fov": 50, "pitchBias": 0, "follow": 6.0, "blendIn": 0.85 },
 
     { "id": "corner",
       "center": [-19, -4], "axisDeg": 40, "halfLen": 7, "halfWid": 7.5,
-      "height": 10, "back": 6.5, "side": 0, "lookAhead": 1.0, "lookY": 1.3,
-      "fov": 61, "pitchBias": -0.12, "follow": 6.2, "blendIn": 0.9 },
+      "height": 5.5, "back": 7.5, "side": 0, "lookAhead": 1.0, "lookY": 1.3,
+      "fov": 58, "pitchBias": 0, "follow": 6.2, "blendIn": 0.9 },
 
     { "id": "hroad",
       "center": [8, -3], "axisDeg": 90, "halfLen": 23, "halfWid": 6,
-      "height": 9, "back": 12, "side": 0, "lookAhead": 1.5, "lookY": 1.3,
-      "fov": 54, "pitchBias": -0.07, "follow": 6.0, "blendIn": 0.7 },
+      "height": 6.5, "back": 8, "side": 0, "lookAhead": 1.5, "lookY": 1.3,
+      "fov": 50, "pitchBias": -0.02, "follow": 6.0, "blendIn": 0.7 },
 
     { "id": "stairs",
       "center": [9.5, 6], "axisDeg": 0, "halfLen": 6.5, "halfWid": 5.5,
-      "height": 5.5, "back": 12, "side": 0, "lookAhead": 1.2, "lookY": 1.2,
-      "fov": 47, "pitchBias": 0.02, "follow": 6.5, "blendIn": 0.5 },
+      "height": 5.0, "back": 5.5, "side": 0, "lookAhead": 1.2, "lookY": 1.2,
+      "fov": 52, "pitchBias": 0.02, "follow": 6.5, "blendIn": 0.4 },
 
     { "id": "park",
-      "center": [0, 18], "axisDeg": 0, "halfLen": 11, "halfWid": 31,
-      "height": 6.0, "back": 16, "side": 0, "lookAhead": 0.5, "lookY": 1.2,
-      "fov": 60, "pitchBias": 0.02, "follow": 5.0, "blendIn": 0.85 }
+      "center": [0, 18], "axisDeg": 0, "halfLen": 11, "halfWid": 31, "trackWid": 27,
+      "height": 6.5, "back": 9.5, "side": 0, "lookAhead": 0, "lookY": 1.3,
+      "fov": 50, "pitchBias": 0, "follow": 5.0, "blendIn": 0.85 }
   ],
 
   "collectibles": [
