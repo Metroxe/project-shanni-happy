@@ -96,8 +96,8 @@
   "zones": [
     { "id": "shop",
       "center": [0, -3.4], "axisDeg": 0, "halfLen": 11, "halfWid": 11,
-      "height": 5.1, "back": 10.5, "side": 0, "lookAhead": 0.3, "lookY": 1.25,
-      "fov": 60, "pitchBias": -0.055, "follow": 6.0, "blendIn": 0.6 }
+      "height": 4.9, "back": 9.2, "side": 0, "lookAhead": 0.3, "lookY": 1.25,
+      "fov": 57, "pitchBias": -0.05, "follow": 6.0, "blendIn": 0.6 }
   ],
 
   "collectibles": [],

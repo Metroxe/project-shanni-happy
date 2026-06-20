@@ -47,10 +47,12 @@ await withGamePage(async (page, ctx) => {
   await page.evaluate(`__startAuto&&__startAuto()`);
   await page.waitForTimeout(200);
 
-  // 1) camera visibility from every reachable cell
+  // 1) camera visibility + framing from every reachable cell (Shen visible, big enough, not top-down)
   const stat=await page.evaluate('cameraQA.static(0.5)');
   if(stat.fails) fails.push(`camera static fails=${stat.fails} ${JSON.stringify(stat.byReason)}`);
-  console.log(`camera static: ${stat.fails} fails / ${stat.cells} cells`);
+  const fr=await page.evaluate('cameraQA.framing(0.5)');
+  if(fr.fails) fails.push(`camera framing fails=${fr.fails} (minSize=${fr.minSize}, maxPitch=${fr.maxPitch}°) ${JSON.stringify(fr.byReason)}`);
+  console.log(`camera static: ${stat.fails} fails / ${stat.cells} cells  framing: ${fr.fails} (minSize=${fr.minSize}, maxPitch=${fr.maxPitch}°)`);
 
   // 2) round-trip path visibility (door → counter → birdcage → door)
   const path=await page.evaluate(`cameraQA.path([[-4.6,-5.9],[1.5,-3.5],[4.5,-2.5],[-4.6,-6.2],[-2,-3]])`);

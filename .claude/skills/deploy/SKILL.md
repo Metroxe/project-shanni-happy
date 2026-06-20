@@ -60,6 +60,9 @@ Classify (first match wins):
    confirm it explicitly here and run the heavy pass when the world changed:
    - **Always:** `node studio/qa_audit.mjs` → exit 0 (boot + overlaps + reach + framing +
      visibility; stamps `.claude/.qa-stamp`). Fix anything it reports before pushing.
+   - **Flow scenarios (run when the diff touched scenes/loading-zones/quests/save/audio):**
+     `node studio/qa/scenarios/petshop.mjs` · `…/audio.mjs` · `…/quest.mjs` · `…/save.mjs`
+     (each exits non-zero on failure + captures shots into `studio/out/qa/<name>/` for the sweep).
    - **If the diff touched buildings/props/terrain/surfaces/colliders/cameras or any asset**
      (`studio/game.html`, `studio/specs/world.json`, `studio/js/sim.js`, new art): also run
      the heavy pass — `node studio/qa_shots.mjs` (exit 0) → the **multi-agent visual sweep**
