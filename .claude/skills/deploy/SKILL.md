@@ -56,7 +56,17 @@ Classify (first match wins):
      dialogue, physics tuning, or a new saved field that load defaults when absent.
    - When unsure, prefer bumping — a clean reset beats a silently broken world. See CLAUDE.md
      "Save compatibility / Bump rule". Say in the PR whether you bumped and why.
-4. ```sh
+4. **QA gate (before pushing).** The Stop hook already enforces the deterministic floor, but
+   confirm it explicitly here and run the heavy pass when the world changed:
+   - **Always:** `node studio/qa_audit.mjs` → exit 0 (boot + overlaps + reach + framing +
+     visibility; stamps `.claude/.qa-stamp`). Fix anything it reports before pushing.
+   - **If the diff touched buildings/props/terrain/surfaces/colliders/cameras or any asset**
+     (`studio/game.html`, `studio/specs/world.json`, `studio/js/sim.js`, new art): also run
+     the heavy pass — `node studio/qa_shots.mjs` (exit 0) → the **multi-agent visual sweep**
+     (`/papercraft-env-qa`, template `visual-qa.workflow.js`) → fix → re-shoot until clean.
+     See CLAUDE.md "QA reflex" + "World/asset QA gate". A world change deploys only on 0
+     failures.
+5. ```sh
    git add -A
    git commit -m "<subject>" -m "<body>"
    git push -u origin HEAD

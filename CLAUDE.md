@@ -60,6 +60,17 @@ multiplier to `Sound.sfx(name, mul)`; `proxGain(x,z)` in `game.html` is the stan
 sound, ask: does it come from a spot in the world? If yes, gate it through `proxGain` in the
 same change** — same reflex as shipping its sound at all.
 
+**The third rule: sounds are contextually correct (right sound, right loudness).** A sound must
+match its *source* — don't reuse a sound that merely exists. (Christopher flagged this: the fish
+tanks used the **fountain water** ambient — wrong identity AND wrong level, "fountains are
+obviously louder than fish"; "remember this general concept, not this exact example.") So pick the
+SFX that fits the object and scale its base level to how loud that object really is (a fish tank is
+a soft `bubble`, quieter than a fountain). **Music is per-scene/contextual too:** each area gets a
+track that fits it, the **overworld track is exclusive to the overworld**, and an interior track may
+be **shared across like rooms** (e.g. every pet-shop-style indoor). Switch the track on the scene
+change and never let one scene's music bleed into another (the music swap ships with the
+loading-zone change).
+
 **The system:** all **SFX + the dialogue voice** are **procedural Web Audio**, synthesized at
 play time in `studio/js/audio.js` — **no asset files for those** (same ethos as the art:
 programmatic, no hand-authoring). The module exports `Sound`; it's already wired into
@@ -119,8 +130,13 @@ OGG (`out/music/calm.ogg`), because real-time music synthesis isn't practical. I
 
 ```sh
 python3 -m venv studio/.venv && studio/.venv/bin/pip install -r studio/requirements.txt
+npm install && npx playwright install chromium   # once per worktree — the QA scripts + Stop hook need it
 .claude/serve.sh            # prints http://localhost:<port>/game.html for THIS worktree
 ```
+The `npm`/playwright step powers `studio/qa_audit.mjs`, `studio/qa_shots.mjs`, and
+`test/smoke.mjs` (all headless-Chromium). The committed **Stop hook** won't let a turn end
+with un-audited world changes, and clearing it runs `qa_audit.mjs` — so without playwright
+local QA can't pass. (See the **QA reflex** section.)
 Then `preview_start` the **`game`** config and open the printed URL (e.g.
 `/game.html` or `/env-live.html`). The asset pipeline is the `papercraft-asset`
 skill (`.claude/skills/papercraft-asset/`).
@@ -174,6 +190,64 @@ always `git fetch origin main` and check for peers before acting.
   git-ignored** (holds this worktree's unique port + absolute `studio/` path) — never
   commit it or hardcode a port.
 
+## QA reflex — a problem pointed out ONCE becomes a permanent check (not optional)
+
+Christopher reports a visual/world/interaction problem **once**. He should never have to
+report the same *class* of problem twice. When he points one out, the job is not just to fix
+*that instance* — it is to make sure that kind of defect is **caught automatically, forever,
+before anything is ever called done.** This is the standing reflex; treat every bug report as
+"add a permanent check," not "patch this spot."
+
+**The four-step reflex — do all four, every time he flags something:**
+1. **Fix** the instance he pointed at.
+2. **Generalize** it to the class. "This hamster sits on the centre-line and freezes me" →
+   "no pickup may sit on a forced corridor." "These two shops flicker where they touch" →
+   "no two footprints overlap." Name the *category*, not the coordinate.
+3. **Promote it to a check — prefer DETERMINISTIC code over an eyeball.** This is the most
+   important step and the one that keeps the system from rotting:
+   - **If it can be detected in code (geometry, reachability, framing, boot), write a
+     deterministic assertion** that fails loudly — like `window.__overlaps()` or
+     `cameraQA.reach()`. Add it as **a new file in `studio/qa/checks/`** (auto-discovered by
+     `qa_audit.mjs` — no central file to edit, so branches never conflict; add a `window.__*`
+     probe in `game.html` if the check needs one). Write it **generically** — "no overlaps in
+     general", never "this one example". Code never forgets, runs in seconds, gates
+     automatically. **Always try this first.** See `studio/qa/README.md`.
+   - **Only if it is genuinely subjective** (colour clash, "reads as the wrong object",
+     "looks web-ish") does it go into the **visual sweep as a NAMED line** — append it to the
+     `TAXONOMY` in `.claude/skills/papercraft-env-qa/visual-qa.workflow.js` and the
+     recurring-failure-modes table below, as "we were burned by X — specifically check X." A
+     generic "look for clipping" is weaker than a named past failure.
+4. **Record it** — the failure-modes table in the World/asset QA gate section below + a
+   `feedback` memory, so it survives across sessions. See [[shanni-world-qa-gate]] and
+   [[shanni-qa-capture-reflex]].
+
+**Two tiers of QA, and the gate runs them automatically:**
+- **Deterministic audit (fast, always-correct, never forgets):** `node studio/qa_audit.mjs`
+  is a thin runner over an **auto-discovered registry** — every `studio/qa/checks/*.mjs`
+  (boot, geometry, reachability, camera framing/visibility today). **Exit 1 on any failure**;
+  on a clean pass it writes `.claude/.qa-stamp` (the world-file hash). Runs on **every**
+  world-touching change — it is cheap. New deterministic checks are **new files** in
+  `studio/qa/checks/`. All QA scripts boot via the shared `studio/qa/harness.mjs`
+  (`withGamePage`, free port — never copy-paste a server or hardcode a port).
+- **Visual sweep (needs EYES — screenshots, seriously looked at):** `node studio/qa_shots.mjs`
+  (full screenshot battery + per-object close-ups, exit-coded + stamps) → the **multi-agent
+  picture sweep** (`/papercraft-env-qa`). **The best way to catch a visual problem is to take
+  a screenshot and actually study it** — a deterministic check is NOT a substitute for
+  looking. Run this for **any** visual/world change (not deploy-only) and **always** before
+  `/deploy` + `/done`. This is the "really big sub-agent QA run" — scale it up freely;
+  thoroughness over brevity. Full contract + how to add checks/scenarios: `studio/qa/README.md`.
+
+**The hard gate (enforced, not just documented):** a committed **Stop hook**
+(`.claude/settings.json` → `.claude/hooks/qa-gate.mjs`) refuses to let a turn end while
+`studio/game.html`, `studio/specs/world.json`, or `studio/js/*` are **dirty vs `HEAD` AND
+have not passed the deterministic audit since the last edit** (it compares the live world
+hash to `.claude/.qa-stamp`). The hook is instant — it never launches a browser, it just
+checks git + the stamp. **To clear a block: run `node studio/qa_audit.mjs`** (fix anything it
+reports; it re-stamps on a clean pass). The hook fails *open* on any internal error, so it can
+never wedge a session, and it self-limits to one block per stop via `stop_hook_active`. The
+shared world-file list + hash live in `.claude/hooks/qa-lib.mjs` (imported by both the audit
+and the hook so they can't drift). See [[shanni-qa-capture-reflex]].
+
 ## Cameras — ALWAYS QA them (not optional)
 
 Whenever you add, move, or tune a camera/zone, you MUST run the camera QA as part of
@@ -216,6 +290,10 @@ detection commands + root-cause code refs live in the **`/papercraft-env-qa`** s
 (this is the standing summary so it's not forgotten between sessions).
 
 **The gate (all must pass):**
+0. `node studio/qa_audit.mjs` → the fast deterministic audit (boot + `__overlaps` + `reach`
+   + `framing` + `static`), **exit 0 = clean** (and it stamps `.claude/.qa-stamp`, clearing
+   the Stop hook). This is the always-run floor; run it after every world edit. The steps
+   below are the heavy battery on top of it.
 1. `node test/smoke.mjs studio` → green (boots, no JS errors).
 2. `node studio/qa_shots.mjs` → captures the zone battery + flicker pairs + a **per-object
    close-up of EVERY placed prop & building** (`studio/out/qa/props/`) AND prints
@@ -250,12 +328,32 @@ believable objects (hedges / construction `barrier`), backfill with `buildBackdr
 | Prop faces the wrong way | make it orientation-free (lamp = top globe) or set per-prop `rot` |
 | Props that don't belong / overlap | bushes on a road, bench on a bush → streets = lamps/trees, park = bushes; space props ≥~3u; the `placement` lens |
 | Edits not showing on reload | browser cached `specs/world.json` → it's fetched `cache:'no-store'`; hard-reload |
+| Interior: door covered by a wall, fish tank inside a shelf | interior pieces overlap/z-fight → `checks/interior-overlap.mjs` (`window.__interiorOverlaps()`=`[]`); expose interior pieces to an overlap audit like buildings |
+| Floor bleeds past the room/zone seam (visible past the wall) | floor extent > zone bounds → floor must END at the wall (`bottom`/extent clamped); `checks/floor-bounds.mjs` (`window.__floorOverruns()`=`[]`) |
+| Pitch-white / blank loading-zone background | a scene with no skybox/clear-colour → every zone sets an intentional non-white bg; `checks/scene-background.mjs` |
+| Blurry / mis-aligned building textures | big stretched maps → MODEL foreground structure as separated thin geometry, texture only for flat grain + distant backdrop; uniform texel density; `checks/texture-density.mjs` |
+| Hard seam where two textures/materials meet | adjacent maps don't blend → named sweep line; share a palette/tile, soften the join |
+| Sky/light seeping through a gap between adjacent shopfronts | facade gap to the void → close the gap / build city behind it (abyss rule); named sweep line |
 
 Debug hooks (all on `window`): `cameraQA.{static,framing,path,transition,reach,walk,warp}`,
 `__overlaps()`, `__colliders(x,z,r)`, `__freecam/__look` (free-cam for QA shots).
 
 ## Status / next
 
+- DONE: **QA capture reflex + hard gate** — a problem Christopher reports once becomes a
+  permanent check (fix → generalize → promote to a **deterministic** assertion → record).
+  New **`studio/qa/`** = the single QA home: a shared `harness.mjs` (`withGamePage`, free
+  port — kills the copy-pasted server + the `PORT=8788` collision) and an **auto-discovered
+  check registry** (`qa/checks/*.mjs`); `studio/qa_audit.mjs` is now a thin runner over it,
+  exit-coded, stamps `.claude/.qa-stamp` on a clean pass. **Add a check = add a file** (no
+  central edit → branches don't conflict). `qa_shots.mjs` exit-codes + stamps. Contract +
+  per-branch fold-in: `studio/qa/README.md`. A committed **Stop hook**
+  (`.claude/settings.json` → `.claude/hooks/qa-gate.mjs`, shared hash in
+  `.claude/hooks/qa-lib.mjs`) **blocks finishing a turn while world files are dirty + un-audited**
+  (instant: git + stamp, never launches a browser; fails open; one block per stop). Clear it
+  with `node studio/qa_audit.mjs`. Heavy multi-agent sweep runs on every `/deploy` + geometry
+  change. Verified end-to-end (clean→pass, dirty→block exit 2, re-audit→clear). See the **QA
+  reflex** section above + [[shanni-qa-capture-reflex]].
 - DONE: **Camera framing pass** — every zone retuned to a calmer 3/4 view (no top-down;
   the worst, the `corner`, went from ~56° to ~26°) and a bigger Shen (min ~13%, AIM ~15%+
   of screen). New **`trackWid`** zone field gives the open `park` a 2D follow so she stays
