@@ -21,12 +21,10 @@
   "props": [
     { "type": "rug", "x": 0.2, "z": -3.3, "w": 6.4, "d": 4.2, "color": "c98f86", "color2": "e0bcc5" },
 
-    { "type": "shelf", "x": 3.0, "z": -7.7, "w": 8.0, "d": 0.7, "h": 3.7, "color": "c2a07a", "board": "d9c3a3", "rows": 2 },
+    { "type": "shelf", "x": 3.0, "z": -7.7, "w": 8.0, "d": 0.7, "h": 1.9, "color": "c2a07a", "board": "d9c3a3", "rows": 1 },
     { "type": "tank", "x": 0.4, "z": -7.7, "y": 0.6, "w": 1.9, "h": 1.0, "d": 0.6, "water": "8fc6d8", "frame": "b7a890" },
     { "type": "tank", "x": 3.0, "z": -7.7, "y": 0.6, "w": 1.9, "h": 1.0, "d": 0.6, "water": "8fd0bc", "frame": "b7a890" },
     { "type": "tank", "x": 5.6, "z": -7.7, "y": 0.6, "w": 1.9, "h": 1.0, "d": 0.6, "water": "9cc0e0", "frame": "b7a890" },
-    { "type": "tank", "x": 1.7, "z": -7.7, "y": 2.1, "w": 1.9, "h": 1.0, "d": 0.6, "water": "94c9d2", "frame": "b7a890" },
-    { "type": "tank", "x": 4.3, "z": -7.7, "y": 2.1, "w": 1.9, "h": 1.0, "d": 0.6, "water": "a6c9e6", "frame": "b7a890" },
 
     { "type": "sign", "x": 1.2, "z": -8.0, "y": 4.2, "w": 5.2, "h": 0.9, "text": "J & M PET SHOP", "bg": "9c89b8", "ink": "f4efe6" },
 
