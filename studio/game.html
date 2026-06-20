@@ -20,9 +20,11 @@
     -webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
   /* dvh keeps the canvas matched to the *visible* viewport as the mobile URL bar
      shows/hides (100vh would over-extend under it); vh is the desktop fallback. */
-  #c{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100dvh}
+  /* touch-action:none here too — it does NOT inherit from body, so without it the
+     full-screen canvas defaults to `auto` and the browser pinch-/double-tap-zooms. */
+  #c{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100dvh;touch-action:none}
   /* loading-zone door fade: a soft cream wipe over the scene swap (opacity driven in JS) */
-  #fade{position:fixed;inset:0;z-index:35;background:#e9f1ea;opacity:0;pointer-events:none}
+  #fade{position:fixed;inset:0;z-index:35;background:#e9f1ea;opacity:0;pointer-events:none;touch-action:none}
   .panel{position:fixed;background:rgba(255,255,255,.74);border:1px solid #d6c9b2;
     border-radius:11px;padding:6px 11px;color:#5a564e;font-size:14px}
   /* tiny time-of-day clock (top-left; the flowers HUD that used to sit here is gone) */
@@ -64,7 +66,7 @@
   #bookBody{position:relative;flex:1;background:#fffdf8;border:1px solid #d6c9b2;border-radius:6px 16px 16px 6px;
     box-shadow:0 14px 40px rgba(90,80,60,.30);overflow:hidden;
     background-image:linear-gradient(90deg,#efe6d4 0,#f7efe0 13px,#fffdf8 30px)}
-  #pages{position:absolute;inset:0;padding:22px 24px 20px 42px;box-sizing:border-box;overflow-y:auto;
+  #pages{position:absolute;inset:0;padding:22px 24px 20px 42px;box-sizing:border-box;overflow-y:auto;touch-action:pan-y;
     transform-origin:left center;transform-style:preserve-3d;backface-visibility:hidden;
     transition:transform .2s ease,opacity .2s ease}
   #pages.flipping{transform:rotateY(-88deg);opacity:.25}
@@ -248,7 +250,7 @@
      the rotate prompt takes over instead). The route to a chromeless iOS game. */
   #a2hs{position:fixed;inset:0;z-index:130;display:none;flex-direction:column;
     align-items:center;justify-content:safe center;gap:13px;padding:26px;box-sizing:border-box;
-    overflow-y:auto;text-align:center;background:radial-gradient(120% 120% at 50% 38%,#eef4ee,#e4ece4)}
+    overflow-y:auto;touch-action:pan-y;text-align:center;background:radial-gradient(120% 120% at 50% 38%,#eef4ee,#e4ece4)}
   body.ios-web #a2hs{display:flex}
   #a2hs .ic{width:90px;height:90px;border-radius:21px;box-shadow:0 8px 22px rgba(90,80,60,.18)}
   #a2hs h2{margin:2px 0 0;font-size:21px;font-weight:700;color:#c27d8b;letter-spacing:.3px}
@@ -280,6 +282,18 @@
   "three":"https://unpkg.com/three@0.160.0/build/three.module.js",
   "three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"
 }}</script>
+<!-- Kill browser pinch-zoom on mobile. iOS Safari ignores viewport user-scalable=no and
+     fires its own pinch `gesture*` events on the document regardless of touch-action, so
+     swallow them here. Double-tap zoom + the rest is handled by touch-action (none on the
+     game surfaces, pan-y on the two scrollable panels). Loaded early (head, plain script)
+     so it catches gestures even during the module's load. NOTE: we do NOT preventDefault
+     touchend for double-tap — that would also cancel rapid gameplay taps (double-hop,
+     fast dialogue-advance); touch-action covers double-tap zoom without that cost. -->
+<script>
+['gesturestart','gesturechange','gestureend'].forEach(function(t){
+  document.addEventListener(t,function(e){e.preventDefault();},{passive:false});
+});
+</script>
 </head><body>
 <div id="loader">
   <div id="loadStage">
