@@ -560,15 +560,24 @@ function softCanvasTex(draw){const s=128,c=document.createElement('canvas');c.wi
 
 // shadow + cloud + hill canvas textures
 // Contact shadow (for the flat BILLBOARD cutouts — Shen / NPCs / pickups, which can't cast a
-// real shadow) = a clean oval with a SOFT real-life penumbra: a solid core + a gentle feathered
-// rim, NOT a vague smudge (the original muddy look) and NOT a razor edge. A wider canvas blur
-// gives the soft falloff; the solid core keeps it grounded + defined. Matches the soft VSM cast
-// shadows so a character's shadow reads the same as the world's.
+// real shadow) = a soft oval with a DEFINED dark core that fades SMOOTHLY to fully transparent
+// at the rim. The fade-to-0 rim is load-bearing, NOT just taste: this oval is a single FLAT
+// horizontal quad sitting at the player's foot height, but the ground under her is not always
+// flat. On the stepped stairs a HARD-edged disc (a solid core + thin blurred rim) gets sliced
+// by the step edges — occluded by the higher tread behind her, floating over the lower tread in
+// front — so its body bands across the steps and its wide left/right extremities poke out beside
+// her hips (the "fold / weird shadow" artifact). An alpha that reaches 0 at the rim can't show a
+// hard clip: wherever the ground steps, the oval just dissolves. Keep a solid-ish core so it
+// still reads as a grounded contact shadow (not a vague smudge), then ramp to nothing.
+// GUARDED by studio/qa/checks/contact-shadow-soft.mjs (window.__contactShadowProfile).
 const shadowTex=(()=>{const s=256,c=document.createElement('canvas');c.width=c.height=s;
   const x=c.getContext('2d');
-  x.filter='blur('+(s*0.085)+'px)';                 // soft, real-shadow falloff at the rim
-  x.fillStyle='rgba(58,50,40,.46)';
-  x.beginPath();x.ellipse(s/2,s/2,s*0.355,s*0.355,0,0,7);x.fill();
+  const g=x.createRadialGradient(s/2,s/2,0,s/2,s/2,s*0.5);
+  g.addColorStop(0.00,'rgba(58,50,40,.50)');        // defined dark core (grounded, not muddy)
+  g.addColorStop(0.42,'rgba(58,50,40,.40)');        // small plateau keeps it bodied
+  g.addColorStop(0.72,'rgba(58,50,40,.15)');        // ramp down…
+  g.addColorStop(1.00,'rgba(58,50,40,0)');          // …to fully transparent at the rim (no hard edge to clip)
+  x.fillStyle=g;x.fillRect(0,0,s,s);
   const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;
   t.minFilter=THREE.LinearMipmapLinearFilter;t.magFilter=THREE.LinearFilter;return t;})();
 function blobTex(col){return softCanvasTex((x,s)=>{x.fillStyle=col;
@@ -1525,6 +1534,15 @@ window.__shadowInfo=()=>{ const d=Sky&&Sky.dir, sm=renderer.shadowMap;
     mapSize:map, frustumHalf:half, blurRadius:cast?d.shadow.radius:0,
     texelsPerUnit: half?+(map/(2*half)).toFixed(1):0,
     level:(Sky&&Sky._shadowLevel)||null, gfx:(window.__gfx&&window.__gfx())||null }; };
+// QA probe for studio/qa/checks/contact-shadow-soft.mjs: sample the billboard CONTACT-shadow
+// oval's alpha from its core out to its rim. The rim MUST reach ~0 — a hard-edged disc bands /
+// pokes out beside the player on stepped/uneven ground (the stair "fold" artifact). Reads the
+// live shadow material's canvas so a regression to a solid oval is caught deterministically.
+window.__contactShadowProfile=()=>{ const img=shadow&&shadow.material&&shadow.material.map&&shadow.material.map.image;
+  if(!img) return null; const S=img.width, cv=document.createElement('canvas'); cv.width=cv.height=S;
+  const cx=cv.getContext('2d'); cx.drawImage(img,0,0);
+  const aAt=fr=>cx.getImageData(Math.round(S/2),Math.round(S/2*(1-fr)),1,1).data[3]/255;   // up the vertical radius
+  return { center:+aAt(0).toFixed(3), mid:+aAt(0.42).toFixed(3), edge:+aAt(0.78).toFixed(3), rim:+aAt(0.96).toFixed(3) }; };
 // each tagged interior fixture's world-AABB centre + size, so the QA harness can frame a
 // per-object close-up of EVERY fixture (the "look at every single thing" pass, interiors).
 window.__fixtures=()=>{ const out=[]; if(sceneRoot) sceneRoot.traverse(o=>{ if(o.userData&&o.userData.fx){
