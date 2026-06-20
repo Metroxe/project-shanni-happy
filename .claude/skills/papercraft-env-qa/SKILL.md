@@ -30,6 +30,15 @@ through another bush, or the infinite void past the map edge.
    fenced into emptiness. Far filler is the `buildBackdrop()` ring + fog.
 2. **Stay on the locked look.** Flat, minimal, clean Paper-Mario papercraft. No
    clipping, no stray lines/artifacts, no clashing colours, calm negative space.
+3. **Interiors / loading-zone rooms.** (a) The background is **NEVER pitch white** —
+   every scene has an intentional bg colour/skybox (interiors via `Sky.setInterior`).
+   ⚠️ a colour string without a leading `#` makes `THREE.Color` silently parse to WHITE.
+   (b) The **floor STOPS at the walls** (covers the room footprint only, tucked just under
+   the wall thickness) — it must never extend past the walls / into the non-accessible
+   area; a floor running out into the bg is a floating edge, NOT to be "fixed" by enlarging
+   the floor. (c) **Walls LINE UP** — one wall height per room so the corners meet cleanly.
+   Always **screenshot a new room from several angles and look at bg / floor-boundary /
+   wall-alignment consistency** — the geometry audit won't catch these.
 
 ## Defect taxonomy — what to hunt in every shot
 
@@ -41,6 +50,9 @@ through another bush, or the infinite void past the map edge.
 6. **ORIENTATION** — a prop facing the wrong way (lamp head, bench, awning, a storefront facade/door not facing the street).
 7. **SCALE / PLACEMENT** — mis-sized, floating, half-buried, or oddly placed.
 8. **AESTHETIC** — clutter, clashing colour, anything off the calm clean pastel direction.
+9. **WHITE BACKGROUND** (interiors) — any pitch-white field beyond/above the walls (the bg colour failed to apply, usually a missing-`#` `THREE.Color` → white). The bg must be an intentional warm/coloured field.
+10. **FLOOR PAST WALLS** (interiors) — the floor plane extending beyond the walls / floating its cut edge against the bg instead of stopping at the room footprint.
+11. **WALL MISALIGNMENT** (interiors) — walls of different heights leaving a step/notch where they meet at a corner.
 
 ## Workflow (the robust loop)
 
@@ -106,12 +118,29 @@ require them clean:
    hair-different camera angle. z-fighting flips its winner between the two frames, so a
    pair that differs anywhere but the tiny shift = flicker. (Best caught by `__overlaps`,
    but the pair confirms visually.) A single still can't show flicker — that's why this exists.
+6. **`window.__clips()` — 3D INTERPENETRATION AUDIT (interiors).** `__overlaps()` is a 2D
+   footprint check for the town; for a ROOM you need 3D. Every interior fixture (wall, door,
+   counter, shelf, tanks, cages, plants, lamps, sign) is tagged `userData.fx`; `__clips()`
+   compares them **per-mesh** and returns any pair that passes THROUGH each other (overlap
+   in all 3 axes > eps). It catches: a **door sunk into a wall** (the wall renders over it),
+   a **shelf board clipping a tank**, a shelf/sign **buried in the wall**. SURFACE contact
+   (a tank sitting ON a shelf, a door PROUD of a wall) is NOT flagged. Must be `[]`.
+   `studio/qa_petshop.mjs` runs it + a **per-fixture close-up** (`window.__fixtures()` → one
+   framed screenshot of EVERY fixture → `out/qa/petshop/fx/`) so each thing gets looked at.
+   **When you add a fixture, tag it `userData.fx` so the audit covers it.**
 
-**Two real bugs this caught (don't reintroduce):**
+**Real bugs this caught (don't reintroduce):**
 - **Coarse box colliders.** A box footprint must become a TIGHT perimeter ring of small
   (~0.55) circles (`pushBoxColliders`). The old `r = 0.5·min(w,d)` made **r=2** circles
   for a depth-4 building that bulged ~2u past the corners INTO the road — an invisible
-  wall. Small overlapping perimeter circles hug the footprint (≤r bulge) and still seal.
+  wall. **A long/thin wall shelf hit the same trap**: a single `r = ½·max(w,d)` circle (≈4u
+  for a width-8 shelf) walled off the whole counter approach. Long/thin props get a
+  `pushBoxColliders` ring matching their footprint (swap w/d when rotated), NOT one circle.
+  `cameraQA.static` cell count dropping is the tell (a fat collider shrinks the reachable set).
+- **Door / fixture behind its wall.** A door recessed into a solid wall = the wall draws over
+  it (looks like the wall has texture on the door). Place the door/shelf/sign PROUD of the
+  wall's FRONT FACE (`zBack + th/2`), not at the wall centre. `__clips()` flags it as a
+  door×wall interpenetration; verify with the per-fixture close-up too.
 - **Pickups on the path.** A collectible (or any pickup that triggers the joy freeze)
   placed dead-centre on a corridor forces a 1.6s movement lock every pass — reads as
   "blocked". Keep collectibles OFF the forced centre-line (sidewalk/edge), so grabbing
@@ -161,3 +190,24 @@ require them clean:
   `.path`/`.transition` report `byOcc` = which building occluded, per zone.
 - `window.__freecam(px,py,pz, tx,ty,tz)` — free look (stops the auto loop, renders one frame).
 - `window.__look(tx,ty,tz, yawDeg,pitchDeg, dist)` — orbit a target at an angle+distance.
+  ⚠️ `__look`/`__freecam` STOP the auto loop — call `__startAuto()` after a batch of looks
+  if you then run live movement/talk tests. NB yaw places the camera on that SIDE of the
+  target (yaw 0 = camera +z of target → looks toward −z); a flipped yaw shoots the wall's
+  blank outer face, not the room.
+- `window.__overlaps()` — 2D footprint-overlap audit (town buildings/stairs). Must be `[]`.
+- `window.__clips([eps])` — **3D per-mesh interpenetration audit (interiors)**. Returns any
+  pair of `userData.fx`-tagged fixtures passing through each other (door-in-wall, board-
+  through-tank, shelf-in-wall). Must be `[]`. Surface contact (sits-on / proud-of) is not flagged.
+- `window.__fixtures()` — every tagged interior fixture's world-AABB centre + size, to frame
+  a per-object close-up of each (`qa_petshop.mjs` does this → `out/qa/petshop/fx/`).
+- `window.__colliders(x,z,rad)` — list solid colliders near a point (find the fat "invisible wall").
+
+## Interior / loading-zone QA loop (run after building or editing a room)
+
+`node studio/qa_petshop.mjs` (fresh headless context — bypasses the preview's ES-module cache)
+asserts, for the pet-shop interior: `__clips()` = `[]` (no fixture passes through another),
+`cameraQA.static()` = 0 fails (Shen visible everywhere — a fat prop collider shrinks the cell
+count), Shen can reach + talk across the counter, the town↔shop door round-trip works via the
+real Talk key, AND captures a per-fixture close-up of every fixture + interior/abyss looks into
+`out/qa/petshop/`. **Then LOOK at the shots** for the interior-specific defects (white bg,
+floor-past-walls, wall-misalignment, door-behind-wall, prop clips). Fix → re-run until clean.

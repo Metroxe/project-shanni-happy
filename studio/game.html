@@ -21,6 +21,8 @@
   /* dvh keeps the canvas matched to the *visible* viewport as the mobile URL bar
      shows/hides (100vh would over-extend under it); vh is the desktop fallback. */
   #c{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100dvh}
+  /* loading-zone door fade: a soft cream wipe over the scene swap (opacity driven in JS) */
+  #fade{position:fixed;inset:0;z-index:35;background:#e9f1ea;opacity:0;pointer-events:none}
   .panel{position:fixed;background:rgba(255,255,255,.74);border:1px solid #d6c9b2;
     border-radius:11px;padding:6px 11px;color:#5a564e;font-size:14px}
   /* tiny time-of-day clock (top-left; the flowers HUD that used to sit here is gone) */
@@ -280,6 +282,7 @@
   <div id="loadText">shenning</div>
 </div>
 <canvas id="c"></canvas>
+<div id="fade"></div>
 <div class="panel" id="clock" title="time of day">
   <svg id="clockFace" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
     <circle cx="12" cy="12" r="10.5" fill="#fff8ec" stroke="#d9b9c6" stroke-width="1.4"/>
@@ -381,14 +384,18 @@
   <button class="skip" id="a2hsSkip">play in the browser instead</button>
 </div>
 <script type="module">
+// ?v= cache-bust on the local modules: the dev preview hard-caches ES modules and
+// won't re-fetch them on a plain reload (a documented trap). BUMP this when you edit
+// any studio/js/*.js so a reload actually loads the new code. (Deploys get fresh URLs
+// per commit, so this is purely a local-preview convenience.)
 import * as THREE from 'three';
-import { WORLD, initState, step, setBounds, setColliders } from './js/sim.js';
-import { Dialogue } from './js/dialogue.js';
-import * as Save from './js/save.js';
-import { Sound } from './js/audio.js';
-import { Quests } from './js/quests.js';
-import { Sky } from './js/sky.js';
-import { FX } from './js/fx.js';
+import { WORLD, initState, step, setBounds, setColliders } from './js/sim.js?v=3';
+import { Dialogue } from './js/dialogue.js?v=3';
+import * as Save from './js/save.js?v=3';
+import { Sound } from './js/audio.js?v=3';
+import { Quests } from './js/quests.js?v=3';
+import { Sky } from './js/sky.js?v=3';
+import { FX } from './js/fx.js?v=3';
 
 const canvas=document.getElementById('c');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
@@ -399,7 +406,7 @@ const cam=new THREE.PerspectiveCamera(40,1,0.1,300);
 
 const SHEN_H=1.9, SHEN_W=SHEN_H*0.4634, GROUND_EPS=0.02;
 const WALK_HOP=0.24, MAX_LIFT=1.5, FH=0.95, PLAYER_R=0.42;
-const TALK_R=2.4; const _tv=new THREE.Vector3();
+const TALK_R=2.6; const _tv=new THREE.Vector3();
 // Positional NPC/world sound: full volume within HEAR_NEAR, silent past HEAR_FAR
 // (squared rolloff). Ambient animation loops (e.g. Chrees' reps) are only audible
 // when the player is near — never across the whole map. (S is assigned in build().)
@@ -408,8 +415,11 @@ const proxGain=(x,z)=>{ const t=(HEAR_FAR-Math.hypot(x-S.x,z-S.z))/(HEAR_FAR-HEA
   return t<=0?0:t>=1?1:t*t; };
 
 const loader=new THREE.TextureLoader();
-const tx=u=>new Promise(res=>loader.load(u,t=>{t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;
-  t.minFilter=THREE.LinearMipmapLinearFilter;t.magFilter=THREE.LinearFilter;res(t);}));
+// cache decoded textures by URL: NPC/pickup sprites are reloaded each scene build,
+// so a swap back into a scene shouldn't re-decode (and textures are immutable here).
+const txCacheU={};
+const tx=u=>txCacheU[u]?Promise.resolve(txCacheU[u]):new Promise(res=>loader.load(u,t=>{t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;
+  t.minFilter=THREE.LinearMipmapLinearFilter;t.magFilter=THREE.LinearFilter;txCacheU[u]=t;res(t);}));
 const hex=h=>new THREE.Color('#'+h);
 
 function billboard(tex,w,h,opts={}){
@@ -433,6 +443,20 @@ function blobTex(col){return softCanvasTex((x,s)=>{x.fillStyle=col;
 let world, S, shen, mesh=null, shadow, pickups=[], propsMesh=[], burst, burstT=-1, burstPos=new THREE.Vector3();
 let npcs=[], nearNpc=null, talkCooldown=0;
 let started=false, BUILD='dev';
+// ----- loading-zone (multi-scene) state -----
+// SPECS holds every scene's parsed world spec; curScene names the active one.
+// sceneRoot wraps EVERY scene-specific mesh so a scene swap is one remove + rebuild
+// (persistent objects — base ground, shen, shadow, burst, sky — stay outside it).
+// `collected` is the GLOBAL set of collected pickup ids: it must survive scene swaps
+// (S.collectibles only ever holds the ACTIVE scene's pickups), and it is the single
+// source of truth the save + quest engine read. kindMap maps every id→kind across
+// all scenes. portals/ambients are the active scene's; nearPortal drives the prompt.
+const SCENE_URLS={ town:'specs/world.json', petshop:'specs/petshop.json' };
+let SPECS={}, curScene='town', sceneRoot=null, groundPlane=null;
+let collected=new Set(), kindMap={};
+let portals=[], ambients=[], nearPortal=null, portalCooldown=0;
+let trans=null;                       // active door transition (state machine, see updateTransition)
+const fadeEl=()=>document.getElementById('fade');
 
 const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
 const smooth=t=>t<=0?0:t>=1?1:t*t*(3-2*t);
@@ -551,7 +575,7 @@ function pushBoxColliders(cols,cx,cz,w,d){
 function contactShadow(x,z,r,gy){
   const sh=new THREE.Mesh(new THREE.PlaneGeometry(r*2.4,r*2.4),
     new THREE.MeshBasicMaterial({map:shadowTex,transparent:true,depthWrite:false,opacity:0.7}));
-  sh.rotation.x=-Math.PI/2; sh.position.set(x,(gy==null?groundHeight(x,z):gy)+GROUND_EPS,z); sh.renderOrder=1; scene.add(sh);
+  sh.rotation.x=-Math.PI/2; sh.position.set(x,(gy==null?groundHeight(x,z):gy)+GROUND_EPS,z); sh.renderOrder=1; sceneRoot.add(sh);
 }
 // upper terrace (3 blocks around the stair notch) + its front retaining wall
 function buildPlateau(cols){
@@ -559,7 +583,7 @@ function buildPlateau(cols){
   const blocks=[[b.xmin,ST.x0,b.zmin,ST.zBot],[ST.x1,b.xmax,b.zmin,ST.zBot],[ST.x0,ST.x1,b.zmin,ST.zTop]];
   for(const [x0,x1,z0,z1] of blocks){ const w=x1-x0,d=z1-z0; if(w<=0.01||d<=0.01)continue;
     const m=M(new THREE.BoxGeometry(w,H-bottom,d),stone,false,false);
-    m.position.set((x0+x1)/2,(bottom+H)/2,(z0+z1)/2); m.castShadow=false; scene.add(m); }
+    m.position.set((x0+x1)/2,(bottom+H)/2,(z0+z1)/2); m.castShadow=false; sceneRoot.add(m); }
   // retaining-wall colliders along the cliff edge (z=zBot) beside the stair gap —
   // keeps the park player from climbing onto the plateau and vice-versa.
   if(cols){ pushBoxColliders(cols,(b.xmin+ST.x0)/2,ST.zBot,(ST.x0-b.xmin),0.5,0.5);
@@ -572,15 +596,15 @@ function buildStairs(){
   const tread='#'+(ST.tread||'e4ddcf'), riser='#'+(ST.riser||'d6cdba'), rail='#'+(ST.rail||'f4efe6');
   for(let i=0;i<n;i++){ const topY=H-i*dy, z0=ST.zTop+i*dz;
     const step=M(new THREE.BoxGeometry(w,Math.max(topY,0.12),dz*1.04),tread,false,false);
-    step.position.set((x0+x1)/2,Math.max(topY,0.12)/2,z0+dz/2); step.castShadow=false; scene.add(step);
+    step.position.set((x0+x1)/2,Math.max(topY,0.12)/2,z0+dz/2); step.castShadow=false; sceneRoot.add(step);
     const rf=M(new THREE.BoxGeometry(w+0.02,dy*0.96,0.05),riser,false,false);
-    rf.position.set((x0+x1)/2,topY-dy/2,z0+dz); scene.add(rf); }
+    rf.position.set((x0+x1)/2,topY-dy/2,z0+dz); sceneRoot.add(rf); }
   const ang=Math.atan2(H,run), len=Math.hypot(run,H);
   for(const sx of [x0+0.22, x1-0.22]){                       // INBOARD: on the steps, not in the walls
     const r=M(new THREE.BoxGeometry(0.1,0.1,len),rail,false,false);
-    r.position.set(sx,H/2+0.92,(ST.zTop+ST.zBot)/2); r.rotation.x=ang; scene.add(r);
+    r.position.set(sx,H/2+0.92,(ST.zTop+ST.zBot)/2); r.rotation.x=ang; sceneRoot.add(r);
     for(let p=0;p<=n;p+=2){ const py=H-p*dy; const post=M(new THREE.BoxGeometry(0.08,0.98,0.08),rail,false,false);
-      post.position.set(sx,py+0.49,ST.zTop+p*dz); scene.add(post); } }
+      post.position.set(sx,py+0.49,ST.zTop+p*dz); sceneRoot.add(post); } }
 }
 // flat tinted ground: road / sidewalk / plaza disc / grass / path. Distinct y-eps
 // per kind (ordered) so overlapping surfaces never z-fight; no cream edges (they
@@ -591,7 +615,7 @@ function buildSurfaces(){
   for(const s of (SCENE.surfaces||[])){
     const geo=s.shape==='disc'?new THREE.CircleGeometry(s.r,64):new THREE.PlaneGeometry(s.w,s.d);
     const m=M(geo,'#'+s.color,true,false); m.rotation.x=-Math.PI/2; m.castShadow=false;
-    m.position.set(s.x,(s.y||0)+(SURF_EPS[s.kind]??0.03),s.z); scene.add(m); }
+    m.position.set(s.x,(s.y||0)+(SURF_EPS[s.kind]??0.03),s.z); sceneRoot.add(m); }
 }
 // circular planter rim (visual arc segments + a dense containment collider ring)
 function buildRings(cols){
@@ -601,7 +625,7 @@ function buildRings(cols){
     for(let i=0;i<segs;i++){ const am=(i+0.5)/segs*360; if(inGap(am))continue;
       const a=am*Math.PI/180, x=cx+r*Math.cos(a), z=cz+r*Math.sin(a), segLen=2*Math.PI*r/segs*1.04;
       const m=M(new THREE.BoxGeometry(thick,h,segLen),col,false,false);
-      m.position.set(x,groundHeight(x,z)+h/2,z); m.rotation.y=-a; scene.add(m); }
+      m.position.set(x,groundHeight(x,z)+h/2,z); m.rotation.y=-a; sceneRoot.add(m); }
     const cn=Math.ceil(2*Math.PI*r/1.0);
     for(let i=0;i<cn;i++){ const am=(i+0.5)/cn*360; if(inGap(am))continue;
       const a=am*Math.PI/180; cols.push({x:cx+r*Math.cos(a),z:cz+r*Math.sin(a),r:0.7}); }
@@ -611,7 +635,7 @@ function buildRings(cols){
 function buildWalls(cols){
   for(const w of (SCENE.walls||[])){ const h=w.h||0.7, gy=groundHeight(w.x,w.z);
     const m=M(new THREE.BoxGeometry(w.w,h,w.d),'#'+(w.color||'cfdcc4'),false,false);
-    m.position.set(w.x,gy+h/2,w.z); scene.add(m); pushBoxColliders(cols,w.x,w.z,w.w,w.d,0.5); }
+    m.position.set(w.x,gy+h/2,w.z); sceneRoot.add(m); pushBoxColliders(cols,w.x,w.z,w.w,w.d,0.5); }
 }
 // procedural storefront facade: sign band + awning + upper windows + display bays/door
 function facadeTex(f,wWorld,hWorld){
@@ -643,10 +667,10 @@ function buildBuildings(cols){
   for(const bd of (SCENE.buildings||[])){
     const base=groundHeight(bd.x,bd.z), top=base+bd.h, bottom=base;   // box sits ON the ground; NO downward extension (it would z-fight the retaining wall behind park-edge shops)
     const m=M(new THREE.BoxGeometry(bd.w,top-bottom,bd.d),'#'+bd.color,false,false);  // no cream edge outline (read as artifacts)
-    m.position.set(bd.x,(bottom+top)/2,bd.z); m.userData.bn=(bd.facade&&bd.facade.sign)||('bld@'+bd.x+','+bd.z); scene.add(m); BUILDING_MESHES.push(m);
+    m.position.set(bd.x,(bottom+top)/2,bd.z); m.userData.bn=(bd.facade&&bd.facade.sign)||('bld@'+bd.x+','+bd.z); sceneRoot.add(m); BUILDING_MESHES.push(m);
     const roofCol=(bd.facade&&bd.facade.signBg)||bd.color;
     const roof=M(new THREE.BoxGeometry(bd.w+0.3,0.4,bd.d+0.3),'#'+roofCol,false,false);
-    roof.position.set(bd.x,top+0.2,bd.z); roof.castShadow=false; scene.add(roof);
+    roof.position.set(bd.x,top+0.2,bd.z); roof.castShadow=false; sceneRoot.add(roof);
     if(bd.facade){ const dirs=Array.isArray(bd.faceDir)?bd.faceDir:[bd.faceDir||'-z']; for(const d of dirs) addFacade(bd,base,top,d); }
     pushBoxColliders(cols,bd.x,bd.z,bd.w,bd.d,0.5);
   }
@@ -661,14 +685,14 @@ function addFacade(bd,base,top,dir){
   else if(dir==='+x'){panel.position.x=bd.x+bd.w/2+off; panel.rotation.y=Math.PI/2;}
   else if(dir==='-z'){panel.position.z=bd.z-bd.d/2-off; panel.rotation.y=Math.PI;}
   else {panel.position.z=bd.z+bd.d/2+off;}
-  scene.add(panel);
+  sceneRoot.add(panel);
   const awY=base+h*0.80, depth=0.7, side=(dir==='-x'||dir==='+x');
   const aw=M(side?new THREE.BoxGeometry(depth,0.1,faceLen*0.97):new THREE.BoxGeometry(faceLen*0.97,0.1,depth),'#'+(f.awning||'d99fa9'),false,false);
   if(dir==='-x')aw.position.set(bd.x-bd.w/2-depth/2-off,awY,bd.z);
   else if(dir==='+x')aw.position.set(bd.x+bd.w/2+depth/2+off,awY,bd.z);
   else if(dir==='-z')aw.position.set(bd.x,awY,bd.z-bd.d/2-depth/2-off);
   else aw.position.set(bd.x,awY,bd.z+bd.d/2+depth/2+off);
-  aw.castShadow=false; scene.add(aw);
+  aw.castShadow=false; sceneRoot.add(aw);
   // (entrances stay in world.json as future loading-zone hooks; no floating doormat decal)
 }
 // ---- papercraft props (no cream edges on rounded/small props → no stray outlines) ----
@@ -741,7 +765,7 @@ const PROP={bush:makeBush,tree:makeTree,lamp:makeLamp,bench:makeBench,fountain:m
 function buildProps(cols){
   for(const p of (SCENE.props||[])){ const mk=PROP[p.type]; if(!mk)continue;
     const r=mk(p), gy=groundHeight(p.x,p.z), rot=p.rot||0, ca=Math.cos(rot), sa=Math.sin(rot);
-    r.group.position.set(p.x,gy,p.z); if(rot)r.group.rotation.y=rot; scene.add(r.group);
+    r.group.position.set(p.x,gy,p.z); if(rot)r.group.rotation.y=rot; sceneRoot.add(r.group);
     contactShadow(p.x,p.z,r.shadowR||r.rad||0.7,gy);
     if(p.solid){ if(r.cols){ for(const c of r.cols) cols.push({x:p.x+c.dx*ca-c.dz*sa, z:p.z+c.dx*sa+c.dz*ca, r:c.r}); }
                  else cols.push({x:p.x,z:p.z,r:r.rad||0.7}); }
@@ -759,17 +783,219 @@ function buildBackdrop(){
     const x0=b.xmin-rg.pad, x1=b.xmax+rg.pad, z0=b.zmin-rg.pad, z1=b.zmax+rg.pad+18;
     const place=(x,z)=>{ const w=rg.step*(0.4+0.3*rnd()), d=rg.step*(0.4+0.3*rnd()), h=rg.h[0]+(rg.h[1]-rg.h[0])*rnd();  // <1 step → adjacent fillers don't overlap (no distant z-fight)
       const m=M(new THREE.BoxGeometry(w,h+3,d),'#'+palette[Math.floor(rnd()*palette.length)],false,false);
-      m.position.set(x,(h-3)/2,z); m.castShadow=false; m.receiveShadow=false; scene.add(m); };
+      m.position.set(x,(h-3)/2,z); m.castShadow=false; m.receiveShadow=false; sceneRoot.add(m); };
     for(let x=x0;x<=x1;x+=rg.step){ place(x+(rnd()-.5)*3,z0); place(x+(rnd()-.5)*3,z1); }
     for(let z=z0;z<=z1;z+=rg.step){ place(x0,z+(rnd()-.5)*3); place(x1,z+(rnd()-.5)*3); }
   }
 }
-function buildCity(){
-  LEVEL=SCENE.level||{H:0}; STAIRS=SCENE.stairs||null;
-  const cols=[];
+function buildCity(cols){
   buildPlateau(cols); buildStairs(); buildSurfaces();
   buildRings(cols); buildWalls(cols); buildBuildings(cols); buildProps(cols); buildBackdrop();
-  SCENE_COLLIDERS=cols; setColliders(cols);
+}
+
+// ===== pet-shop INTERIOR builder (a flat papercraft "J&M Tropical Fish" room) =====
+// Same primitive vocabulary as the city (boxes/cylinders/spheres + paper material),
+// but a walled room with a wood floor, warm lamp light, a service counter, glowing
+// fish tanks, a birdcage, hanging plants and an exit door. Reads spec.room + the
+// interior `props` below. The outdoor sky is hidden by Sky.setInterior (in buildScene).
+function buildInterior(cols){
+  const R=SCENE.room||{}, x0=(R.x&&R.x[0])??-7, x1=(R.x&&R.x[1])??7, zB=R.zBack??-8, zF=R.zFront??3;
+  const wallH=R.wallH??4.8, backH=R.backH??wallH, th=0.4;
+  // floor (warm wood) — covers EXACTLY the room footprint and stops at the walls. It tucks
+  // just under the wall thickness (no floor↔wall seam) but NEVER extends past the walls or
+  // into the non-accessible area beyond them: a floor that runs out into the background
+  // reads as a hard floating edge / soft abyss. The area beyond the walls is the interior
+  // background colour (set in Sky.setInterior — NEVER pitch white), not more floor.
+  const floor=M(new THREE.PlaneGeometry((x1-x0)+th,(zF-zB)+th),'#'+(R.floor||'d8bd97'),true,false);
+  floor.rotation.x=-Math.PI/2; floor.castShadow=false; floor.position.set((x0+x1)/2,0.01,(zB+zF)/2); sceneRoot.add(floor);
+  // walls: back + left + right (front is OPEN toward the camera, dollhouse style)
+  const wall='#'+(R.wall||'cdd9cf'), base='#'+(R.base||'bfb09a');
+  const mkWall=(w,h,d,x,z)=>{ const m=M(new THREE.BoxGeometry(w,h,d),wall,false,false);
+    m.position.set(x,h/2,z); m.castShadow=false; m.userData.fx='wall@'+x.toFixed(1)+','+z.toFixed(1); sceneRoot.add(m);
+    const bb=M(new THREE.BoxGeometry(w+0.02,0.34,d+0.02),base,false,false); bb.position.set(x,0.17,z); bb.castShadow=false; sceneRoot.add(bb); };
+  mkWall(x1-x0+th, backH, th, (x0+x1)/2, zB);         // back
+  mkWall(th, wallH, zF-zB, x0, (zB+zF)/2);            // left
+  mkWall(th, wallH, zF-zB, x1, (zB+zF)/2);            // right
+  // wall colliders (perimeter) so the player can't leave the room
+  pushBoxColliders(cols,(x0+x1)/2,zB,(x1-x0),th);
+  pushBoxColliders(cols,x0,(zB+zF)/2,th,(zF-zB));
+  pushBoxColliders(cols,x1,(zB+zF)/2,th,(zF-zB));
+  // warm ceiling lamps (a glowing globe + a point light each — the room's light)
+  for(const lp of (R.lamps||[])){
+    const g=new THREE.Group(); g.position.set(lp.x,0,lp.z);
+    const cord=M(new THREE.CylinderGeometry(0.03,0.03,0.7,6),'#9a8f7c',false,false); cord.position.y=wallH-0.35; g.add(cord);
+    const shade=M(new THREE.ConeGeometry(0.6,0.5,16,1,true),'#e6dcc8',false,false); shade.position.y=wallH-0.75; shade.castShadow=false; g.add(shade);
+    const bulb=new THREE.Mesh(new THREE.SphereGeometry(0.22,12,10),
+      new THREE.MeshStandardMaterial({color:hex('fff4d6'),emissive:hex('ffe6a8'),emissiveIntensity:0.9,roughness:0.6}));
+    bulb.position.y=wallH-0.95; g.add(bulb); g.userData.fx='lamp@'+lp.x+','+lp.z; sceneRoot.add(g);
+    const light=new THREE.PointLight(0xffe9c2, 14, 16, 2.0); light.position.set(lp.x,wallH-1.0,lp.z); sceneRoot.add(light);
+  }
+  buildInteriorProps(cols);
+}
+// ---- interior fixtures (counter, tanks, shelves, cages, plants...) ----
+function iRug(p){ const g=new THREE.Group(), w=p.w||6, d=p.d||4;
+  const r=M(new THREE.BoxGeometry(w,0.04,d),'#'+(p.color||'c98f86'),true,false); r.castShadow=false; r.receiveShadow=true; g.add(r);
+  const inner=M(new THREE.BoxGeometry(w-0.7,0.05,d-0.7),'#'+(p.color2||'e0bcc5'),true,false); inner.castShadow=false; inner.position.y=0.005; g.add(inner);
+  return {group:g,h:0.1,rad:Math.max(w,d)/2,shadowR:0,noShadow:true}; }
+// a service counter: body + overhanging top slab + recessed kick. Thin front-face
+// colliders (returned in cols) let the player stand RIGHT at it to talk across.
+function iCounter(p){ const g=new THREE.Group(), w=p.w||6, d=p.d||0.95, h=p.h||1.08;
+  const body=M(new THREE.BoxGeometry(w,h-0.12,d-0.16),'#'+(p.color||'c2a07a'),false,false); body.position.set(0,(h-0.12)/2,0); g.add(body);
+  const kick=M(new THREE.BoxGeometry(w-0.1,0.16,d),'#'+(p.kick||'ad8e6c'),false,false); kick.position.set(0,0.08,0.02); g.add(kick);
+  const top=M(new THREE.BoxGeometry(w+0.24,0.12,d+0.22),'#'+(p.top||'e4d4bd'),false,false); top.position.set(0,h-0.06,0); g.add(top);
+  return {group:g,h,rad:Math.max(w,d)/2,shadowR:0,noShadow:true,
+    counterCols:{w,d,h}}; }
+function iRegister(p){ const g=new THREE.Group();
+  const base=M(new THREE.BoxGeometry(0.7,0.4,0.55),'#'+(p.color||'b6a2ca'),false,false); base.position.y=0.2; g.add(base);
+  const scr=M(new THREE.BoxGeometry(0.5,0.34,0.08),'#'+(p.color2||'efe7d6'),false,false); scr.position.set(0,0.55,-0.12); scr.rotation.x=-0.3; g.add(scr);
+  const key=M(new THREE.BoxGeometry(0.55,0.06,0.3),'#'+(p.color2||'efe7d6'),false,false); key.position.set(0,0.42,0.12); g.add(key);
+  return {group:g,h:0.7,rad:0.5,shadowR:0,noShadow:true,sit:p.y??1.14}; }
+// a small wire cage on the counter with a couple of hamsters home safe (quest payoff)
+function iCritterbox(p){ const g=new THREE.Group();
+  const tray=M(new THREE.BoxGeometry(1.3,0.22,0.8),'#d9c3a3',false,false); tray.position.y=0.11; g.add(tray);
+  const barCol='#cfcabd';
+  for(let i=0;i<=5;i++){ const b=M(new THREE.CylinderGeometry(0.02,0.02,0.6,6),barCol,false,false);
+    b.position.set(-0.6+i*0.24,0.5,0.36); g.add(b);
+    const b2=b.clone(); b2.position.z=-0.36; g.add(b2); }
+  const top=M(new THREE.BoxGeometry(1.32,0.05,0.84),barCol,false,false); top.position.y=0.8; g.add(top);
+  return {group:g,h:0.85,rad:0.7,shadowR:0,noShadow:true,sit:p.y??1.14,critters:true}; }
+// a wall shelf unit: back panel + horizontal boards (tanks sit on these)
+function iShelf(p){ const g=new THREE.Group(), w=p.w||8, d=p.d||0.55, h=p.h||3.6, rows=p.rows||2;
+  const back=M(new THREE.BoxGeometry(w,h,0.08),'#'+(p.color||'c2a07a'),false,false); back.position.set(0,h/2,-d/2); g.add(back);
+  for(let i=0;i<=rows;i++){ const y=0.55+i*(h-0.7)/rows;
+    const board=M(new THREE.BoxGeometry(w,0.1,d),'#'+(p.board||'d9c3a3'),false,false); board.position.set(0,y,0); board.castShadow=false; g.add(board); }
+  return {group:g,h,rad:Math.max(w,d)/2,shadowR:0,noShadow:true}; }
+// a glowing glass fish tank: a translucent, faintly-lit water box (you see the fish
+// THROUGH it — never a solid frame box hiding them) + a sandy base + a thin top rim +
+// a couple of drifting fish + an inner glow. Registers as a spatial water-ambient source.
+function iTank(p){ const g=new THREE.Group(), w=p.w||1.9, h=p.h||1.0, d=p.d||0.7;
+  const water=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),
+    new THREE.MeshStandardMaterial({color:hex(p.water||'8fc6d8'),emissive:hex(p.water||'8fc6d8'),emissiveIntensity:0.6,
+      roughness:0.18,metalness:0,transparent:true,opacity:0.5})); water.position.y=h/2; water.castShadow=false; g.add(water);
+  const sand=M(new THREE.BoxGeometry(w*1.01,0.14,d*1.01),'#e8d8b4',false,false); sand.position.y=0.08; sand.castShadow=false; g.add(sand);
+  const rim=M(new THREE.BoxGeometry(w+0.07,0.1,d+0.07),'#'+(p.frame||'b7a890'),false,false); rim.position.y=h; rim.castShadow=false; g.add(rim);
+  const fish=[];
+  for(let i=0;i<3;i++){ const f=new THREE.Mesh(new THREE.SphereGeometry(0.075,8,6),
+      new THREE.MeshStandardMaterial({color:hex(['ef9a6a','f2c75a','e08aa0'][i%3]),emissive:hex(['ef9a6a','f2c75a','e08aa0'][i%3]),emissiveIntensity:0.35,roughness:0.5}));
+    f.scale.set(1.6,0.9,0.6); f.position.set((i-1)*0.42,h*0.45+(i%2?0.18:-0.1),0.02); g.add(f); fish.push({m:f,ph:i*2.1,ax:(i-1)*0.42}); }
+  const glow=new THREE.PointLight(hex(p.water||'8fc6d8').getHex(),2.0,3.8,2.0); glow.position.y=h*0.6; g.add(glow);
+  return {group:g,h,rad:Math.max(w,d)/2,shadowR:0,noShadow:true,sit:p.y,tank:true,fish}; }
+// a hanging sign behind the counter
+function iSign(p){ const g=new THREE.Group(), w=p.w||4.5, h=p.h||0.9;
+  const board=M(new THREE.BoxGeometry(w,h,0.12),'#'+(p.bg||'9c89b8'),false,false); g.add(board);
+  if(p.text){ const cv=document.createElement('canvas'); cv.width=512; cv.height=Math.round(512*h/w);
+    const x=cv.getContext('2d'); x.fillStyle='#'+(p.bg||'9c89b8'); x.fillRect(0,0,cv.width,cv.height);
+    x.fillStyle='#'+(p.ink||'f4efe6'); x.font='700 '+Math.round(cv.height*0.46)+'px Georgia,serif'; x.textAlign='center'; x.textBaseline='middle';
+    x.fillText(p.text,cv.width/2,cv.height*0.54);
+    const t=new THREE.CanvasTexture(cv); t.colorSpace=THREE.SRGBColorSpace; t.anisotropy=4;
+    const face=new THREE.Mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshBasicMaterial({map:t,transparent:true}));
+    face.position.z=0.07; g.add(face); }
+  return {group:g,h,rad:w/2,shadowR:0,noShadow:true,sit:p.y||3.5}; }
+function iBirdcage(p){ const g=new THREE.Group(), s=p.scale||1, met='#cfcabd';
+  const stand=M(new THREE.CylinderGeometry(0.07*s,0.1*s,1.7*s,8),'#b9a78c',false,false); stand.position.y=0.85*s; g.add(stand);
+  const foot=M(new THREE.CylinderGeometry(0.4*s,0.46*s,0.12*s,16),'#b9a78c',false,false); foot.position.y=0.06*s; g.add(foot);
+  const cy=2.3*s, cageH=1.3*s;
+  const trayB=M(new THREE.CylinderGeometry(0.55*s,0.55*s,0.12*s,16),met,false,false); trayB.position.y=cy-cageH/2; g.add(trayB);
+  for(let i=0;i<10;i++){ const a=i/10*Math.PI*2, bar=M(new THREE.CylinderGeometry(0.018*s,0.018*s,cageH,5),met,false,false);
+    bar.position.set(Math.cos(a)*0.52*s,cy,Math.sin(a)*0.52*s); g.add(bar); }
+  const dome=M(new THREE.SphereGeometry(0.54*s,12,8,0,6.28,0,1.2),met,false,false); dome.position.y=cy+cageH/2-0.1*s; g.add(dome);
+  const ring=M(new THREE.TorusGeometry(0.5*s,0.02*s,6,16),met,false,false); ring.rotation.x=Math.PI/2; ring.position.y=cy+cageH/2; g.add(ring);
+  const hook=M(new THREE.TorusGeometry(0.1*s,0.02*s,6,12,Math.PI),met,false,false); hook.position.y=cy+cageH/2+0.18*s; g.add(hook);
+  // a little bird on a perch
+  const bird=new THREE.Group(); bird.position.set(0,cy-0.1*s,0);
+  const body=new THREE.Mesh(new THREE.SphereGeometry(0.16*s,10,8),new THREE.MeshStandardMaterial({color:hex(p.bird||'f2c75a'),roughness:0.8}));
+  body.scale.set(1,1.2,1); bird.add(body);
+  const head=body.clone(); head.scale.set(0.62,0.62,0.62); head.position.set(0.04*s,0.2*s,0.05*s); bird.add(head);
+  const beak=M(new THREE.ConeGeometry(0.04*s,0.12*s,6),'#e8956a',false,false); beak.rotation.x=Math.PI/2; beak.position.set(0.04*s,0.22*s,0.18*s); bird.add(beak);
+  const perch=M(new THREE.CylinderGeometry(0.02*s,0.02*s,0.8*s,6),'#b9a78c',false,false); perch.rotation.z=Math.PI/2; perch.position.y=cy-0.3*s; g.add(perch);
+  g.add(bird);
+  return {group:g,h:cy+cageH/2,rad:0.6*s,shadowR:0.6*s,bird}; }
+function iPlant(p){ const g=new THREE.Group(), s=p.scale||1, leaf='#'+(p.color||'8bb98a');
+  const pot=M(new THREE.CylinderGeometry(0.34*s,0.26*s,0.46*s,12),'#'+(p.pot||'c98f86'),false,false); pot.position.y=0.23*s; g.add(pot);
+  [[0,0.75,0,1.0],[-0.28,0.62,0.12,0.66],[0.28,0.66,-0.1,0.66],[0,1.0,0,0.6]].forEach(([dx,dy,dz,r])=>{
+    const b=M(new THREE.SphereGeometry(0.36*r*s,10,8),leaf,false,false); b.scale.set(1,1.15,1); b.position.set(dx*s,dy*s,dz*s); g.add(b); });
+  return {group:g,h:1.3*s,rad:0.5*s,shadowR:0.5*s}; }
+// a hanging plant: a cord from the ceiling + a small pot of trailing leaves
+function iHangplant(p){ const g=new THREE.Group(), drop=p.drop||1.1, R=SCENE.room||{}, top=(R.wallH??4.5)-0.15, y=top-drop;
+  const cord=M(new THREE.CylinderGeometry(0.02,0.02,top-y,5),'#9a8f7c',false,false); cord.position.y=(top+y)/2; g.add(cord);
+  const pot=M(new THREE.CylinderGeometry(0.26,0.2,0.34,12),'#'+(p.pot||'b88a5e'),false,false); pot.position.y=y; g.add(pot);
+  [[0,0,0,1.0],[-0.22,-0.05,0.1,0.6],[0.22,-0.05,-0.08,0.6],[0,0.18,0,0.55]].forEach(([dx,dy,dz,r])=>{
+    const b=M(new THREE.SphereGeometry(0.28*r,10,8),'#'+(p.color||'8bb98a'),false,false); b.scale.set(1,0.8,1); b.position.set(dx,y+0.12+dy,dz); g.add(b); });
+  // trailing strands
+  for(const sx of [-0.18,0.18]){ const v=M(new THREE.CylinderGeometry(0.015,0.015,0.5,5),'#7faa78',false,false); v.position.set(sx,y-0.28,0); g.add(v); }
+  return {group:g,h:top,rad:0.4,shadowR:0,noShadow:true}; }
+function iMat(p){ const g=new THREE.Group(), w=p.w||2, d=p.d||1.1;
+  const m=M(new THREE.BoxGeometry(w,0.05,d),'#'+(p.color||'b6a2ca'),true,false); m.castShadow=false; m.receiveShadow=true; g.add(m);
+  return {group:g,h:0.1,rad:Math.max(w,d)/2,shadowR:0,noShadow:true}; }
+const IPROP={rug:iRug,counter:iCounter,register:iRegister,critterbox:iCritterbox,shelf:iShelf,tank:iTank,
+  sign:iSign,birdcage:iBirdcage,plant:iPlant,hangplant:iHangplant,mat:iMat};
+const ifish=[];                      // {m,ph,ax,base} drifting fish for the draw loop
+function buildInteriorProps(cols){
+  ifish.length=0;
+  for(const p of (SCENE.props||[])){ const mk=IPROP[p.type]; if(!mk)continue;
+    const r=mk(p), rot=p.rot||0, ca=Math.cos(rot), sa=Math.sin(rot);
+    r.group.position.set(p.x,r.sit||0,p.z); if(rot)r.group.rotation.y=rot;
+    // tag fixtures (not flat decals) for the 3D interpenetration audit (window.__clips)
+    if(p.type!=='rug'&&p.type!=='mat') r.group.userData.fx=p.type+'@'+p.x+','+p.z;
+    sceneRoot.add(r.group);
+    if(!r.noShadow) contactShadow(p.x,p.z,r.shadowR||r.rad||0.6,0);
+    // counter → thin front-face collider chain (player can stand right at it to talk)
+    if(r.counterCols){ const {w,d}=r.counterCols, fz=p.z+ (rot?0:d/2)*Math.cos(rot)+ (rot? d/2*Math.sin(rot):0);
+      // build a tight box ring but with a small radius so the player can get close
+      const cw=w, cd=d, n=Math.max(1,Math.ceil(cw/0.7));
+      for(let i=0;i<=n;i++){ const lx=-cw/2+(i/n)*cw;
+        for(const lz of [-cd/2, cd/2]){ const wx=p.x+lx*ca-lz*sa, wz=p.z+lx*sa+lz*ca; cols.push({x:wx,z:wz,r:0.32}); } } }
+    // a wall shelf is long+thin — a single circular collider (r=½·max(w,d)) would bulge
+    // a huge "invisible wall" into the room (it blocked the path to the counter). Use a
+    // tight box-perimeter ring matching its actual footprint (swap w/d when rotated 90°).
+    else if(p.type==='shelf'){ pushBoxColliders(cols,p.x,p.z, rot?p.d:p.w, rot?p.w:p.d); }
+    else if(p.type==='birdcage'||p.type==='plant'){ cols.push({x:p.x,z:p.z,r:(r.rad||0.6)*0.9}); }
+    // a tank is NOT a fountain — its sound is soft proximity-gated bubbles from the scene's
+    // `ambients` loop, never the loud fountain water rush. Here we only register its drifting fish.
+    if(r.tank&&r.fish) for(const f of r.fish) ifish.push(Object.assign({base:f.m.position.y},f));
+  }
+}
+// ===== loading-zone DOORS + scene swap =====
+// One framed door per portal (read from portal.door). On a cliff/wall it can carry
+// an awning + sign (a little storefront); set into an interior wall it's just a frame.
+// The portal TRIGGER (proximity) is separate — see updatePortals().
+function buildPortalDoors(cols){
+  for(const p of (portals||[])){ const d=p.door; if(!d)continue;
+    const face=d.face||'+z', w=d.w||1.7, h=d.h||3.0, base=Number.isFinite(d.y)?d.y:groundHeight(d.x,d.z);
+    const g=new THREE.Group();
+    const frameCol='#'+(d.frame||'efe7d6'), panelCol='#'+(d.panel||'b88a5e');
+    // recessed dark opening + door panel
+    const opening=M(new THREE.BoxGeometry(w,h,0.12),'#6b5f50',false,false); opening.position.set(0,base+h/2,-0.02); opening.castShadow=false; g.add(opening);
+    const panel=M(new THREE.BoxGeometry(w-0.18,h-0.18,0.1),panelCol,false,false); panel.position.set(0,base+h/2,0.04); g.add(panel);
+    // little window + knob
+    if(d.window){ const win=M(new THREE.BoxGeometry(w*0.5,h*0.26,0.06),'#'+(d.window),false,false); win.position.set(0,base+h*0.72,0.1); win.castShadow=false; g.add(win); }
+    const knob=M(new THREE.SphereGeometry(0.06,8,6),frameCol,false,false); knob.position.set(w*0.32,base+h*0.46,0.12); g.add(knob);
+    // frame (two jambs + lintel)
+    const jam=()=>M(new THREE.BoxGeometry(0.16,h+0.24,0.18),frameCol,false,false);
+    const jl=jam(); jl.position.set(-w/2-0.02,base+h/2,0.06); g.add(jl);
+    const jr=jam(); jr.position.set(w/2+0.02,base+h/2,0.06); g.add(jr);
+    const lin=M(new THREE.BoxGeometry(w+0.36,0.2,0.2),frameCol,false,false); lin.position.set(0,base+h+0.1,0.06); g.add(lin);
+    // optional storefront awning + sign band (for the town cliff entrance)
+    if(d.awning){ const aw=M(new THREE.BoxGeometry(w+0.7,0.1,0.7),'#'+d.awning,false,false); aw.position.set(0,base+h+0.32,0.42); g.add(aw); }
+    if(d.sign){ const cv=document.createElement('canvas'); cv.width=320; cv.height=96; const x=cv.getContext('2d');
+      x.fillStyle='#'+(d.signBg||'8fa6b2'); x.fillRect(0,0,320,96); x.fillStyle='#f4efe6';
+      x.font='700 46px Georgia,serif'; x.textAlign='center'; x.textBaseline='middle'; x.fillText(d.sign,160,52);
+      const t=new THREE.CanvasTexture(cv); t.colorSpace=THREE.SRGBColorSpace; t.anisotropy=4;
+      const band=M(new THREE.BoxGeometry(w+0.6,0.62,0.16),'#'+(d.signBg||'8fa6b2'),false,false); band.position.set(0,base+h+0.55,0.12); g.add(band);
+      const face2=new THREE.Mesh(new THREE.PlaneGeometry(w+0.5,0.52),new THREE.MeshBasicMaterial({map:t}));
+      face2.position.set(0,base+h+0.55,0.21); g.add(face2); }
+    // a brass shop bell
+    if(d.bell){ const bell=new THREE.Mesh(new THREE.SphereGeometry(0.09,10,8,0,6.28,0,1.7),
+        new THREE.MeshStandardMaterial({color:hex('d9b96a'),metalness:0.3,roughness:0.5})); bell.position.set(-w*0.34,base+h*0.84,0.12); g.add(bell); }
+    // orient to the face
+    if(face==='-z'){ g.rotation.y=Math.PI; }
+    else if(face==='-x'){ g.rotation.y=-Math.PI/2; }
+    else if(face==='+x'){ g.rotation.y=Math.PI/2; }
+    const off=0.06, ca=Math.cos(g.rotation.y), sa=Math.sin(g.rotation.y);
+    g.position.set(d.x+ (face==='+x'?off:face==='-x'?-off:0), 0, d.z+ (face==='+z'?off:face==='-z'?-off:0));
+    g.userData.fx='door@'+d.x+','+d.z;          // audited by __clips (door must sit PROUD of its wall, not inside it)
+    sceneRoot.add(g);
+  }
 }
 // free-look debug camera for visual QA (orbit/low-angle shots). Stops the auto
 // loop, frames a target, renders one frame. window.__look() does angle+distance.
@@ -868,6 +1094,36 @@ window.__overlaps=()=>{ const B=SCENE.buildings||[], ST=SCENE.stairs, out=[];
     const ix=Math.min(a.x1,b.x1)-Math.max(a.x0,b.x0), iz=Math.min(a.z1,b.z1)-Math.max(a.z0,b.z0);
     if(ix>0.02&&iz>0.02)out.push({a:a.name,b:b.name,overlapX:+ix.toFixed(2),overlapZ:+iz.toFixed(2)}); }
   return out; };
+// 3D INTERPENETRATION (CLIP) AUDIT — for interior fixtures (walls/door/counter/shelf/
+// tanks/cages/plants/lamps/sign), tagged with userData.fx. Two fixtures that overlap in
+// ALL THREE axes by > eps are passing THROUGH each other: a shelf board clipping a tank,
+// a door sunk INTO a wall (wall renders over it), a shelf buried in the wall. Legit
+// SURFACE contact — a tank SITTING on a shelf, a door/shelf/sign PROUD of (mounted on)
+// a wall — overlaps in ≤2 axes (the contact axis ≈ 0) and is NOT flagged. Pure geometry,
+// no screenshot. Must return [] before shipping an interior. (See the /papercraft-env-qa skill.)
+window.__clips=(eps)=>{ eps=eps==null?0.08:eps; const groups=[];
+  // per-MESH AABBs within each fixture, so a tank SITTING in a shelf's open volume (its
+  // mesh boxes don't touch the shelf's boards/panel) is not a false clip, while a shelf
+  // board passing THROUGH a tank (mesh-vs-mesh interpenetration) still is.
+  if(sceneRoot) sceneRoot.traverse(o=>{ if(o.userData&&o.userData.fx){ const meshes=[];
+    o.traverse(m=>{ if(m.isMesh&&m.geometry){ const b=new THREE.Box3().setFromObject(m); if(!b.isEmpty())meshes.push(b); } });
+    if(meshes.length) groups.push({name:o.userData.fx,meshes}); } });
+  const pen=(A,B)=>Math.min(Math.min(A.max.x,B.max.x)-Math.max(A.min.x,B.min.x),
+    Math.min(A.max.y,B.max.y)-Math.max(A.min.y,B.min.y), Math.min(A.max.z,B.max.z)-Math.max(A.min.z,B.min.z));
+  const out=[];
+  for(let i=0;i<groups.length;i++)for(let j=i+1;j<groups.length;j++){
+    if(groups[i].name.startsWith('wall@')&&groups[j].name.startsWith('wall@')) continue;  // walls meet at corners
+    let mx=0; for(const A of groups[i].meshes)for(const B of groups[j].meshes){ const p=pen(A,B); if(p>mx)mx=p; }
+    if(mx>eps) out.push({a:groups[i].name,b:groups[j].name,penetration:+mx.toFixed(2)}); }
+  return out; };
+// each tagged interior fixture's world-AABB centre + size, so the QA harness can frame a
+// per-object close-up of EVERY fixture (the "look at every single thing" pass, interiors).
+window.__fixtures=()=>{ const out=[]; if(sceneRoot) sceneRoot.traverse(o=>{ if(o.userData&&o.userData.fx){
+    const b=new THREE.Box3().setFromObject(o); if(b.isEmpty())return;
+    const c=b.getCenter(new THREE.Vector3()), s=b.getSize(new THREE.Vector3());
+    out.push({label:o.userData.fx.replace(/[^a-z0-9]+/gi,'_'), x:+c.x.toFixed(2),y:+c.y.toFixed(2),z:+c.z.toFixed(2),
+      size:+Math.max(s.x,s.y,s.z).toFixed(2)}); } });
+  return out; };
 // every placed thing (props + buildings) with its ground height + size, so the QA
 // harness can frame EACH one individually for a per-object close-up screenshot.
 window.__items=()=>{ const out=[];
@@ -879,55 +1135,25 @@ window.__items=()=>{ const out=[];
 
 
 async function build(){
-  world=await (await fetch('specs/world.json')).json();
-  SCENE=world; LEVEL=world.level||{H:0}; STAIRS=world.stairs||null; ZONES=world.zones||[];
-  setBounds(world.bounds);
-  // sky + lighting: the day/night cycle owns the gradient skydome, arcing sun + moon,
-  // drifting paper clouds, soft stars, dynamic background/fog, and BOTH lights (directional
-  // sun/moon + hemisphere fill). Driven by a single day phase on a wall clock. See sky.js.
+  // Load EVERY scene spec up-front (cheap JSON): transitions are then instant, and
+  // the save layer can validate ids / clamp positions against any scene.
+  for(const [id,url] of Object.entries(SCENE_URLS)) SPECS[id]=await (await fetch(url)).json();
+  world=SPECS.town;                                  // the primary spec: quest defs, New Game reset, persistent sky/ground colour
+  kindMap={}; for(const id in SPECS) (SPECS[id].collectibles||[]).forEach(c=>kindMap[c.id]=c.kind||'flower');
+
+  // sky + lighting (PERSISTENT): the day/night cycle owns the skydome, sun/moon, clouds,
+  // stars, fog and BOTH lights. Interior scenes just hide the dome + warm the light
+  // (Sky.setInterior, called from buildScene). See sky.js.
   Sky.build(scene, Object.assign({fog:world.fog}, world.sky||{}));
-  // optional post-processing finishing pass (off|minimal|diorama|full). Degrades to plain
-  // render if the composer can't build. window.__fx(name) switches live. Sky.update reasserts
-  // scene.background each frame, so the day/night sky wins over FX's static gradient.
+  // optional post-processing finishing pass. window.__fx(name) switches live.
   FX.init({renderer,scene,camera:cam,skyColor:'cfe0f2',groundColor:world.ground});
   window.__fx=(name)=>{const p=FX.setPreset(name);resize();return p;};
-  // base ground (underlies the sunken park) + the two-terrace L-city (plaza/streets/stairs/park,
-  // storefronts, props, backdrop, collider chains). See buildCity() + groundHeight().
-  const ground=new THREE.Mesh(new THREE.PlaneGeometry(400,400),
+  // base ground plane (PERSISTENT; hidden inside interiors, where a wood floor covers the room)
+  groundPlane=new THREE.Mesh(new THREE.PlaneGeometry(400,400),
     new THREE.MeshStandardMaterial({color:hex(world.ground),roughness:1,metalness:0}));
-  ground.rotation.x=-Math.PI/2; ground.receiveShadow=true; scene.add(ground);
-  buildCity();
+  groundPlane.rotation.x=-Math.PI/2; groundPlane.receiveShadow=true; scene.add(groundPlane);
 
-  // collectible pickups (billboard sprites, grounded): hamsters for Adrian's
-  // quest. One mesh per collectible, kept index-aligned to S.collectibles so the
-  // draw loop pairs them. Per-mesh half-height in userData.hh.
-  const htex=await tx('out/hamster-paper.png'); const HAM_H=0.62; const hw=HAM_H*(htex.image.width/htex.image.height);
-  world.collectibles.forEach(c=>{
-    const m=billboard(htex,hw,HAM_H);
-    m.position.set(c.x,groundHeight(c.x,c.z)+HAM_H/2,c.z);
-    m.userData={x:c.x,z:c.z,hh:HAM_H/2,kind:c.kind||'hamster'}; scene.add(m); pickups.push(m); billboards.push(m);});
-
-  // NPCs (talk targets) — billboard + grounded group + contact shadow.
-  // An NPC may carry a `poses` map {name:texUrl} + a `rep` loop {seq,beat,sfxOn}
-  // for Paper-Mario-style HARD image swaps (no tween): the breathing/greet motion
-  // below is unchanged; only the drawn pose flips. All pose images share one
-  // canvas + foot baseline + body scale (registered by register_poses.py), so the
-  // swap can't resize or unground the character — width is derived once and holds.
-  for(const nd of (world.npcs||[])){
-    const poses={}; let defTex=null;
-    if(nd.poses){ for(const[k,u] of Object.entries(nd.poses)) poses[k]=await tx(u);
-      defTex=poses[(nd.rep&&nd.rep.seq&&nd.rep.seq[0])||Object.keys(poses)[0]]; }
-    const ntex=defTex||await tx(nd.tex);
-    const nw=nd.h*(ntex.image.width/ntex.image.height);
-    const ny=groundHeight(nd.x,nd.z);
-    const g=new THREE.Group(); g.position.set(nd.x,ny,nd.z);
-    const m=billboard(ntex,nw,nd.h); m.position.y=nd.h/2; g.add(m); scene.add(g);
-    const sh=new THREE.Mesh(new THREE.PlaneGeometry(nw*1.4,nw*1.4),
-      new THREE.MeshBasicMaterial({map:shadowTex,transparent:true,depthWrite:false}));
-    sh.rotation.x=-Math.PI/2; sh.position.set(nd.x,ny+GROUND_EPS,nd.z); sh.renderOrder=1; scene.add(sh);
-    npcs.push({data:nd,group:g,mesh:m,h:nd.h,ny,phase:Math.random()*6.28,greet:0,
-      poses,rep:nd.rep||null,repIdx:0,repT:0});
-  }
+  // dialogue (PERSISTENT — owns its DOM; per-scene NPC data flows through it)
   Dialogue.init();
   Dialogue.onEnd=()=>{ talkCooldown=0.3; };
   Dialogue.onLine=(speaker)=>Sound.newLine();
@@ -940,30 +1166,30 @@ async function build(){
     if(verb==='start')Quests.start(arg); else if(verb==='complete')Quests.complete(arg); else if(verb==='advance')Quests.advance(arg);
     persist(); };
 
-  // shadow + shen + burst
+  // shadow + shen + burst (PERSISTENT — they travel between scenes, never torn down)
   shadow=new THREE.Mesh(new THREE.PlaneGeometry(SHEN_W*1.5,SHEN_W*1.5),
     new THREE.MeshBasicMaterial({map:shadowTex,transparent:true,depthWrite:false}));
   shadow.rotation.x=-Math.PI/2; shadow.position.y=GROUND_EPS; shadow.renderOrder=1; scene.add(shadow);
-
   shen=new THREE.Group(); scene.add(shen);
   const st=await tx('out/shen-paper.png');
   mesh=billboard(st,SHEN_W,SHEN_H); mesh.position.y=SHEN_H/2; shen.add(mesh);
-
   burst=billboard(softCanvasTex((x,s)=>{const g=x.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
     g.addColorStop(0,'rgba(255,255,255,0)');g.addColorStop(.7,'rgba(243,182,195,.5)');
     g.addColorStop(.85,'rgba(243,182,195,.7)');g.addColorStop(1,'rgba(243,182,195,0)');x.fillStyle=g;x.fillRect(0,0,s,s);}),
     1,1,{soft:true}); burst.visible=false;burst.renderOrder=3;scene.add(burst);
 
-  S=initState(world.collectibles, world.spawn);
   try{const r=await fetch('build.json',{cache:'no-store'});if(r.ok){const j=await r.json();BUILD=j.sha||'dev';}}catch{}
-  const saved=Save.load(world);
-  if(saved)Save.apply(S,saved);          // preview at the saved spot behind the title
-  // quests — the engine reads the LIVE collected set + collectible kinds (closures
-  // over S, so they survive a New Game's S reassignment). Restore persisted progress;
-  // init re-evaluates it against the world as it is now.
-  const kindMap={}; world.collectibles.forEach(c=>kindMap[c.id]=c.kind||'flower');
+
+  // restore save (multi-scene): seed the GLOBAL collected set, then boot into the saved scene.
+  const saved=Save.load(SPECS);
+  collected=new Set(saved?saved.collected:[]);
+  const bootScene=(saved&&saved.scene&&SPECS[saved.scene])?saved.scene:'town';
+  await buildScene(SPECS[bootScene], saved?{x:saved.player.x,z:saved.player.z,face:saved.player.facing}:null);
+  curScene=bootScene;
+
+  // quests (GLOBAL engine; ctx reads the GLOBAL collected set so progress survives scene swaps)
   Quests.init(world.quests, saved&&saved.quests, {
-    collectedIds:()=>new Set(S.collectibles.filter(c=>c.got).map(c=>c.id)),
+    collectedIds:()=>new Set([...collected]),
     kindOf:(id)=>kindMap[id]||null });
   Quests.onStart   =(d)=>questEvent('✶ New quest — '+d.name,'quest');
   Quests.onAdvance =(d)=>questEvent('✦ '+d.name+' — task updated','questStep');
@@ -972,6 +1198,123 @@ async function build(){
   window.__ready=true; resize(); startAuto();
   const ld=document.getElementById('loader');
   if(ld){ld.classList.add('done'); setTimeout(()=>ld.remove(),600);}
+}
+
+// ===== scene system: build / clear / swap (loading zones) =====
+let transShenScale=1;                 // 1 normally; shrinks→grows as Shen steps through a door
+const TRANS_IN=0.7, TRANS_OUT=0.62;
+function spawnOf(spec,name){ const s=(spec.spawns&&spec.spawns[name])||spec.spawn||{x:0,z:0}; return {x:s.x,z:s.z,face:s.face}; }
+
+// Build a scene's whole world into sceneRoot + (re)create the player at `spawn`.
+// Sets every per-scene global; the camera is warped to the spawn so the first frame
+// is already framed. Async because NPC/pickup sprites load (cached after first time).
+async function buildScene(spec, spawn){
+  SCENE=spec; LEVEL=spec.level||{H:0}; STAIRS=spec.stairs||null; ZONES=spec.zones||[];
+  portals=spec.portals||[]; ambients=(spec.ambients||[]).map(a=>({...a, next: 0.6+Math.random()*2.5}));
+  setBounds(spec.bounds);
+  if(!sceneRoot){ sceneRoot=new THREE.Group(); scene.add(sceneRoot); }
+  if(groundPlane) groundPlane.visible=!spec.interior;
+  const cols=[];
+  if(spec.interior){ Sky.setInterior(true, spec.sky||{}); buildInterior(cols); }
+  else { Sky.setInterior(false); buildCity(cols); }
+  buildPortalDoors(cols);
+  SCENE_COLLIDERS=cols; setColliders(cols);
+  await buildCollectibles();
+  await buildNpcs();
+  const sp=spawn||spec.spawn||{x:0,z:0};
+  S=initState(spec.collectibles, sp);
+  if(sp&&(sp.face===1||sp.face===-1)) S.facing=sp.face;
+  for(const c of S.collectibles) c.got=collected.has(c.id);   // reflect global progress in this scene's pickups
+  activeZone=null; blend=null; _warp(S.x,S.z);
+  nearNpc=null; nearPortal=null; talkCooldown=0.2; portalCooldown=0.6;
+  // per-scene music: the overworld track is exclusive to the overworld; an interior gets
+  // its own (or a contextually-shared) track. Switching to a NEW track crossfades; the
+  // SAME track keeps looping seamlessly. Only once play has begun (audio unlocked) — and
+  // only auto-switch if music is already playing (so dev stays silent until asked).
+  if(started) Sound.startMusic(spec.music||'out/music/calm.ogg', Sound.musicPlaying||BUILD!=='dev');
+}
+// Tear down the active scene: drop sceneRoot (and everything under it) + reset every
+// per-scene array. Persistent objects (ground/shen/shadow/burst/sky) are untouched.
+// (Geometries/materials aren't disposed: paper textures are shared+cached across
+// scenes, so disposing would corrupt the cache; the per-swap leak is small + bounded.)
+function clearScene(){
+  if(sceneRoot){ scene.remove(sceneRoot); }
+  sceneRoot=new THREE.Group(); scene.add(sceneRoot);
+  npcs.length=0; pickups.length=0; billboards.length=0; propsMesh.length=0;
+  BUILDING_MESHES.length=0; fountains.length=0; ifish.length=0; SCENE_COLLIDERS=[];
+  nearNpc=null; nearPortal=null; Sound.setWaterLevel(0);
+}
+// collectible pickups (billboard sprites, grounded) for the active scene; index-aligned
+// to S.collectibles. got-state comes from the global `collected` set after init.
+async function buildCollectibles(){
+  const list=SCENE.collectibles||[]; if(!list.length) return;
+  const htex=await tx('out/hamster-paper.png'); const HAM_H=0.62; const hw=HAM_H*(htex.image.width/htex.image.height);
+  for(const c of list){ const m=billboard(htex,hw,HAM_H);
+    m.position.set(c.x,groundHeight(c.x,c.z)+HAM_H/2,c.z);
+    m.userData={x:c.x,z:c.z,hh:HAM_H/2,kind:c.kind||'hamster'}; sceneRoot.add(m); pickups.push(m); billboards.push(m); }
+}
+// NPCs (talk targets) — billboard + grounded group + contact shadow. Optional `poses`
+// map + `rep` loop for Paper-Mario HARD image swaps (see the draw loop).
+async function buildNpcs(){
+  for(const nd of (SCENE.npcs||[])){
+    const poses={}; let defTex=null;
+    if(nd.poses){ for(const[k,u] of Object.entries(nd.poses)) poses[k]=await tx(u);
+      defTex=poses[(nd.rep&&nd.rep.seq&&nd.rep.seq[0])||Object.keys(poses)[0]]; }
+    const ntex=defTex||await tx(nd.tex);
+    const nw=nd.h*(ntex.image.width/ntex.image.height);
+    const ny=groundHeight(nd.x,nd.z);
+    const g=new THREE.Group(); g.position.set(nd.x,ny,nd.z);
+    const m=billboard(ntex,nw,nd.h); m.position.y=nd.h/2; g.add(m); sceneRoot.add(g);
+    const sh=new THREE.Mesh(new THREE.PlaneGeometry(nw*1.4,nw*1.4),
+      new THREE.MeshBasicMaterial({map:shadowTex,transparent:true,depthWrite:false}));
+    sh.rotation.x=-Math.PI/2; sh.position.set(nd.x,ny+GROUND_EPS,nd.z); sh.renderOrder=1; sceneRoot.add(sh);
+    npcs.push({data:nd,group:g,mesh:m,h:nd.h,ny,phase:Math.random()*6.28,greet:0,
+      poses,rep:nd.rep||null,repIdx:0,repT:0});
+  }
+}
+async function swapScene(targetId, spawn){ clearScene(); curScene=targetId; await buildScene(SPECS[targetId], spawn); }
+
+// ---- door transition: walk in → cover (cream fade) → swap scene → step out ----
+function startPortal(p){
+  if(trans||portalCooldown>0||!started||!p||Dialogue.active) return;
+  Sound.resume(); Sound.sfx('door');
+  held.up=held.down=held.left=held.right=false; nearNpc=null; nearPortal=null;
+  document.getElementById('talkPrompt').classList.remove('on');
+  trans={ phase:'in', t:0, target:p.to, spawn:p.spawn, swapped:false,
+    fromX:S.x, fromZ:S.z, toX:p.door?p.door.x:p.x, toZ:p.door?p.door.z:p.z, lastSeg:Math.floor(S.walkPhase/Math.PI) };
+}
+function updateTransition(dt){
+  const F=fadeEl();
+  if(trans.phase==='in'){
+    trans.t+=dt; const u=clamp(trans.t/TRANS_IN,0,1);
+    // walk all the way to the door over the first ~70% (eased), so you SEE him arrive,
+    // shrink into the doorway in the back half, and only THEN does the cream wipe cover.
+    const w=smooth(clamp(u/0.72,0,1));
+    S.x=ease(trans.fromX,trans.toX,w); S.z=ease(trans.fromZ,trans.toZ,w);
+    S.mode='walk'; S.walkPhase+=dt*9; if(trans.toX!==trans.fromX)S.facing=trans.toX<trans.fromX?-1:1;
+    const seg=Math.floor(S.walkPhase/Math.PI); if(seg!==trans.lastSeg){ trans.lastSeg=seg; Sound.sfx('step',0.7); }
+    transShenScale=1-0.8*smooth(clamp((u-0.38)/0.62,0,1));     // shrink "into" the door, back half
+    if(F)F.style.opacity=String(smooth(clamp((u-0.5)/0.5,0,1)));// fade only after he reaches the door
+    if(u>=1){ trans.phase='swap'; }
+  } else if(trans.phase==='swap'){
+    if(!trans.swapped){ trans.swapped=true; if(F)F.style.opacity='1';
+      swapScene(trans.target, spawnOf(SPECS[trans.target], trans.spawn)).then(()=>{
+        const sp=spawnOf(SPECS[trans.target], trans.spawn), inward=SPECS[trans.target].interior?1.0:0.7;
+        trans.outFromX=S.x; trans.outFromZ=S.z; trans.outToX=sp.x; trans.outToZ=sp.z+inward;
+        trans.lastSeg=Math.floor(S.walkPhase/Math.PI); trans.phase='out'; trans.t=0;
+      }).catch(e=>{ console.error('scene swap failed',e); trans=null; if(F)F.style.opacity='0'; });
+    }
+  } else if(trans.phase==='out'){
+    trans.t+=dt; const u=clamp(trans.t/TRANS_OUT,0,1);
+    // the cream clears over the first ~55% (revealing the new room), then Shen grows
+    // back to size and steps inward off the threshold — so the arrival reads too.
+    S.x=ease(trans.outFromX,trans.outToX,smooth(u)); S.z=ease(trans.outFromZ,trans.outToZ,smooth(u));
+    S.mode='walk'; S.walkPhase+=dt*9; S.facing=1;
+    const seg=Math.floor(S.walkPhase/Math.PI); if(seg!==trans.lastSeg){ trans.lastSeg=seg; Sound.sfx('step',0.7); }
+    transShenScale=0.2+0.8*smooth(clamp(u/0.6,0,1));
+    if(F)F.style.opacity=String(1-smooth(clamp(u/0.55,0,1)));
+    if(u>=1){ transShenScale=1; S.mode='idle'; if(F)F.style.opacity='0'; trans=null; portalCooldown=0.5; persist(); }
+  }
 }
 
 // tiny time-of-day clock — analog hands + digital read-out; refreshed only when the
@@ -992,6 +1335,7 @@ function draw(dt){
   Sky.update(dt,cam);                       // advance day/night (wall clock — runs even while paused)
   if(!mesh){FX.render();return;}
   if(talkCooldown>0)talkCooldown-=dt;
+  if(portalCooldown>0)portalCooldown-=dt;
   if(playing)Dialogue.tick(dt);
   cameraFrame(S,dt);
   const q=pose(S);
@@ -1002,14 +1346,22 @@ function draw(dt){
   D.rot=damp(D.rot,q.rot,0.09, dt);   // lean: eased most → direction flips swing
   const gy=groundHeight(S.x,S.z);
   shen.position.set(S.x,gy+GROUND_EPS,S.z); faceYaw(shen);
-  mesh.position.y=SHEN_H/2+D.yW; shen.scale.set(D.sx,D.sy,1); shen.rotation.z=D.rot;
+  mesh.position.y=SHEN_H/2+D.yW; shen.scale.set(D.sx*transShenScale,D.sy*transShenScale,1); shen.rotation.z=D.rot;
   const k=clamp(D.yW/MAX_LIFT,0,1);
   shadow.position.set(S.x,gy+GROUND_EPS,S.z); const ss=1-0.5*k; shadow.scale.set(ss,ss,1);
   shadow.material.opacity=(1-0.55*k);
   pickups.forEach((f,i)=>{const c=S.collectibles[i]; f.visible=!c.got;
     const hh=(f.userData&&f.userData.hh)||FH/2;
     f.position.y=groundHeight(c.x,c.z)+hh+0.08*Math.sin(S.animClock*3+i);});
-  if(S.justGot>=0){const c=S.collectibles[S.justGot];burstPos.set(c.x,groundHeight(c.x,c.z)+0.7,c.z);burstT=0;
+  // Pickup reconcile: catch any collectible now `got` but not yet in the GLOBAL
+  // collected set. This is robust to the fixed-timestep loop running several sim
+  // substeps per frame (where the per-step S.justGot flag can be overwritten before
+  // draw runs) — we compare durable state, not the transient flag. The global set is
+  // the single source of truth for the save + quests, and survives scene swaps.
+  for(let i=0;i<S.collectibles.length;i++){ const c=S.collectibles[i];
+    if(!c.got||c.id==null||collected.has(c.id))continue;
+    collected.add(c.id);
+    burstPos.set(c.x,groundHeight(c.x,c.z)+0.7,c.z);burstT=0;
     Quests.note({type:'collect',kind:c.kind,id:c.id});          // may advance/complete a quest
     if(c.kind==='hamster'){
       if(Quests.started('q_hamsters')){const f=S.collectibles.filter(k=>k.kind==='hamster'&&k.got).length,
@@ -1043,11 +1395,27 @@ function draw(dt){
   // sub-bus, so the effects + master sliders already scale it (see audio.js setWaterLevel).
   if(fountains.length){let wl=0;for(const f of fountains){const g=proxGain(f.x,f.z);if(g>wl)wl=g;}Sound.setWaterLevel(wl);}
 
+  // interior life: tiny fish drift inside the tanks (purely visual)
+  for(const f of ifish){ f.m.position.x=f.ax+0.45*Math.sin(S.animClock*0.7+f.ph);
+    f.m.position.y=f.base+0.06*Math.sin(S.animClock*1.3+f.ph*1.7);
+    f.m.scale.x=(Math.cos(S.animClock*0.7+f.ph)>=0?1.5:-1.5); }
+  // timed ambient sounds (e.g. the birdcage chirp) — spatial: gated by player proximity,
+  // never fired when far, never while paused/talking. Each schedules its own next beat.
+  if(playing&&!Dialogue.active&&!trans){ for(const a of ambients){ a.next-=dt;
+    if(a.next<=0){ const e=a.every||[3,6]; a.next=e[0]+Math.random()*(e[1]-e[0]);
+      const pg=proxGain(a.x,a.z); if(pg>0.02) Sound.sfx(a.type,pg); } } }
+
   // proximity → nearest talkable NPC + floating prompt
   nearNpc=null;
   if(!Dialogue.active && talkCooldown<=0){let best=1e9;
     npcs.forEach(o=>{const dx=o.data.x-S.x,dz=o.data.z-S.z,d=dx*dx+dz*dz;
       if(d<TALK_R*TALK_R&&d<best){best=d;nearNpc=o;}});}
+  // proximity → nearest loading-zone door (only when not beside an NPC, so a door
+  // and a person never fight for the same key). Skipped during a transition/cooldown.
+  nearPortal=null;
+  if(!Dialogue.active && !nearNpc && portalCooldown<=0 && !trans){ let best=1e9;
+    for(const p of portals){ const dx=p.x-S.x,dz=p.z-S.z,d=dx*dx+dz*dz,r=(p.r||1.7);
+      if(d<r*r&&d<best){best=d;nearPortal=p;} } }
   const tp=document.getElementById('talkPrompt');
   if(nearNpc){cam.updateMatrixWorld();
     _tv.set(nearNpc.data.x,nearNpc.h+0.5,nearNpc.data.z).project(cam);
@@ -1055,12 +1423,19 @@ function draw(dt){
     tp.style.top=((-_tv.y*0.5+0.5)*innerHeight)+'px';
     tp.textContent='💬 Talk to '+nearNpc.data.name;
     tp.classList.add('on');
+  } else if(nearPortal){cam.updateMatrixWorld();
+    const dr=nearPortal.door||nearPortal;
+    _tv.set(dr.x,(dr.h||3)*0.7,dr.z).project(cam);
+    tp.style.left=((_tv.x*0.5+0.5)*innerWidth)+'px';
+    tp.style.top=((-_tv.y*0.5+0.5)*innerHeight)+'px';
+    tp.textContent='🚪 Enter '+(nearPortal.label||'the door');
+    tp.classList.add('on');
   } else tp.classList.remove('on');
-  // the Talk action button only appears when you're beside someone to talk to;
-  // mid-conversation it doubles as a clear "advance" affordance.
-  const talkable=!!nearNpc||Dialogue.active, bTalk=document.getElementById('bTalk');
+  // the action button only appears when there's something to do — talk to a person,
+  // advance a line, or step through a door — and relabels itself accordingly.
+  const talkable=!!nearNpc||Dialogue.active||!!nearPortal, bTalk=document.getElementById('bTalk');
   bTalk.hidden=!talkable; bTalk.classList.toggle('near',talkable);
-  const bLbl=Dialogue.active?'next ▾':'talk 💬';
+  const bLbl=Dialogue.active?'next ▾':(nearPortal&&!nearNpc?'enter 🚪':'talk 💬');
   if(bTalk.textContent!==bLbl)bTalk.textContent=bLbl;
   // on touch, hide the d-pad mid-conversation (movement is gated; choices are tapped
   // directly + Talk advances) so it never overlaps the dialogue box on small screens
@@ -1213,8 +1588,10 @@ sfxvol.addEventListener('change',()=>Sound.sfx('select'));   // preview the SFX 
 musicvol.addEventListener('input',()=>{Sound.resume();Sound.setMusicVolume(+musicvol.value/100);syncMenu();});
 muteRow.addEventListener('click',e=>{e.preventDefault();Sound.resume();Sound.toggle();syncMenu();});
 document.getElementById('resumeBtn').addEventListener('click',e=>{e.preventDefault();closeJournal();});
-document.getElementById('restartBtn').addEventListener('click',e=>{e.preventDefault();Save.wipe();S=initState(world.collectibles, world.spawn);
-  Quests.init(world.quests,null,Quests.ctx); listDirty=true; renderQuests(); persist(); Sound.sfx('move'); closeJournal();});
+document.getElementById('restartBtn').addEventListener('click',e=>{e.preventDefault();Save.wipe();
+  const swap=curScene!=='town', F=fadeEl();
+  (async()=>{ if(swap&&F)F.style.opacity='1'; await resetToTown(); if(swap&&F)F.style.opacity='0';
+    listDirty=true; renderQuests(); persist(); Sound.sfx('move'); closeJournal(); })();});
 document.getElementById('bMenu').addEventListener('click',e=>{e.preventDefault();toggleJournal();});
 journal.addEventListener('pointerdown',e=>{if(e.target===journal)closeJournal();}); // backdrop closes
 syncMenu();
@@ -1260,9 +1637,13 @@ function resolveInput(){
 const FIXED=1/60; let playing=true,timer=null,last=null,acc=0;
 function frame(){const now=performance.now();if(last===null)last=now;
   let e=(now-last)/1000;last=now; if(e>0.5)e=0.5;
-  if(started&&edgeTalk){edgeTalk=false; if(playing&&!Dialogue.active&&nearNpc){const npc=nearNpc.data;
-    nearNpc.greet=0.5; Sound.sfx('talk'); Dialogue.start(npc, entryNode(npc));   // entry node BEFORE noting
-    if(npc.name)Quests.note({type:'talk',npc:npc.name});}}
+  if(trans){ edgeTalk=edgeJump=false; updateTransition(e); draw(e); return; }   // a door transition owns the loop
+  if(started&&edgeTalk){edgeTalk=false;
+    if(playing&&!Dialogue.active){
+      if(nearNpc){const npc=nearNpc.data; nearNpc.greet=0.5; Sound.sfx('talk'); Dialogue.start(npc, entryNode(npc));   // entry node BEFORE noting
+        if(npc.name)Quests.note({type:'talk',npc:npc.name});}
+      else if(nearPortal){ startPortal(nearPortal); }   // step through the door
+    }}
   if(playing){acc+=e;let n=0;while(acc>=FIXED&&n<40){S=step(S,resolveInput(),FIXED);audioStep(S);acc-=FIXED;n++;}}
   draw(e);}
 function startAuto(){if(!timer){last=null;acc=0;timer=setInterval(frame,16);}}
@@ -1294,16 +1675,25 @@ function onNew(){
   }
   beginGame(true);
 }
+// New Game / restart reset: wipe the global collected set + quests and return to
+// town. If the preview/journal was inside another scene, rebuild town (under a fade).
+async function resetToTown(){
+  collected=new Set();
+  if(curScene!=='town') await swapScene('town', SPECS.town.spawn);
+  else { S=initState(SPECS.town.collectibles, SPECS.town.spawn);
+    for(const c of S.collectibles) c.got=false; activeZone=null; blend=null; _warp(S.x,S.z); }
+  Quests.init(world.quests, null, Quests.ctx);
+}
 function beginGame(fresh){
   Sound.resume();                           // first gesture — unlock audio
   // Auto-loop the ambient track only on a real deploy (build.json present → BUILD
   // is a git sha). In a local dev worktree (no build.json → BUILD==='dev') it's
   // armed but silent; the music slider still starts it if you want it.
-  Sound.startMusic('out/music/calm.ogg', BUILD!=='dev');
-  if(fresh){Save.wipe(); S=initState(world.collectibles, world.spawn);
-    Quests.init(world.quests,null,Quests.ctx); listDirty=true;}   // New Game resets quests too
+  Sound.startMusic((SCENE&&SCENE.music)||'out/music/calm.ogg', BUILD!=='dev');   // the boot scene's track
   started=true; titleEl.classList.add('off');
-  persist();                                // stamp a save the moment play begins
+  if(fresh){ Save.wipe(); const swap=curScene!=='town', F=fadeEl();   // New Game resets quests + scene too
+    (async()=>{ if(swap&&F)F.style.opacity='1'; await resetToTown(); if(swap&&F)F.style.opacity='0'; listDirty=true; persist(); })();
+  } else persist();                         // stamp a save the moment play begins
 }
 addEventListener('keydown',e=>{
   if(started)return;                        // only steer the menu before play
@@ -1314,7 +1704,7 @@ addEventListener('keydown',e=>{
 });
 
 // autosave: on hide / pagehide (true "exit any time") + a 10s crash backstop.
-function persist(){if(!started)return;try{Save.write(S,world,BUILD,{quests:Quests.serialize()});}catch{}}
+function persist(){if(!started)return;try{Save.write(S,world,BUILD,{quests:Quests.serialize(),collected:[...collected],scene:curScene});}catch{}}
 addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')persist();});
 addEventListener('pagehide',persist);
 setInterval(persist,10000);
@@ -1395,12 +1785,17 @@ window.game={
   talk:()=>{ if(Dialogue.active){Dialogue.advance();return 'advance';} edgeTalk=true; return 'talk'; },
   dialogue:()=>({active:Dialogue.active,near:nearNpc&&nearNpc.data.name||null}),
   disp:()=>({yW:+D.yW.toFixed(3),sx:+D.sx.toFixed(3),sy:+D.sy.toFixed(3),rot:+D.rot.toFixed(4)}),
-  reset:()=>{Save.wipe();S=initState(world.collectibles, world.spawn);return 'reset';},
+  reset:()=>{Save.wipe();resetToTown();return 'reset';},
   pause:()=>{playing=false;return 'paused';},play:()=>{playing=true;return 'playing';},
   start:(fresh)=>{beginGame(!!fresh);return started?'started':'no';},
   save:()=>{persist();return 'saved';},
   wipe:()=>{Save.wipe();return 'wiped';},
-  saveData:()=>Save.load(world),
+  saveData:()=>Save.load(SPECS),
+  // loading zones / scene debug surface
+  scene:()=>({cur:curScene,interior:!!SCENE.interior,portals:portals.map(p=>p.id),nearPortal:nearPortal&&nearPortal.id||null,trans:trans&&trans.phase||null}),
+  enter:(id,spawn)=>{ if(!SPECS[id])return 'no scene '+id; const ws=started; started=true;
+    return swapScene(id, spawn?(SPECS[id].spawns&&SPECS[id].spawns[spawn])||{x:+spawn.x,z:+spawn.z}:SPECS[id].spawn).then(()=>{started=ws;return 'entered '+id;}); },
+  useDoor:()=>{ const p=nearPortal||portals[0]; if(!p)return 'no door'; const to=p.to; startPortal(p); return 'enter '+to; },
   // quests + journal debug surface
   quests:()=>Quests.list(),
   startQuest:(id)=>Quests.start(id)?('started '+id):'no',

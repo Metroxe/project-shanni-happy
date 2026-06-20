@@ -60,6 +60,18 @@ multiplier to `Sound.sfx(name, mul)`; `proxGain(x,z)` in `game.html` is the stan
 sound, ask: does it come from a spot in the world? If yes, gate it through `proxGain` in the
 same change** — same reflex as shipping its sound at all.
 
+**The third rule: sound is CONTEXTUAL to the space.** A sound must MATCH its source — never
+reuse a sound just because it's wired up. A fish tank is not a fountain (it bubbles softly +
+quietly; a fountain rushes + is louder), so it gets its OWN `bubble` SFX at its own gentle
+level, not the fountain ambient. **Music is per-zone too:** each scene declares a `music`
+track (`spec.music`). The overworld track is EXCLUSIVE to the overworld; an interior gets its
+own track, OR a track shared with other contextually-similar rooms (e.g. several pet-shop-like
+indoors can share one indoor loop). `Sound.startMusic(url)` switches on a scene change —
+crossfades to a DIFFERENT url, no-ops (keeps looping) for the SAME url, caches each decoded
+buffer by url so returning to a track is instant. `game.html`'s `buildScene` calls it on every
+scene build; `beginGame` starts the boot scene's track. When you add a room, pick (or reuse)
+its music + its ambient SFX to fit that space — same reflex as the two rules above.
+
 **The system:** all **SFX + the dialogue voice** are **procedural Web Audio**, synthesized at
 play time in `studio/js/audio.js` — **no asset files for those** (same ethos as the art:
 programmatic, no hand-authoring). The module exports `Sound`; it's already wired into
@@ -105,7 +117,13 @@ OGG (`out/music/calm.ogg`), because real-time music synthesis isn't practical. I
   background tab): decode the OGG in an `OfflineAudioContext` and check the wrap discontinuity
   `|x[0]-x[N-1]|` sits within the clip's own adjacent-sample-delta distribution (well under its max)
   — that's a numeric proof the loop is gapless. To make a NEW loop, follow the `gen_music.py` →
-  `make_loop.py` flow in `requirements-music.txt`.
+  `make_loop.py` flow in `requirements-music.txt`. **⚠️ Pick the seed by LOOP-CLEANLINESS, not only
+  by `make_loop.py --analyze`'s "calmest" score.** The OGG wrap is decoder-dependent: a brighter /
+  busier clip (higher centroid + `max_delta`) leaves a vorbis+resample seam at the loop point even
+  though it's seamless at the source rate — for `shop.ogg`, the analyzer's "fewest-transients" pick
+  (seed 2) had a browser wrap **1.78× p99.9** (a real seam) while the mellower seed 0 was **0.01×**
+  (perfect). Build a loop from EACH seed, decode each in the browser, and pick the lowest
+  `wrap/p999` (mellower clips also fit cozy interiors better).
 - **Three independent levels, all automatic** — **master** "volume" + mute (`shen.vol`/`shen.muted`,
   scales everything), **effects** (`shen.sfxvol`, the SFX+voice sub-bus), **music** (`shen.musicvol`,
   the music sub-bus). Each has its own pause-menu slider. Never gate or scale a sound yourself —
@@ -113,7 +131,11 @@ OGG (`out/music/calm.ogg`), because real-time music synthesis isn't practical. I
   master, so just call `Sound.sfx` / `Sound.blip` / `Sound.startMusic` and the sliders cover it.
 - **Verify in preview** (don't assume): spy on `Sound.sfx` / `Sound.blip`, drive the interaction,
   assert the event fired the sound, console clean. (Exactly how the audio work verified
-  step/collect/blip — wrap the fn, push calls to a log, read it back.)
+  step/collect/blip — wrap the fn, push calls to a log, read it back.) `Sound` is on
+  `window.audio` for spying. The reusable version is **`node studio/qa_audio.mjs`** (fresh
+  headless context, no module-cache trap): it spies on `window.audio` to assert the tanks emit
+  `bubble` (not the fountain `setWaterLevel`) and that music is per-scene (calm→shop→calm across
+  the door). Add an assert there when you add a contextual sound.
 
 ## How to run
 
@@ -219,10 +241,21 @@ detection commands + root-cause code refs live in the **`/papercraft-env-qa`** s
    audit over the sweep's synthesizer (it once mis-dismissed a real z-fight as a "hedge join").
    Fix everything found → re-shoot → repeat until clean.
 
-**Two cardinal rules:** (1) **Never the abyss** — no reachable spot/angle may see off the
+**Cardinal rules:** (1) **Never the abyss** — no reachable spot/angle may see off the
 edge of the world; build PAST the edge, ring open areas with buildings, block with
 believable objects (hedges / construction `barrier`), backfill with `buildBackdrop()` + fog.
 (2) **Stay on the locked look** — no clipping, no stray outlines, no clashing colours.
+(3) **Interior / loading-zone rooms** — three hard rules, all learned the hard way:
+**(a) the background is NEVER pitch white** — every scene has an intentional background
+colour (or skybox); interiors set it via `Sky.setInterior(on,{bg,…})`. **(b) the floor STOPS
+at the walls** — it covers exactly the room footprint (tucks just under the wall thickness, no
+seam) and must NEVER extend past the walls or into the non-accessible area beyond (a floor that
+runs out into the background reads as a hard floating edge / soft abyss; do NOT "fix" an
+edge-against-void by enlarging the floor — fix the background colour). **(c) walls LINE UP** —
+a room's walls share ONE height so the corners meet cleanly (no step where a short side wall
+meets a tall back wall). After ANY world/interior build, **screenshot it from several angles and
+actually look at the consistency** (bg, floor boundary, wall alignment) — don't trust the geometry
+audit alone for these.
 
 **Recurring failure modes → root cause → fix (audit for each):**
 | Symptom | Cause → Fix |
@@ -237,10 +270,20 @@ believable objects (hedges / construction `barrier`), backfill with `buildBackdr
 | Clip THROUGH a prop (slide/climber) | one centre collider → per-part `cols:[{dx,dz,r}]` |
 | Prop faces the wrong way | make it orientation-free (lamp = top globe) or set per-prop `rot` |
 | Props that don't belong / overlap | bushes on a road, bench on a bush → streets = lamps/trees, park = bushes; space props ≥~3u; the `placement` lens |
-| Edits not showing on reload | browser cached `specs/world.json` → it's fetched `cache:'no-store'`; hard-reload |
+| **Interior background is pitch WHITE** | a colour string reached `THREE.Color` **without a leading `#`** → `THREE.Color('e8cba2')` silently parses to WHITE (only `'#e8cba2'` is correct). Normalise every colour (`v[0]==='#'?v:'#'+v`) before `new THREE.Color()` / `.set()` / `.color.set()`. Interiors get their bg from `Sky.setInterior` cfg. |
+| **Interior floor runs past the walls / floats against the bg** | the floor plane is bigger than the room → its cut edge floats. Size it to the room footprint only (`(x1-x0)+th × (zF-zB)+th`, no `+9`/forward bias). The area beyond the walls is the BACKGROUND colour, not more floor. |
+| **Room walls don't line up at the corners** | side walls and back wall built at different heights (e.g. `wallH` 4.5 vs `backH` 5.4) → a step at the corner. Give a room ONE wall height. |
+| **Door/shelf/sign has the WALL drawn over it** | the fixture is recessed INTO the solid wall (placed at the wall centre `z`) → the wall front face occludes it. Mount it PROUD of the wall front face (`zBack + th/2`). `window.__clips()` flags it as a `door×wall` interpenetration. |
+| **One prop clips THROUGH another** (board through a tank, two fixtures interpenetrating) | run `window.__clips()` (3D per-mesh audit over `userData.fx`-tagged fixtures) — must be `[]`. A tank must SIT ON a shelf board (y-touch), not span across it; tag every fixture so the audit sees it. |
+| **A long/thin prop (shelf) walls off the room** | a single circular collider `r=½·max(w,d)` (≈4u for a width-8 shelf) bulges a huge invisible wall → blocked the counter. Use `pushBoxColliders` matching the footprint (swap w/d when rotated). Tell: `cameraQA.static` cell count drops. |
+| Edits not showing on reload | browser cached `specs/world.json` → it's fetched `cache:'no-store'`; hard-reload. **The preview hard-caches ES modules and WON'T re-fetch them even on reload** — a fix can be in the served file yet the page runs the old code (symptom: `'newThing' in window.audio` is false). FIX: `studio/js/*.js` are imported in `game.html` with a `?v=N` cache-bust — **bump N when you edit any module** so a reload loads it. Also verify in a FRESH headless context (`node studio/qa_*.mjs`) before trusting in-preview QA. |
 
 Debug hooks (all on `window`): `cameraQA.{static,path,transition,reach,walk}`,
-`__overlaps()`, `__colliders(x,z,r)`, `__freecam/__look` (free-cam for QA shots).
+`__overlaps()` (town 2D footprints), `__clips()` (interior 3D per-mesh interpenetration),
+`__fixtures()` (per-fixture AABBs for close-ups), `__colliders(x,z,r)`,
+`__freecam/__look` (free-cam for QA shots — they STOP the auto loop; call `__startAuto()` after).
+Interior gate: `node studio/qa_petshop.mjs` (fresh context; runs `__clips`=`[]` + camera +
+talk + door round-trip + per-fixture shots). See the `/papercraft-env-qa` skill.
 
 ## Status / next
 
@@ -310,12 +353,15 @@ Debug hooks (all on `window`): `cameraQA.{static,path,transition,reach,walk}`,
   (`Sound.blip`, per-speaker `VOICES`). **Pause menu** (Esc / ☰) with a master volume slider +
   mute, persisted (`shen.vol` / `shen.muted`); audio unlocks on first gesture. See the
   **Sound** section above for the "every interaction makes a sound" rule + how to add one.
-- DONE: **Background music** (`studio/out/music/calm.ogg`) — one seamless ~26s ambient loop,
-  generated programmatically with **MusicGen-medium** (`gen_music.py` → 30s clips, `make_loop.py`
-  → equal-power crossfade loop + `oggenc`; env in `requirements-music.txt`. Generated on **CPU** —
-  PyTorch MPS crashed mid-generate on this M4 Pro). Plays through a **music sub-bus** in `audio.js`
-  (`Sound.startMusic`/`stopMusic`/`setMusicVolume`), a gapless looping `AudioBufferSourceNode`
-  started from `beginGame()` after the gesture. Decode failure degrades to "no music", never a crash.
+- DONE: **Background music — PER-SCENE** (`calm.ogg` overworld, `shop.ogg` pet-shop) — each a
+  seamless ~26s loop generated with **MusicGen-medium** (`gen_music.py` → 30s clips, `make_loop.py`
+  → equal-power crossfade + `oggenc`; env in `requirements-music.txt`. Generated on **CPU**). Each
+  scene declares `spec.music`; `Sound.startMusic(url)` **crossfades** to a different track, **no-ops**
+  on the same one (seamless), and **caches each decoded buffer by url** so returning is instant.
+  `buildScene` switches it on every scene build; `beginGame` starts the boot scene's track. The
+  overworld song is exclusive to the overworld; interiors get their own (or a shared indoor) track —
+  see the "third sound rule" above. `shop.ogg` = seed 0 (mellow/cozy, wrap 0.01× p999). Decode
+  failure (e.g. a track not yet rendered) degrades to "no music", never a crash.
 - DONE: **Independent volume mix** — `audio.js` now has **two sub-buses under the master**: SFX +
   dialogue-voice route through `sfxGain`, music through `musicGain`. **Three pause-menu sliders** —
   master **volume** (`shen.vol`/`shen.muted`), **effects** (`shen.sfxvol`), **music**
@@ -346,6 +392,42 @@ Debug hooks (all on `window`): `cameraQA.{static,path,transition,reach,walk}`,
   - **Sounds** (all procedural, `audio.js`): `squeak` (hamster), `quest`/`questStep`/`questDone`,
     `book`/`bookClose`/`flip`. Verified in preview: full lifecycle (accept→auto-track→complete),
     real dialogue acceptance for both NPCs, journal DOM + page-flip, save round-trip, **camera QA 0 fails**.
+- DONE: **Loading zones (multi-scene + doors)** — the world is no longer a single scene. Each scene is
+  a spec (`SCENE_URLS` in `game.html`: `town`=`specs/world.json`, `petshop`=`specs/petshop.json`); a
+  scene swap is `clearScene()` (drop the `sceneRoot` group) → `buildScene(spec, spawn)` (rebuild city or
+  interior + collectibles + npcs + colliders + camera warp). Persistent objects (base ground, Shen,
+  shadow, burst, Sky) live OUTSIDE `sceneRoot` and travel between scenes.
+  - **Doors/portals** are data-driven: a scene's `portals[]` (`{id,x,z,r,to,spawn,label,door:{…}}`) +
+    named `spawns{}` (where you arrive from a given portal). Walk up → contextual **"🚪 Enter"** prompt
+    (same seam as the Talk prompt; a door never fights an NPC for the key) → `startPortal()` runs a
+    cream-fade **walk-through transition** (`updateTransition`: walk INTO the door + shrink → cover →
+    swap scene → step out + uncover), with a shop-bell `door` SFX + footsteps. `#fade` overlay + `trans`
+    state machine; gated so it can't fire mid-dialogue/mid-transition.
+  - **Town door**: a framed "PET SHOP" entrance (`buildPortalDoors`, awning + sign + bell) set into the
+    park-side cliff under the existing Pet Shop building (reachable park spot — the town is otherwise
+    walled corridors with no reachable building face). **Adrian moved INSIDE** the shop (he was on the
+    street); the hamster quest is now given/returned in the shop. Town keeps Chrees.
+  - **Pet shop interior** (`specs/petshop.json`, `interior:true` → `buildInterior` + the `IPROP` map):
+    a Rocky-style "J&M Tropical Fish" room — sage walls + wood floor + baseboards, a counter with Adrian
+    behind it (thin front-face collider so you can talk across it; `TALK_R` 2.6), glowing translucent
+    **fish tanks** (drifting fish, reuse the spatial water ambient via `fountains`), a **birdcage** w/
+    bird (spatial `chirp` ambient via `ambients[]`), hanging + potted plants, rug, welcome mat, exit door,
+    a "J & M PET SHOP" sign, warm ceiling `PointLight`s. `Sky.setInterior(on,cfg)` hides the outdoor dome
+    + sets a warm **non-white** background + warm light. **Enclosure rules (cardinal — see the QA gate):**
+    the floor covers the room footprint and **stops at the walls** (never extends past/behind them); the
+    background beyond the walls is the bg colour, NOT more floor; all walls share **one height** so corners
+    line up. One fixed `shop` zone camera, QA'd. (⚠️ `THREE.Color('e8cba2')` w/o `#` parses to WHITE — the
+    bug that made the bg pitch-white; normalise colours.)
+  - **Global collected set + save**: pickups update a game-level `collected` Set (reconciled against
+    `S.collectibles` each frame — robust to multi-substep frames; the per-step `S.justGot` flag is for
+    SFX only) so progress survives scene swaps; quests read this global set. `save.js` gained an additive
+    `scene` field (absent → town; **no `SAVE_VERSION` bump** — old v3 saves still load) + multi-scene
+    sanitize (clamp to the saved scene's bounds; collected ids validated across all scenes).
+  - **QA harnesses** (fresh-context, no module-cache trap): `studio/qa_petshop.mjs` (camera 0-fails both
+    scenes + talk-across-counter + input-path round trip + interior/abyss shots), `studio/qa_save.mjs`
+    (cross-scene persistence + old-save compat), `studio/qa_quest.mjs` (full hamster loop with Adrian
+    inside). All green; smoke + town `qa_shots` geometry audit still clean; multi-agent visual sweep =
+    enclosed/on-aesthetic. New SFX: `door`, `chirp`.
 - IN FLIGHT: **Premium look overhaul** (make it less "web-ish"). Working brief + A–Z of style
   directions + concerns + method: **`studio/PREMIUM_LOOK.md`** — READ IT before doing visual work.
   Two pieces already exist: (1) a post-processing finishing lens `studio/js/fx.js` (`EffectComposer`
