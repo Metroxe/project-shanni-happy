@@ -45,6 +45,7 @@ let ctx = null, bus = null, comp = null, sfxGain = null, musicGain = null;
 let musicSrc = null, musicURL = null, musicPlayingURL = null;
 const musicBufs = {}, musicLoads = {};            // url -> AudioBuffer / pending load
 let musicStarted = false, lastMusicVol = 0.42;   // remembers level across an off→on toggle
+let lastSfxVol = 1.0;                             // ditto for effects (off→on restores this)
 
 // THREE independent levels, each on its own localStorage key so they survive
 // reloads separately (none of these live in the save blob):
@@ -60,6 +61,7 @@ let muted    = (store && store.getItem('shen.muted')) === '1';
 let sfxVol   = readNum('shen.sfxvol', 1.0);     // effects at full by default
 let musicVol = readNum('shen.musicvol', 0.42);  // music gently under the SFX
 if (musicVol > 0) lastMusicVol = musicVol;
+if (sfxVol > 0) lastSfxVol = sfxVol;
 
 function applyGain() { if (bus) bus.gain.value = muted ? 0 : volume * GAIN_CEIL; }
 function applySfx()  { if (sfxGain) sfxGain.gain.value = sfxVol; }
@@ -314,11 +316,16 @@ export const Sound = {
 
   // "effects" — SFX + dialogue-voice sub-bus level, independent of music
   get sfxVolume() { return sfxVol; },
+  get sfxOn() { return sfxVol > 0; },            // derived: "on" == audible (RuneScape-style toggle)
   setSfxVolume(v) {
     sfxVol = clamp01(v);
+    if (sfxVol > 0) lastSfxVol = sfxVol;
     ensure(); applySfx(); persistSfx();
     return sfxVol;
   },
+  // convenience on/off that remembers the last audible level (mirrors music)
+  toggleSfx() { return this.setSfxVolume(sfxVol > 0 ? 0 : (lastSfxVol || 1.0)); },
+  setSfxOn(on) { return this.setSfxVolume(on ? (sfxVol > 0 ? sfxVol : (lastSfxVol || 1.0)) : 0); },
 
   sfx(name, mul = 1) {
     if (muted || !ensure()) return;
