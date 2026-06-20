@@ -62,6 +62,10 @@
     transition:background .15s,color .15s,transform .15s;-webkit-tap-highlight-color:transparent}
   .jtab:hover{color:#7a6f5c}
   .jtab.active{background:#fffdf8;color:#c27d8b;transform:translateX(-5px);z-index:3}
+  /* keyboard cursor: a rose focus ring on whichever menu item the keyboard has selected */
+  .ksel{box-shadow:0 0 0 2px #e6b9c6,0 3px 10px rgba(183,107,125,.18)!important;border-radius:11px}
+  .srow.ksel,.qhead.ksel{background:#faecf0!important}                /* soft fill so the cursor is unmistakable on borderless rows */
+  .jtab.ksel{box-shadow:0 0 0 2px #e6b9c6,-3px 3px 8px rgba(90,80,60,.12)!important;z-index:4}
   /* book body + page */
   #bookBody{position:relative;flex:1;background:#fffdf8;border:1px solid #d6c9b2;border-radius:6px 16px 16px 6px;
     box-shadow:0 14px 40px rgba(90,80,60,.30);overflow:hidden;
@@ -1846,7 +1850,7 @@ addEventListener('keydown',e=>{const k=e.key.toLowerCase();
   Sound.resume();                            // browsers gate audio behind a gesture
   if(k==='escape'&&!e.repeat){e.preventDefault();toggleJournal();return;}
   if(k==='m'&&!e.repeat){Sound.toggle();syncMenu();return;}
-  if(journalOpen())return;                   // open journal eats other keys
+  if(journalOpen()){menuNav.key(e);return;}  // open journal: keys drive the menu cursor
   if(Dialogue.active){                       // talking: advance / pick — but movement keys fall through so you can walk away
     if(k===' '||k==='enter'||k==='e'){Dialogue.advance();e.preventDefault();return;}
     if(Dialogue.choiceMode){                 // an open choice menu owns up/down; left/right still walk you out
@@ -1857,7 +1861,7 @@ addEventListener('keydown',e=>{const k=e.key.toLowerCase();
   }
   if(k==='arrowup'||k==='w')held.up=true; else if(k==='arrowdown'||k==='s')held.down=true;
   else if(k==='arrowleft'||k==='a')held.left=true; else if(k==='arrowright'||k==='d')held.right=true;
-  else if((k===' ')&&!e.repeat)edgeJump=true;
+  else if((k===' ')&&!e.repeat){if(nearNpc||nearPortal)edgeTalk=true;else edgeJump=true;}   // space = action: talk/enter when beside someone or a door, hop otherwise
   else if((k==='e'||k==='enter')&&!e.repeat)edgeTalk=true;
   if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k))e.preventDefault();});
 addEventListener('keyup',e=>{const k=e.key.toLowerCase();
@@ -1933,6 +1937,7 @@ function showPage(name){
   document.getElementById('page-settings').hidden=name!=='settings';
   if(name==='quests'&&listDirty){renderQuests(); listDirty=false;}
   if(name==='settings')syncMenu();
+  refreshMenu();                                                 // rebuild the keyboard cursor for this page
 }
 function switchTab(name){
   if(name===curTab)return; curTab=name; setActiveTab(name); Sound.sfx('flip');
@@ -1948,18 +1953,97 @@ function openJournal(tab){Sound.resume(); playing=false; held.up=held.down=held.
   if(rb)rb.style.display=started?'':'none';
   if(rs)rs.textContent=started?'resume':'back';
   const name=tab||curTab||'quests'; curTab=name; setActiveTab(name);
-  pagesEl.classList.remove('flipping'); listDirty=true; showPage(name);
+  pagesEl.classList.remove('flipping'); listDirty=true; menuNav.sel=0; showPage(name);
   document.getElementById('bMenu').classList.remove('badge');
-  journal.classList.add('on'); Sound.sfx('book');}
+  journal.classList.add('on'); menuNav.sel=0; menuNav.rebuild(); Sound.sfx('book');}  // build the keyboard cursor once the journal is actually open
 function closeJournal(){journal.classList.remove('on'); edgeJump=edgeTalk=false; last=null; playing=true; Sound.sfx('bookClose');}
 function toggleJournal(){Sound.resume(); journalOpen()?closeJournal():openJournal();}
+
+// --- keyboard cursor for the journal (so the whole game is playable without a mouse) ---
+// One roving selection over a flat vertical list: the two binder tabs, then the active
+// page's controls. Up/Down move the cursor, Space/Enter activate, Left/Right nudge a
+// slider. Mouse still works independently; this just mirrors it for the keyboard.
+function stepSlider(el,delta){const v=Math.max(0,Math.min(100,(+el.value||0)+delta));
+  if(v===(+el.value||0))return; el.value=v; el.dispatchEvent(new Event('input',{bubbles:true})); Sound.sfx('move');}
+const menuNav={
+  items:[], sel:0,
+  rebuild(){
+    if(!journalOpen()){this.items=[]; this.render(); return;}
+    const items=[];
+    document.querySelectorAll('.jtab').forEach(t=>items.push({el:t, activate:()=>switchTab(t.dataset.tab)}));
+    if(curTab==='quests'){
+      document.querySelectorAll('#questList .qhead').forEach(h=>items.push({el:h, activate:()=>h.click()}));
+    } else {
+      [['vol','volTog'],['sfxvol','sfxTog'],['musicvol','musicTog']].forEach(([sid,tid])=>{
+        const sl=document.getElementById(sid), tog=document.getElementById(tid), row=sl.closest('.srow');
+        items.push({el:row, left:()=>stepSlider(sl,-5), right:()=>stepSlider(sl,5), activate:()=>tog.click()});
+      });
+      const rb=document.getElementById('restartBtn'), rs=document.getElementById('resumeBtn');
+      if(rb&&rb.style.display!=='none')items.push({el:rb, activate:()=>rb.click()});
+      if(rs)items.push({el:rs, activate:()=>rs.click()});
+    }
+    this.items=items;
+    if(this.sel>=items.length)this.sel=Math.max(0,items.length-1);
+    this.render();
+  },
+  render(){journal.querySelectorAll('.ksel').forEach(e=>e.classList.remove('ksel'));
+    const it=this.items[this.sel]; if(it&&it.el)it.el.classList.add('ksel');},
+  move(d){if(!this.items.length)return; this.sel=(this.sel+d+this.items.length)%this.items.length;
+    Sound.sfx('move'); this.render(); const el=this.items[this.sel].el; if(el&&el.scrollIntoView)el.scrollIntoView({block:'nearest'});},
+  horizontal(d){const it=this.items[this.sel]; if(!it)return; if(d<0&&it.left)it.left(); else if(d>0&&it.right)it.right();},
+  activate(){const it=this.items[this.sel]; if(it&&it.activate){Sound.resume(); it.activate();}},
+  key(e){const k=e.key.toLowerCase();
+    if(k==='arrowup'||k==='w'){this.move(-1);e.preventDefault();}
+    else if(k==='arrowdown'||k==='s'){this.move(1);e.preventDefault();}
+    else if(k==='arrowleft'||k==='a'){this.horizontal(-1);e.preventDefault();}
+    else if(k==='arrowright'||k==='d'){this.horizontal(1);e.preventDefault();}
+    else if(k===' '||k==='enter'){this.activate();e.preventDefault();}},
+};
+// keep the cursor in sync whenever the page/quest list rebuilds while open
+const refreshMenu=()=>{if(journalOpen())menuNav.rebuild();};
+
+// QA self-test (deterministic): prove the whole game is keyboard-operable — the journal
+// opens from a key, the menu cursor moves + activates on Space, sliders nudge on Left/Right,
+// and the dialogue choice API is present. Drives the REAL keydown listeners via synthetic
+// events so the wiring (not just the helpers) is exercised. Returns {fails:[]} and restores
+// state. Used by studio/qa/checks/keyboard-nav.mjs.
+const key=(name)=>window.dispatchEvent(new KeyboardEvent('keydown',{key:name,bubbles:true,cancelable:true}));
+window.__kbNav=function(){
+  const fails=[], wasOpen=journalOpen(), wasMuted=Sound.muted, wasTab=curTab, volEl=document.getElementById('vol');
+  const wasVol=+volEl.value;
+  try{
+    if(!wasOpen)key('Escape');                                   // open via the real keybind
+    if(!journalOpen()){fails.push('Escape did not open the journal'); openJournal();}
+    if(menuNav.items.length<2)fails.push('menu cursor has no items to navigate');
+    const s0=menuNav.sel; key('ArrowDown');                      // synthetic key must move the cursor
+    if(menuNav.items.length>1&&menuNav.sel===s0)fails.push('ArrowDown did not move the menu cursor');
+    // settings page (set directly — skip the 200ms cosmetic flip)
+    curTab='settings'; setActiveTab('settings'); showPage('settings');
+    const vi=menuNav.items.findIndex(it=>it.el&&it.el.id==='rowVol');
+    if(vi<0)fails.push('volume row not reachable by keyboard');
+    else{
+      menuNav.sel=vi; const before=+volEl.value; menuNav.horizontal(-1);
+      if(+volEl.value===before)fails.push('Left arrow did not adjust the volume slider');
+      const m0=Sound.muted; menuNav.activate();                 // Space toggles the channel pill
+      if(Sound.muted===m0)fails.push('Space did not toggle the volume channel');
+    }
+    if(menuNav.items.findIndex(it=>it.el&&it.el.id==='resumeBtn')<0)fails.push('resume/back button not reachable by keyboard');
+    if(typeof Dialogue.move!=='function')fails.push('Dialogue choice navigation (Dialogue.move) missing');
+  }catch(e){fails.push('probe threw: '+(e&&e.message||e));}
+  // restore everything the probe touched
+  if(Sound.muted!==wasMuted)Sound.toggle();
+  volEl.value=wasVol; volEl.dispatchEvent(new Event('input',{bubbles:true}));
+  curTab=wasTab; setActiveTab(wasTab);
+  if(wasOpen)showPage(wasTab); else closeJournal();
+  return {fails};
+};
 
 // --- quest toast (milestones + hamster count) ---
 let toastT=null;
 function toast(msg){const t=document.getElementById('qtoast'); t.textContent=msg; t.classList.add('on');
   if(toastT)clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('on'),2200);}
 function questEvent(msg,sfx){toast(msg); Sound.sfx(sfx); listDirty=true;
-  if(journalOpen())renderQuests(); else document.getElementById('bMenu').classList.add('badge');}
+  if(journalOpen()){renderQuests(); refreshMenu();} else document.getElementById('bMenu').classList.add('badge');}
 
 // pick a state-aware dialogue entry node for an NPC tied to a quest
 function entryNode(npc){
@@ -2112,9 +2196,9 @@ addEventListener('keydown',e=>{
   if(started)return;                        // only steer the menu before play
   Sound.resume();                           // first keypress is the audio gesture
   const k=e.key.toLowerCase();
-  if(journalOpen()){                         // Settings opened from the menu
-    if(k==='escape'||k==='enter'){e.preventDefault();closeJournal();}  // back to menu
-    return;                                  // otherwise let native slider keys work
+  if(journalOpen()){                         // Settings opened from the menu → drive the menu cursor
+    if(k==='escape'){e.preventDefault();closeJournal();return;}        // back to menu
+    menuNav.key(e); return;
   }
   if(k==='arrowup'||k==='w'){titleMove(-1);e.preventDefault();}
   else if(k==='arrowdown'||k==='s'){titleMove(1);e.preventDefault();}
