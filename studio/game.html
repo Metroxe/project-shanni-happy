@@ -131,6 +131,17 @@
   .mrow #muteState{font-weight:700;color:#7aa37e}
   .mrow.off{opacity:.75}
   .mrow.off #muteState{color:#c08a8a}
+  /* graphics options — segmented chips, same rose-highlight language as choices */
+  .gfxh{margin:20px 2px 6px;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:#a99f8c;
+    border-top:1px solid #ece2d0;padding-top:15px}
+  .gfxrow{display:flex;align-items:center;gap:10px;margin:11px 0;font-size:14px}
+  .gfxrow>span:first-child{width:70px;color:#7a756c;flex:none}
+  .gopts{display:flex;gap:5px;flex:1;flex-wrap:wrap}
+  .gopt{border:1px solid #e0d4bf;border-radius:9px;padding:5px 11px;font:inherit;font-size:12.5px;
+    background:rgba(255,255,255,.6);color:#6a655c;cursor:pointer;transition:.12s}
+  .gopt:hover{color:#7a6f5c}
+  .gopt.sel{background:#f6e7ea;border-color:#e6b9c6;color:#b76b7d;box-shadow:inset 0 0 0 1px #e6b9c6;font-weight:600}
+  .gfxhint{margin:9px 2px 0;font-size:11px;color:#a99f8c;line-height:1.6}
   .jhint{margin:16px 2px 4px;font-size:11.5px;color:#8a8579;text-align:center;line-height:1.7}
   .menuBtns{display:flex;gap:10px;margin-top:16px}
   .menuBtns .btn{flex:1;padding:11px 0;font-size:14px}
@@ -434,6 +445,20 @@
           <div class="srow" id="rowVol"><span>volume</span><input type="range" id="vol" min="0" max="100" value="70"><span id="volVal" class="sval">70%</span><button class="tog" id="volTog" title="Mute everything">on</button></div>
           <div class="srow" id="rowSfx"><span>effects</span><input type="range" id="sfxvol" min="0" max="100" value="100"><span id="sfxVal" class="sval">100%</span><button class="tog" id="sfxTog" title="Turn sound effects on/off">on</button></div>
           <div class="srow" id="rowMusic"><span>music</span><input type="range" id="musicvol" min="0" max="100" value="42"><span id="musicVal" class="sval">42%</span><button class="tog" id="musicTog" title="Turn music on/off">on</button></div>
+          <div class="gfxh">Graphics</div>
+          <div class="gfxrow"><span>shadows</span><div class="gopts" data-gfx="shadows">
+            <button class="gopt" data-val="off">Off</button>
+            <button class="gopt" data-val="low">Low</button>
+            <button class="gopt" data-val="high">High</button></div></div>
+          <div class="gfxrow"><span>finish</span><div class="gopts" data-gfx="fx">
+            <button class="gopt" data-val="off">Off</button>
+            <button class="gopt" data-val="minimal">Minimal</button>
+            <button class="gopt" data-val="diorama">Diorama</button>
+            <button class="gopt" data-val="full">Full</button></div></div>
+          <div class="gfxrow"><span>resolution</span><div class="gopts" data-gfx="res">
+            <button class="gopt" data-val="fast">Fast</button>
+            <button class="gopt" data-val="crisp">Crisp</button></div></div>
+          <div class="gfxhint">Lower these if the game runs hot. Shadows + resolution are the heaviest.</div>
           <div class="jhint">arrows / WASD move · space hop<br>E talk · Esc journal · M mute</div>
           <div class="menuBtns">
             <button class="btn" id="restartBtn">restart ✿</button>
@@ -482,13 +507,21 @@ import { Dialogue } from './js/dialogue.js?v=4';
 import * as Save from './js/save.js?v=4';
 import { Sound } from './js/audio.js?v=4';
 import { Quests } from './js/quests.js?v=4';
-import { Sky } from './js/sky.js?v=4';
+import { Sky } from './js/sky.js?v=8';
 import { FX } from './js/fx.js?v=4';
+import { installPCSS } from './js/pcss.js?v=2';
 
+// PCSS = contact-hardening SOFT shadows: crisp where an object meets the ground, bleeding softer
+// the farther it gets (the sun read as an AREA light, not a point). Patches the global shadow
+// shader chunk, so it MUST run before any material compiles (i.e. before build()). Degrades to
+// plain PCF if the patch can't apply. See js/pcss.js.
+const PCSS_ON=installPCSS();
 const canvas=document.getElementById('c');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.outputColorSpace=THREE.SRGBColorSpace;
-renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+// Type stays PCF: PCSS (injected into getShadow) short-circuits the filter, so this just needs a
+// type whose define compiles. Set once here so it never triggers a runtime shader recompile.
+renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFShadowMap;
 const scene=new THREE.Scene();
 const cam=new THREE.PerspectiveCamera(40,1,0.1,300);
 
@@ -526,9 +559,18 @@ function softCanvasTex(draw){const s=128,c=document.createElement('canvas');c.wi
   draw(c.getContext('2d'),s);return new THREE.CanvasTexture(c);}
 
 // shadow + cloud + hill canvas textures
-const shadowTex=softCanvasTex((x,s)=>{const g=x.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
-  g.addColorStop(0,'rgba(60,52,40,.5)');g.addColorStop(.6,'rgba(60,52,40,.2)');g.addColorStop(1,'rgba(60,52,40,0)');
-  x.fillStyle=g;x.fillRect(0,0,s,s);});
+// Contact shadow (for the flat BILLBOARD cutouts — Shen / NPCs / pickups, which can't cast a
+// real shadow) = a clean oval with a SOFT real-life penumbra: a solid core + a gentle feathered
+// rim, NOT a vague smudge (the original muddy look) and NOT a razor edge. A wider canvas blur
+// gives the soft falloff; the solid core keeps it grounded + defined. Matches the soft VSM cast
+// shadows so a character's shadow reads the same as the world's.
+const shadowTex=(()=>{const s=256,c=document.createElement('canvas');c.width=c.height=s;
+  const x=c.getContext('2d');
+  x.filter='blur('+(s*0.085)+'px)';                 // soft, real-shadow falloff at the rim
+  x.fillStyle='rgba(58,50,40,.46)';
+  x.beginPath();x.ellipse(s/2,s/2,s*0.355,s*0.355,0,0,7);x.fill();
+  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;
+  t.minFilter=THREE.LinearMipmapLinearFilter;t.magFilter=THREE.LinearFilter;return t;})();
 function blobTex(col){return softCanvasTex((x,s)=>{x.fillStyle=col;
   [[.5,.55,.34],[.32,.6,.24],[.68,.6,.24],[.42,.42,.2],[.6,.42,.2]].forEach(([a,b,r])=>{
     x.beginPath();x.ellipse(a*s,b*s,r*s,r*s*.8,0,0,7);x.fill();});});}
@@ -932,7 +974,9 @@ function buildProps(cols){
   for(const p of (SCENE.props||[])){ const mk=PROP[p.type]; if(!mk)continue;
     const r=mk(p), gy=groundHeight(p.x,p.z), rot=p.rot||0, ca=Math.cos(rot), sa=Math.sin(rot);
     r.group.position.set(p.x,gy,p.z); if(rot)r.group.rotation.y=rot; sceneRoot.add(r.group);
-    contactShadow(p.x,p.z,r.shadowR||r.rad||0.7,gy);
+    // NO contact oval here: these are 3D modelled props whose meshes cast a REAL shadow (M()
+    // sets castShadow). Adding an oval too gave the "double shadow" (one under + one cast). The
+    // real cast shadow is the only one — soft VSM grounds them. (Billboards still get an oval.)
     if(p.solid){ if(r.cols){ for(const c of r.cols) cols.push({x:p.x+c.dx*ca-c.dz*sa, z:p.z+c.dx*sa+c.dz*ca, r:c.r}); }
                  else cols.push({x:p.x,z:p.z,r:r.rad||0.7}); }
     if(p.type==='fountain')fountains.push({x:p.x,z:p.z,y:gy,h:r.h}); }
@@ -1416,6 +1460,17 @@ window.__sceneBackgrounds=()=>{ const out=[];
     if(!bg){ white=true; } else { const c=new THREE.Color(bg[0]==='#'?bg:'#'+bg); white=(c.r>0.93&&c.g>0.93&&c.b>0.93); }
     out.push({scene:id, isWhiteOrUnset:white}); }
   return out; };
+// QA probe for the shadow-quality check (studio/qa/checks/shadow-quality.mjs): the sun's CAST
+// shadow sharpness IS texel density = shadowMap size ÷ frustum width. Surface it (+ the renderer
+// state + the graphics knobs) so a future change can't silently re-muddy the shadows the player
+// flagged, and the graphics-menu wiring stays regression-guarded.
+window.__shadowInfo=()=>{ const d=Sky&&Sky.dir, sm=renderer.shadowMap;
+  const cast=!!(d&&d.castShadow), half=cast?Math.abs(d.shadow.camera.right):0, map=cast?d.shadow.mapSize.width:0;
+  return { enabled:!!sm.enabled, type:sm.type, pcss:!!PCSS_ON,
+    soft:(!!PCSS_ON||sm.type===THREE.PCFSoftShadowMap||sm.type===THREE.VSMShadowMap), castShadow:cast,
+    mapSize:map, frustumHalf:half, blurRadius:cast?d.shadow.radius:0,
+    texelsPerUnit: half?+(map/(2*half)).toFixed(1):0,
+    level:(Sky&&Sky._shadowLevel)||null, gfx:(window.__gfx&&window.__gfx())||null }; };
 // each tagged interior fixture's world-AABB centre + size, so the QA harness can frame a
 // per-object close-up of EVERY fixture (the "look at every single thing" pass, interiors).
 window.__fixtures=()=>{ const out=[]; if(sceneRoot) sceneRoot.traverse(o=>{ if(o.userData&&o.userData.fx){
@@ -1508,6 +1563,41 @@ window.__camAbyss=(opts)=>{ opts=opts||{}; const ceiling=opts.ceiling==null?0.55
   return { leaks:leaks.slice(0,20), leakCount:leaks.length, cells:cells.length, ceiling, worst }; };
 
 
+// ---------- graphics quality (Settings → renderer / Sky / FX) ----------
+// Three independent knobs, each on its OWN localStorage key (same pattern as the volume
+// mix), so weaker machines can scale the heavy bits without touching the base look:
+//   shadows  — the sun's soft CAST shadow quality (Sky.setShadowQuality: off / low / high —
+//              both tiers are soft-edged VSM; the tier trades map resolution + GPU cost)
+//   fx       — the post-processing finishing lens (FX preset: off / minimal / diorama / full)
+//   res      — render pixel ratio (fast = 1×, crisp = device ratio capped at 2×)
+// Contact-shadow ovals + the flat papercraft base render are ALWAYS on (unaffected). The
+// renderer's shadowMap.enabled/type never change here (no shader recompile) — 'off' just
+// stops the sun light casting. Defaults preserve today's look + the soft shadows.
+const Gfx=(()=>{
+  const store=(()=>{try{return window.localStorage;}catch(e){return null;}})();
+  const SHADOWS=['off','low','high'], FXP=['off','minimal','diorama','full'], RES=['fast','crisp'];
+  const read=(k,def,allow)=>{ try{const v=store&&store.getItem(k); return allow.includes(v)?v:def;}catch(e){return def;} };
+  // mobile/touch gets a lighter shadow default (the 4096 map is heavy on phones); the player
+  // can still bump it to High. Desktop (incl. headless QA) defaults to high.
+  const coarse=(()=>{try{return matchMedia('(pointer:coarse)').matches||Math.min(innerWidth,innerHeight)<540;}catch(e){return false;}})();
+  let shadows=read('shen.gfx.shadows',coarse?'low':'high',SHADOWS);
+  let fx=read('shen.gfx.fx','off',FXP);
+  let res=read('shen.gfx.res','crisp',RES);
+  const applyShadows=()=>Sky.setShadowQuality(shadows);
+  const applyFx=()=>{ if(window.__fx)window.__fx(fx); else { FX.setPreset(fx); resize(); } };
+  const applyRes=()=>{ renderer.setPixelRatio(res==='fast'?1:Math.min(devicePixelRatio,2)); resize(); };
+  function applyAll(){ applyShadows(); applyFx(); applyRes(); }
+  function set(kind,val){
+    if(kind==='shadows'&&SHADOWS.includes(val)){ shadows=val; try{store&&store.setItem('shen.gfx.shadows',val);}catch(e){} applyShadows(); }
+    else if(kind==='fx'&&FXP.includes(val)){ fx=val; try{store&&store.setItem('shen.gfx.fx',val);}catch(e){} applyFx(); }
+    else if(kind==='res'&&RES.includes(val)){ res=val; try{store&&store.setItem('shen.gfx.res',val);}catch(e){} applyRes(); }
+    return {shadows,fx,res};
+  }
+  return { applyAll, set, get state(){return {shadows,fx,res};} };
+})();
+// QA + console hook: __gfx() reads, __gfx(kind,val) sets one knob.
+window.__gfx=(kind,val)=> kind===undefined?Gfx.state:Gfx.set(kind,val);
+
 async function build(){
   // Load EVERY scene spec up-front (cheap JSON): transitions are then instant, and
   // the save layer can validate ids / clamp positions against any scene.
@@ -1524,6 +1614,7 @@ async function build(){
   // optional post-processing finishing pass. window.__fx(name) switches live.
   FX.init({renderer,scene,camera:cam,skyColor:'cfe0f2',groundColor:world.ground});
   window.__fx=(name)=>{const p=FX.setPreset(name);resize();return p;};
+  Gfx.applyAll();   // apply the saved graphics quality (shadows / finish lens / resolution)
   // load the ONE shared crisp paper tile set BEFORE any scene geometry is built (textures
   // populate async; the Texture objects exist synchronously so the scene builders — buildCity,
   // makeFacade, paperMat — can reference them via PAPER now). PERSISTENT across scene switches.
@@ -1547,7 +1638,8 @@ async function build(){
     persist(); };
 
   // shadow + shen + burst (PERSISTENT — they travel between scenes, never torn down)
-  shadow=new THREE.Mesh(new THREE.PlaneGeometry(SHEN_W*1.5,SHEN_W*1.5),
+  // flatter-than-wide oval: a standing figure casts a horizontal pool, not a circle.
+  shadow=new THREE.Mesh(new THREE.PlaneGeometry(SHEN_W*1.7,SHEN_W*1.18),
     new THREE.MeshBasicMaterial({map:shadowTex,transparent:true,depthWrite:false}));
   shadow.rotation.x=-Math.PI/2; shadow.position.y=GROUND_EPS; shadow.renderOrder=1; scene.add(shadow);
   shen=new THREE.Group(); scene.add(shen);
@@ -1598,6 +1690,10 @@ async function buildScene(spec, spawn){
   const cols=[];
   if(spec.interior){ Sky.setInterior(true, spec.sky||{}); buildInterior(cols); }
   else { Sky.setInterior(false); buildCity(cols); }
+  // fit the FIXED sun-shadow frustum to THIS scene's reachable extent so its texels land where
+  // the player can be (clean soft shadow) without a moving frustum (which made shadows flicker).
+  { const b=spec.bounds||{xmin:-40,xmax:40,zmin:-40,zmax:40};
+    Sky.setShadowBounds((b.xmin+b.xmax)/2,(b.zmin+b.zmax)/2, Math.max(b.xmax-b.xmin,b.zmax-b.zmin)/2+4); }
   buildPortalDoors(cols);
   SCENE_COLLIDERS=cols; setColliders(cols);
   await buildCollectibles();
@@ -1893,6 +1989,11 @@ function syncMenu(){
   setTog(sfxTog,'rowSfx',Sound.sfxOn);       // effects: on == audible (level > 0)
   setTog(musicTog,'rowMusic',Sound.musicOn);}// music:   on == audible (level > 0)
 
+// --- graphics chips: light the active option in each group from Gfx state ---
+function syncGfx(){ const st=Gfx.state;
+  document.querySelectorAll('.gopts[data-gfx]').forEach(g=>{ const cur=st[g.dataset.gfx];
+    g.querySelectorAll('.gopt').forEach(b=>b.classList.toggle('sel',b.dataset.val===cur)); }); }
+
 // --- quest page rendering (from Quests.list()) ---
 function mk(tag,cls,txt){const e=document.createElement(tag); if(cls)e.className=cls; if(txt!=null)e.textContent=txt; return e;}
 function renderQuests(){
@@ -1936,7 +2037,7 @@ function showPage(name){
   document.getElementById('page-quests').hidden=name!=='quests';
   document.getElementById('page-settings').hidden=name!=='settings';
   if(name==='quests'&&listDirty){renderQuests(); listDirty=false;}
-  if(name==='settings')syncMenu();
+  if(name==='settings'){syncMenu();syncGfx();}
   refreshMenu();                                                 // rebuild the keyboard cursor for this page
 }
 function switchTab(name){
@@ -1977,6 +2078,13 @@ const menuNav={
       [['vol','volTog'],['sfxvol','sfxTog'],['musicvol','musicTog']].forEach(([sid,tid])=>{
         const sl=document.getElementById(sid), tog=document.getElementById(tid), row=sl.closest('.srow');
         items.push({el:row, left:()=>stepSlider(sl,-5), right:()=>stepSlider(sl,5), activate:()=>tog.click()});
+      });
+      // graphics chips: Left/Right cycle the option (like the sliders), Space activates the next
+      document.querySelectorAll('.gopts[data-gfx]').forEach(g=>{
+        const kind=g.dataset.gfx, row=g.closest('.gfxrow'), opts=[...g.querySelectorAll('.gopt')].map(b=>b.dataset.val);
+        const cyc=d=>{let i=opts.indexOf(Gfx.state[kind]); i=(i+d+opts.length)%opts.length;
+          Gfx.set(kind,opts[i]); syncGfx(); Sound.sfx('select');};
+        items.push({el:row, left:()=>cyc(-1), right:()=>cyc(1), activate:()=>cyc(1)});
       });
       const rb=document.getElementById('restartBtn'), rs=document.getElementById('resumeBtn');
       if(rb&&rb.style.display!=='none')items.push({el:rb, activate:()=>rb.click()});
@@ -2066,6 +2174,10 @@ musicvol.addEventListener('input',()=>{Sound.resume();Sound.setMusicVolume(+musi
 volTog.addEventListener('click',e=>{e.preventDefault();Sound.resume();Sound.toggle();syncMenu();});
 sfxTog.addEventListener('click',e=>{e.preventDefault();Sound.resume();Sound.toggleSfx();syncMenu();if(Sound.sfxOn)Sound.sfx('select');});
 musicTog.addEventListener('click',e=>{e.preventDefault();Sound.resume();Sound.toggleMusic();syncMenu();});
+// graphics option chips: set the knob, persist+apply, re-light the row, click sound
+document.querySelectorAll('.gopts[data-gfx]').forEach(g=>g.addEventListener('click',e=>{
+  const b=e.target.closest('.gopt'); if(!b)return; e.preventDefault(); Sound.resume();
+  Gfx.set(g.dataset.gfx,b.dataset.val); syncGfx(); Sound.sfx('select'); }));
 document.getElementById('resumeBtn').addEventListener('click',e=>{e.preventDefault();closeJournal();});
 document.getElementById('restartBtn').addEventListener('click',e=>{e.preventDefault();Save.wipe();
   const swap=curScene!=='town', F=fadeEl();
