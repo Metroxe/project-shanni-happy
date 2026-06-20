@@ -1721,7 +1721,8 @@ function frame(){const now=performance.now();if(last===null)last=now;
   if(trans){ edgeTalk=edgeJump=false; updateTransition(e); draw(e); return; }   // a door transition owns the loop
   if(started&&edgeTalk){edgeTalk=false;
     if(playing&&!Dialogue.active){
-      if(nearNpc){const npc=nearNpc.data; nearNpc.greet=0.5; Sound.sfx('talk'); Dialogue.start(npc, entryNode(npc));   // entry node BEFORE noting
+      if(nearNpc){const npc=nearNpc.data; nearNpc.greet=0.5; Sound.sfx('talk'); aiTarget=aiMove=null;   // drop any auto-nav push so walk-away-ends-dialogue can't self-cancel the greeting
+        Dialogue.start(npc, entryNode(npc));   // entry node BEFORE noting
         if(npc.name)Quests.note({type:'talk',npc:npc.name});}
       else if(nearPortal){ startPortal(nearPortal); }   // step through the door
     }}
