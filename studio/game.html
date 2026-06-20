@@ -105,6 +105,14 @@
   .srow{display:flex;align-items:center;gap:11px;margin:13px 0;font-size:14px}
   .srow>span:first-child{width:52px;color:#7a756c}
   .sval{width:40px;text-align:right;color:#b76b7d;font-variant-numeric:tabular-nums}
+  /* RuneScape-style per-channel on/off pill — click to toggle, slider still works */
+  .tog{flex:none;width:38px;padding:4px 0;font:inherit;font-size:12px;font-weight:700;text-align:center;
+    border-radius:9px;border:1px solid #cfe0cd;background:#eaf3e7;color:#7aa37e;cursor:pointer;
+    user-select:none;transition:.12s;letter-spacing:.3px}
+  .tog:active{transform:scale(.94)}
+  .tog.off{border-color:#e6c3c3;background:#f7e6e6;color:#c08a8a}
+  .srow.muted .sval{color:#c2b9ac}
+  .srow.muted input[type=range]{opacity:.5}
   #journal input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:6px;border-radius:4px;
     background:#ece2d0;outline:none;cursor:pointer}
   #journal input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;
@@ -342,10 +350,9 @@
         </section>
         <section class="jpage" id="page-settings" hidden>
           <div class="jh">Settings</div>
-          <div class="srow"><span>volume</span><input type="range" id="vol" min="0" max="100" value="70"><span id="volVal" class="sval">70%</span></div>
-          <div class="srow"><span>effects</span><input type="range" id="sfxvol" min="0" max="100" value="100"><span id="sfxVal" class="sval">100%</span></div>
-          <div class="srow"><span>music</span><input type="range" id="musicvol" min="0" max="100" value="42"><span id="musicVal" class="sval">42%</span></div>
-          <button class="mrow" id="muteRow"><span>sound</span><span id="muteState">on</span></button>
+          <div class="srow" id="rowVol"><span>volume</span><input type="range" id="vol" min="0" max="100" value="70"><span id="volVal" class="sval">70%</span><button class="tog" id="volTog" title="Mute everything">on</button></div>
+          <div class="srow" id="rowSfx"><span>effects</span><input type="range" id="sfxvol" min="0" max="100" value="100"><span id="sfxVal" class="sval">100%</span><button class="tog" id="sfxTog" title="Turn sound effects on/off">on</button></div>
+          <div class="srow" id="rowMusic"><span>music</span><input type="range" id="musicvol" min="0" max="100" value="42"><span id="musicVal" class="sval">42%</span><button class="tog" id="musicTog" title="Turn music on/off">on</button></div>
           <div class="jhint">arrows / WASD move · space hop<br>E talk · Esc journal · M mute</div>
           <div class="menuBtns">
             <button class="btn" id="restartBtn">restart ✿</button>
@@ -389,13 +396,13 @@
 // any studio/js/*.js so a reload actually loads the new code. (Deploys get fresh URLs
 // per commit, so this is purely a local-preview convenience.)
 import * as THREE from 'three';
-import { WORLD, initState, step, setBounds, setColliders } from './js/sim.js?v=3';
-import { Dialogue } from './js/dialogue.js?v=3';
-import * as Save from './js/save.js?v=3';
-import { Sound } from './js/audio.js?v=3';
-import { Quests } from './js/quests.js?v=3';
-import { Sky } from './js/sky.js?v=3';
-import { FX } from './js/fx.js?v=3';
+import { WORLD, initState, step, setBounds, setColliders } from './js/sim.js?v=4';
+import { Dialogue } from './js/dialogue.js?v=4';
+import * as Save from './js/save.js?v=4';
+import { Sound } from './js/audio.js?v=4';
+import { Quests } from './js/quests.js?v=4';
+import { Sky } from './js/sky.js?v=4';
+import { FX } from './js/fx.js?v=4';
 
 const canvas=document.getElementById('c');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
@@ -1761,7 +1768,9 @@ addEventListener('pointerdown',()=>Sound.resume(),{passive:true});
 // ---------- journal (book: Quests + Settings tabs, page-flip) ----------
 const journal=document.getElementById('journal'), pagesEl=document.getElementById('pages');
 const vol=document.getElementById('vol'), sfxvol=document.getElementById('sfxvol'),
-  musicvol=document.getElementById('musicvol'), muteRow=document.getElementById('muteRow');
+  musicvol=document.getElementById('musicvol');
+const volTog=document.getElementById('volTog'), sfxTog=document.getElementById('sfxTog'),
+  musicTog=document.getElementById('musicTog');
 const journalOpen=()=>journal.classList.contains('on');
 let curTab='quests', listDirty=true;
 
@@ -1769,12 +1778,15 @@ let curTab='quests', listDirty=true;
 function paintSlider(el){const v=+el.value; el.style.background=`linear-gradient(90deg,#e6b9c6 ${v}%,#ece2d0 ${v}%)`;}
 function setSlider(el,valId,frac){const v=Math.round(frac*100);
   el.value=v; document.getElementById(valId).textContent=v+'%'; paintSlider(el);}
+function setTog(btn,row,on){btn.textContent=on?'on':'off'; btn.classList.toggle('off',!on);
+  document.getElementById(row).classList.toggle('muted',!on);}
 function syncMenu(){
   setSlider(vol,'volVal',Sound.volume);
   setSlider(sfxvol,'sfxVal',Sound.sfxVolume);
   setSlider(musicvol,'musicVal',Sound.musicVolume);
-  document.getElementById('muteState').textContent=Sound.muted?'off':'on';
-  muteRow.classList.toggle('off',Sound.muted);}
+  setTog(volTog,'rowVol',!Sound.muted);      // master: the mute flag (slider keeps its value)
+  setTog(sfxTog,'rowSfx',Sound.sfxOn);       // effects: on == audible (level > 0)
+  setTog(musicTog,'rowMusic',Sound.musicOn);}// music:   on == audible (level > 0)
 
 // --- quest page rendering (from Quests.list()) ---
 function mk(tag,cls,txt){const e=document.createElement(tag); if(cls)e.className=cls; if(txt!=null)e.textContent=txt; return e;}
@@ -1860,7 +1872,10 @@ vol.addEventListener('change',()=>Sound.sfx('select'));      // preview overall 
 sfxvol.addEventListener('input',()=>{Sound.resume();Sound.setSfxVolume(+sfxvol.value/100);syncMenu();});
 sfxvol.addEventListener('change',()=>Sound.sfx('select'));   // preview the SFX level on release
 musicvol.addEventListener('input',()=>{Sound.resume();Sound.setMusicVolume(+musicvol.value/100);syncMenu();});
-muteRow.addEventListener('click',e=>{e.preventDefault();Sound.resume();Sound.toggle();syncMenu();});
+// per-channel on/off pills (RuneScape-style): click to silence/restore a channel; the slider still works.
+volTog.addEventListener('click',e=>{e.preventDefault();Sound.resume();Sound.toggle();syncMenu();});
+sfxTog.addEventListener('click',e=>{e.preventDefault();Sound.resume();Sound.toggleSfx();syncMenu();if(Sound.sfxOn)Sound.sfx('select');});
+musicTog.addEventListener('click',e=>{e.preventDefault();Sound.resume();Sound.toggleMusic();syncMenu();});
 document.getElementById('resumeBtn').addEventListener('click',e=>{e.preventDefault();closeJournal();});
 document.getElementById('restartBtn').addEventListener('click',e=>{e.preventDefault();Save.wipe();
   const swap=curScene!=='town', F=fadeEl();
