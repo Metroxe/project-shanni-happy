@@ -12,12 +12,12 @@
   "bounds": { "xmin": -38, "xmax": 38, "zmin": -68, "zmax": 30 },
   "spawn": { "x": -20, "z": -41 },
   "spawns": {
-    "from_petshop": { "x": -3, "z": 11.9, "face": 1 }
+    "from_petshop": { "x": -15.8, "z": -20, "face": 1 }
   },
   "portals": [
-    { "id": "to_petshop", "x": -3, "z": 11.4, "r": 1.8, "to": "petshop", "spawn": "from_town",
+    { "id": "to_petshop", "x": -15.8, "z": -20, "r": 2.0, "to": "petshop", "spawn": "from_town",
       "label": "the Pet Shop",
-      "door": { "x": -3, "z": 10.02, "face": "+z", "w": 1.8, "h": 3.1, "y": 0,
+      "door": { "x": -14, "z": -20, "face": "-x", "w": 1.8, "h": 3.1, "y": 4.5,
                 "panel": "b88a5e", "frame": "efe7d6", "window": "cfe0e6", "bell": true,
                 "awning": "9bb6c2", "sign": "PET SHOP", "signBg": "8fa6b2" } }
   ],
@@ -33,7 +33,8 @@
 
   "walls": [
     { "x": -25.3, "z": -17.4, "w": 0.5, "d": 39.6, "h": 0.6, "color": "bdc7b1", "kind": "hedge" },
-    { "x": -15.3, "z": -22.5, "w": 0.5, "d": 29.4, "h": 0.6, "color": "bdc7b1", "kind": "hedge" },
+    { "x": -15.3, "z": -30.1, "w": 0.5, "d": 14.2, "h": 0.6, "color": "bdc7b1", "kind": "hedge" },
+    { "x": -15.3, "z": -12.4, "w": 0.5, "d": 9.2, "h": 0.6, "color": "bdc7b1", "kind": "hedge" },
     { "x": -9.75, "z": 2.3, "w": 31, "d": 0.5, "h": 0.6, "color": "bdc7b1", "kind": "hedge" },
     { "x": 21.9, "z": 2.3, "w": 17, "d": 0.5, "h": 0.6, "color": "bdc7b1", "kind": "hedge" },
     { "x": 30.3, "z": -2.85, "w": 0.5, "d": 10.8, "h": 0.6, "color": "bdc7b1", "kind": "hedge" },
@@ -74,11 +75,11 @@
       "facade": { "bays": 4, "wall": "dfe2ea", "trim": "f4efe6", "window": "e6dcc8", "awning": "9bb6c2", "sign": "Apartments", "signBg": "8fa6b2" } },
 
     { "x": 5, "z": -22, "w": 38, "d": 24, "h": 16, "color": "d7c9c2", "faceDir": ["-x", "-z"],
-      "facade": { "bays": 6, "wall": "e7d3cc", "trim": "f4efe6", "window": "cfe0e6", "awning": "d99fa9", "sign": "Corner Market", "signBg": "c98f86" },
+      "facade": { "bays": 6, "wall": "e7d3cc", "trim": "f4efe6", "window": "cfe0e6", "awning": "d99fa9", "sign": "Pet Shop", "signBg": "c98f86", "noDoor": true },
       "entrances": [ { "x": -14.5, "z": -22 }, { "x": 0, "z": -9.5 }, { "x": 16, "z": -9.5 } ] },
 
     { "x": -10, "z": 7, "w": 28, "d": 6, "h": 10, "color": "ddd6e0", "faceDir": ["-z", "+z"],
-      "facade": { "bays": 5, "wall": "e3dce6", "trim": "f4efe6", "window": "e6dcc8", "awning": "b6a2ca", "sign": "Pet Shop", "signBg": "9c89b8" },
+      "facade": { "bays": 5, "wall": "e3dce6", "trim": "f4efe6", "window": "e6dcc8", "awning": "b6a2ca", "sign": "Toy Shop", "signBg": "9c89b8" },
       "entrances": [ { "x": -10, "z": 3.8 } ] },
     { "x": 22, "z": 7, "w": 15, "d": 6, "h": 11, "color": "d8d2cc", "faceDir": ["-z", "+z"],
       "facade": { "bays": 3, "wall": "e7ddcf", "trim": "f4efe6", "window": "d7e0cf", "awning": "c2a98c", "sign": "Hardware", "signBg": "c2a07a" },
@@ -183,7 +184,7 @@
       "tex": "out/chrees-down-paper.png",
       "poses": { "down": "out/chrees-down-paper.png", "curl": "out/chrees-curl-paper.png" },
       "rep": { "seq": ["down", "curl"], "beat": 0.72, "sfxOn": "curl" },
-      "x": -16.8, "z": -20, "h": 2.4,
+      "x": -19, "z": -28, "h": 2.4,
       "dialogue": {
         "start": "g1",
         "nodes": {
@@ -197,7 +198,7 @@
           ] },
           "t1":   { "text": "Easy — stay light on your feet. Keep moving and the bounce takes care of itself.", "next": "t2" },
           "t2":   { "text": "Hop everywhere you go, champ. Your legs remember it better than your head does.", "next": "menu" },
-          "area": { "text": "Quiet little block, but it grows on you. Adrian runs the pet shop just down past the stairs — good soul, always could use a hand.", "next": "menu" },
+          "area": { "text": "Quiet little block, but it grows on you. Adrian runs the pet shop right here on this street — good soul, always could use a hand.", "next": "menu" },
           "bye":  { "text": "Catch you later. Stay bouncy! ✿" }
         }
       }

@@ -20,11 +20,11 @@ await withGamePage(async (page, ctx) => {
   const townStat=await page.evaluate('cameraQA.static(1.0)');
   if(townStat.fails) fails.push(`town camera static fails=${townStat.fails} ${JSON.stringify(townStat.byReason)}`);
   const townDescend=await page.evaluate(`cameraQA.path([[-20,-20],[8,-3],[9.5,2.5],[9.5,9.5],[0,16]])`);
-  const townDoor=await page.evaluate(`cameraQA.path([[0,16],[-3,12.0],[-3,11.4],[0,16]])`);
+  const townDoor=await page.evaluate(`cameraQA.path([[-20,-30],[-17,-22],[-16,-20],[-20,-26]])`);
   if(townDescend.fails) fails.push(`town descent fails=${townDescend.fails} ${JSON.stringify(townDescend.byOcc)}`);
   if(townDoor.fails) fails.push(`town door-approach fails=${townDoor.fails} ${JSON.stringify(townDoor.byOcc)}`);
   console.log(`town static:${townStat.fails}/${townStat.cells}  descent:${townDescend.fails}  door-approach:${townDoor.fails}`);
-  await page.evaluate(`cameraQA.warp(-3,12.7)`); await page.waitForTimeout(220);
+  await page.evaluate(`cameraQA.warp(-16.5,-20)`); await page.waitForTimeout(220);
   await page.screenshot({path:join(OUT,'town_door.png')});
 
   await page.evaluate(`game.enter('petshop')`);
@@ -79,7 +79,8 @@ await withGamePage(async (page, ctx) => {
     const nearExit=await settle('to_town');
     const dbg=nearExit!=='to_town'?{dlg:game.dialogue().active, sc:game.scene(), pos:{x:+game.state().x.toFixed(2),z:+game.state().z.toFixed(2)}}:null;
     game.talk(); await new Promise(r=>setTimeout(r,1700)); const a=game.scene().cur;
-    game.goTo(-3,11.4); await new Promise(r=>setTimeout(r,2600));
+    game.goTo(-20,-30); await new Promise(r=>setTimeout(r,2200));   // walk up the road, away from the door
+    game.goTo(-16,-20); await new Promise(r=>setTimeout(r,2600));   // ...then back to the road door
     const nearTown=await settle('to_petshop');
     game.talk(); await new Promise(r=>setTimeout(r,1700)); const b=game.scene().cur;
     return {nearExit, afterExit:a, nearTown, afterReenter:b, dbg}; })()`);
