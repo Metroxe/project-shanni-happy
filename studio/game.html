@@ -555,7 +555,7 @@ const damp=(cur,tgt,tau,dt)=>tgt+(cur-tgt)*Math.exp(-dt/Math.max(tau,1e-4));
 // smoothed display pose: tweens between animation states so rapid direction
 // flips / start-stop / mode changes ease instead of snapping. Height stays
 // crisp (jumps feel responsive); lean & squash ease a touch more.
-const D={yW:0,sx:1,sy:1,rot:0}; let Dinit=false;
+const D={yW:0,sx:1,sy:1,rot:0}; let Dinit=false; let Dgy=null;  // Dgy: eased render-height so stepped stairs glide (never sinks below the true surface)
 function pose(s){
   if(s.mode==='air'){const sy=1+clamp(s.vy*0.022,-0.12,0.2);return{yW:s.y,sx:1/Math.sqrt(Math.max(sy,.4)),sy,rot:0};}
   if(s.mode==='walk'){const h=Math.abs(Math.sin(s.walkPhase));const sy=1+h*0.07-(1-h)*0.06;
@@ -619,8 +619,12 @@ function groundHeight(x,z){
   if(!ST) return 0;
   if(z<=ST.zTop) return H;                 // upper terrace (plaza/road/shops)
   if(z>=ST.zBot) return 0;                 // park
-  if(x>=ST.x0&&x<=ST.x1){                   // on the descending stairs → smooth ramp
-    const t=(z-ST.zTop)/(ST.zBot-ST.zTop); return H*(1-smooth(t)); }
+  if(x>=ST.x0&&x<=ST.x1){                   // on the descending stairs → stand ON the treads
+    // A smooth ramp here put her feet BELOW the stepped tread tops in the lower half, so the
+    // step she'd just left clipped across her legs. Snap to the SAME tread tops buildStairs
+    // draws (step i top = H - i*dy) so her feet always rest on a visible surface, never sunk.
+    const n=ST.steps, dz=(ST.zBot-ST.zTop)/n, dy=H/n;
+    const i=clampn(Math.floor((z-ST.zTop)/dz),0,n-1); return H-i*dy; }
   return H;                                 // plateau front edge beside the stairs (cliff top)
 }
 function zoneAxis(z){const a=z.axisDeg*Math.PI/180;return {fx:Math.sin(a),fz:-Math.cos(a)};}
@@ -1335,6 +1339,19 @@ window.__overlaps=()=>{ const B=SCENE.buildings||[], ST=SCENE.stairs, out=[];
     const ix=Math.min(a.x1,b.x1)-Math.max(a.x0,b.x0), iz=Math.min(a.z1,b.z1)-Math.max(a.z0,b.z0);
     if(ix>0.02&&iz>0.02)out.push({a:a.name,b:b.name,overlapX:+ix.toFixed(2),overlapZ:+iz.toFixed(2)}); }
   return out; };
+// STAIR GROUNDING AUDIT — the player's feet (groundHeight) must rest ON the stepped tread
+// tops the stairs DRAW, never below them. A smooth ramp through the steps put her feet under
+// the tread tops in the lower half, so the step she'd just left clipped across her legs. This
+// derives the expected tread top per step from the STAIRS spec (independently of how
+// groundHeight is implemented) and flags any sample SUNK below it (clip) — a ramp regression
+// fails this, the stepped grounding passes. []=she stands on every tread.
+window.__stairGrounding=()=>{ const ST=SCENE.stairs; if(!ST)return null;
+  const H=(SCENE.level&&SCENE.level.H)||0, n=ST.steps, dz=(ST.zBot-ST.zTop)/n, dy=H/n, EPS=0.05, out=[];
+  for(let zi=0; zi<=n*4; zi++){ const z=ST.zTop+(zi/(n*4))*(ST.zBot-ST.zTop)*0.999;
+    const i=Math.min(n-1,Math.max(0,Math.floor((z-ST.zTop)/dz))), treadTop=H-i*dy;
+    for(const x of [ST.x0+0.4,(ST.x0+ST.x1)/2,ST.x1-0.4]){ const gh=groundHeight(x,z);
+      if(gh<treadTop-EPS)out.push({x:+x.toFixed(1),z:+z.toFixed(2),gh:+gh.toFixed(2),treadTop:+treadTop.toFixed(2),sunk:+(treadTop-gh).toFixed(2)}); } }
+  return out; };
 // 3D INTERPENETRATION (CLIP) AUDIT — for interior fixtures (walls/door/counter/shelf/
 // tanks/cages/plants/lamps/sign), tagged with userData.fx. Two fixtures that overlap in
 // ALL THREE axes by > eps are passing THROUGH each other: a shelf board clipping a tank,
@@ -1705,7 +1722,11 @@ function draw(dt){
   D.sy =damp(D.sy, q.sy, 0.05, dt);
   D.rot=damp(D.rot,q.rot,0.09, dt);   // lean: eased most → direction flips swing
   const gy=groundHeight(S.x,S.z);
-  shen.position.set(S.x,gy+GROUND_EPS,S.z); faceYaw(shen);
+  // Ground is stepped on the stairs; ease the RENDER height down so a fast descent glides
+  // instead of hard-snapping each riser, but clamp to >= the true surface so a step can never
+  // poke up through her (no sink/clip). On flat ground gy is constant → this is a no-op.
+  if(Dgy==null)Dgy=gy; Dgy=Math.max(damp(Dgy,gy,0.05,dt),gy);
+  shen.position.set(S.x,Dgy+GROUND_EPS,S.z); faceYaw(shen);
   mesh.position.y=SHEN_H/2+D.yW; shen.scale.set(D.sx*transShenScale,D.sy*transShenScale,1); shen.rotation.z=D.rot;
   const k=clamp(D.yW/MAX_LIFT,0,1);
   shadow.position.set(S.x,gy+GROUND_EPS,S.z); const ss=1-0.5*k; shadow.scale.set(ss,ss,1);
