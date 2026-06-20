@@ -750,15 +750,18 @@ function makeFacade(bd,base,top,dir){
   // row so the player standing right against a tall slab doesn't face a big blank lower wall
   // (the plaza-north "blank wall + lone door" finding). The lower row skips the centre (door) bay.
   const bays=Math.max(2, f.bays || Math.min(7,Math.max(3,Math.round(faceLen/5)))), cellW=faceLen/bays, midBay=Math.floor(bays/2);
-  const rows = h>=9 ? [{y:h*0.62,skipMid:false},{y:h*0.34,skipMid:true}] : [{y:h*0.54,skipMid:false}];
+  // a building hosting a real portal/storefront door sets facade.noDoor so it doesn't draw a
+  // redundant fake door (and the lower row keeps its mid window instead of reserving the slot).
+  const drawDoor = !drop && !f.noDoor;
+  const rows = h>=9 ? [{y:h*0.62,skipMid:false},{y:h*0.34,skipMid:drawDoor}] : [{y:h*0.54,skipMid:false}];
   const winH=Math.min(h*0.20,2.3);
   for(const row of rows){ for(let i=0;i<bays;i++){ if(row.skipMid&&i===midBay)continue;
     const cx=-faceLen/2+cellW*(i+0.5), fw=Math.min(cellW*0.6,2.2);
     const frame=M(new THREE.BoxGeometry(fw,winH,0.06),trim,false,false); frame.position.set(cx,row.y,0.09); g.add(frame);
     const pane=M(new THREE.BoxGeometry(fw*0.78,winH*0.8,0.06),win,false,false); pane.position.set(cx,row.y,0.13); g.add(pane); } }
   // door on the middle bay, GROUNDED (bottom tucked just below base, not floating) + a knob.
-  // Skipped on a drop face (no walkable ground in front).
-  if(!drop){
+  // Skipped on a drop face (no walkable ground in front) or a noDoor facade (real portal door).
+  if(drawDoor){
     const dC=-faceLen/2+cellW*(midBay+0.5), dW=Math.min(cellW*0.5,1.6), dH=Math.min(h*0.34,2.6);
     const dr=M(new THREE.BoxGeometry(dW,dH,0.08),door,false,false); dr.position.set(dC,dH/2-0.1,0.10); g.add(dr);
     const knob=M(new THREE.BoxGeometry(0.08,0.08,0.06),trim,false,false); knob.position.set(dC+dW*0.32,dH*0.45,0.16); g.add(knob);

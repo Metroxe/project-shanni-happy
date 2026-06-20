@@ -49,7 +49,7 @@ await withGamePage(async (page, ctx) => {
   if(await page.evaluate('game.scene().cur')!=='town') fails.push('exit door did not return to town');
   if(!(townNow&&townNow.includes('calm'))) fails.push('overworld is NOT playing the overworld track after return (playing: '+townNow+') — the reported bug');
   console.log('back in town, now playing: '+townNow);
-  await doorTo(-3,11.4,'petshop');
+  await doorTo(-15.8,-20,'petshop');
   const shopAgain=await page.evaluate('window.audio.musicTrack');
   if(!(shopAgain&&shopAgain.includes('shop'))) fails.push('re-entering the shop did not switch back to the shop track (playing: '+shopAgain+')');
   console.log('shop again, now playing: '+shopAgain);
