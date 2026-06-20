@@ -354,10 +354,11 @@ believable objects (hedges / construction `barrier`), backfill with `buildBackdr
 | Blurry / mis-aligned building textures | big stretched maps → MODEL foreground structure as separated thin geometry, texture only for flat grain + distant backdrop; uniform texel density; `checks/texture-density.mjs` |
 | Hard seam where two textures/materials meet | adjacent maps don't blend → named sweep line; share a palette/tile, soften the join |
 | Sky/light seeping through a gap between adjacent shopfronts | facade gap to the void → close the gap / build city behind it (abyss rule); named sweep line |
-| Sky/void over the rooftops or between backdrop blocks (short/gapped skyline) | backdrop ring too short or its near rings gapped → near rings GAPLESS (`fill>1, jit 0`) + tall in `buildBackdrop()`; deterministic `checks/sky-leak.mjs` (`window.__skyLeak()` → `leaks:[]`, casts outward from each edge, needs a tall backstop within range) |
+| Sky/void over the rooftops or between backdrop blocks (short/gapped skyline) | backdrop ring too short or its near rings gapped → near rings GAPLESS (`fill>1, jit 0`) + tall in `buildBackdrop()`; deterministic `checks/sky-leak.mjs` (`window.__skyLeak()` → `leaks:[]`, casts outward from each edge) AND `checks/camera-abyss.mjs` (`window.__camAbyss()` → `leakCount:0`, raycasts the REAL zone camera at every reachable cell — catches a center-view gap the edge-cast misses) |
+| Sweep cries "ABYSS/void" but geometry is sound | the vision synthesizer mis-reads **fog-washed / flat-grey backdrop or a retaining wall** as void — TRUST `__camAbyss()` (0 void rays from every reachable cell) over the synthesizer; the fix (if any) is warming/de-flattening the distant palette (diorama-lens taste), NOT adding geometry |
 
 Debug hooks (all on `window`): `cameraQA.{static,framing,clip,path,transition,reach,walk,warp}`,
-`__overlaps()`, `__textureDensity()`, `__skyLeak()`, `__gh(x,z)`, `__probe(x,z)`, `__colliders(x,z,r)`,
+`__overlaps()`, `__textureDensity()`, `__skyLeak()`, `__camAbyss()`, `__gh(x,z)`, `__probe(x,z)`, `__colliders(x,z,r)`,
 `__freecam/__look` (free-cam for QA shots).
 
 ## Status / next

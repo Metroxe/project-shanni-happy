@@ -826,7 +826,10 @@ function buildProps(cols){
 // hits the void. No colliders, no shadows; fog fades the far rings. Deterministic.
 function buildBackdrop(){
   const b=SCENE.bounds; let seed=20260618>>>0; const rnd=()=>{seed=(seed*1664525+1013904223)>>>0; return seed/4294967296;};
-  const palette=['cdd3da','d8d0c6','d2c7cf','c9d2cb','dcd4c4','cbcfd6','d6cdc2','d0c8d2'];
+  // WARM pastel palette matched to the foreground city (was cool grey/mauve → read as a flat
+  // "grey curtain / void" in the open park, the recurring sweep complaint). Warm creams/tans/
+  // soft-rose so the distant skyline reads as a misty papercraft CITY, not grey nothing.
+  const palette=['ddd0c6','e3d5c4','dccabf','e0d4c6','d6c7ba','e5d8c6','d9cabd','decabf'];
   // The INNERMOST ring (pad 3) is GAPLESS: blocks OVERLAP (fill>1) on a regular grid (jit 0)
   // and rise to rooftop height, forming a continuous backstop right behind the play-space
   // buildings. This is what stops bright sky showing through a gap BETWEEN two foreground
@@ -1085,6 +1088,26 @@ window.__skyLeak=(opts)=>{ const b=SCENE.bounds, maxDist=(opts&&opts.maxDist)||7
     if(hitAt==null||hitAt>maxDist) leaks.push(Object.assign({why:'no-backstop'},rec));
     else if(maxTop<minTop) leaks.push(Object.assign({why:'too-short'},rec)); }
   return { leaks, probes, maxDist, minTop, backdropBlocks: outside.length }; };
+// CAMERA-RAYCAST ABYSS guard (studio/qa/checks/camera-abyss.mjs): the definitive "never the
+// abyss" test — at every reachable cell it sets the REAL zone camera and casts a grid of rays
+// through the frame; a ray that hits NOTHING is sky/void. The downward gameplay cameras should
+// see CITY+GROUND across the whole frame, so a void ray BELOW `ceiling` (ndc.y) = a reachable
+// view looking off the edge. (Catches what __skyLeak's edge-cast misses: a CENTER camera whose
+// look-direction has a gap, e.g. the park-center view.) Only a thin top strip of sky-dome above
+// `ceiling` is allowed. Returns the offending cells.
+window.__camAbyss=(opts)=>{ opts=opts||{}; const ceiling=opts.ceiling==null?0.55:opts.ceiling, step=opts.step||3;
+  const cells=opts.cells|| _reachable(step);
+  const rc=new THREE.Raycaster(); const meshes=[]; scene.traverse(o=>{ if(o.isMesh&&o.visible)meshes.push(o); });
+  const leaks=[]; let worst=null;
+  for(const [x,z] of cells){ window.cameraQA.warp(x,z); cam.updateMatrixWorld();
+    let lowestVoidY=9;
+    for(let ix=-0.8;ix<=0.8;ix+=0.2){ for(let iy=-0.3;iy<=0.9;iy+=0.1){
+      rc.setFromCamera({x:ix,y:iy},cam); rc.far=500;
+      if(!rc.intersectObjects(meshes,false).length){ if(iy<lowestVoidY)lowestVoidY=iy; } } }
+    if(lowestVoidY<ceiling){ const rec={x:+x.toFixed(1),z:+z.toFixed(1),lowestVoidY:+lowestVoidY.toFixed(2)};
+      leaks.push(rec); if(!worst||rec.lowestVoidY<worst.lowestVoidY)worst=rec; } }
+  window.cameraQA.warp(SCENE.spawn.x,SCENE.spawn.z);
+  return { leaks:leaks.slice(0,20), leakCount:leaks.length, cells:cells.length, ceiling, worst }; };
 
 
 async function build(){
