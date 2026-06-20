@@ -123,6 +123,7 @@ const DOME_FRAG=`uniform vec3 top; uniform vec3 hor; varying vec3 vDir;
 export const Sky = {
   ready:false, phase:0, dayLength:1440, group:null, dome:null, sun:null, moon:null,
   stars:null, clouds:[], dir:null, hemi:null, _scene:null, _broke:false, _arc:null,
+  interior:false, _interiorBg:new THREE.Color('#e7d9c2'),
   _pal:{top:new THREE.Color(),hor:new THREE.Color(),dir:new THREE.Color(),
         hs:new THREE.Color(),hg:new THREE.Color(),ct:new THREE.Color(),hi:2,co:1,st:0},
   _tmpDir:new THREE.Vector3(), _tmpDir2:new THREE.Vector3(), _tmpTgt:new THREE.Vector3(), _bg:new THREE.Color(),
@@ -224,7 +225,48 @@ export const Sky = {
     }catch(e){ if(!this._broke){this._broke=true; console.warn('Sky.update error (frozen):',e);} }
   },
 
+  // Interior mode: hide the whole outdoor sky (dome/sun/moon/stars/clouds all live
+  // under this.group) and swap to a warm, even indoor light + solid background, so
+  // a walled room never shows day/night sky through a gap. The day phase keeps
+  // advancing underneath (the clock stays right); _apply early-returns so it can't
+  // repaint outdoor colours over the interior. Reversible: setInterior(false)
+  // re-shows the sky and repaints the current time of day.
+  setInterior(on, cfg={}){
+    this.interior=!!on;
+    if(this.group) this.group.visible=!on;
+    // ⚠️ Colour values may arrive with OR without a leading '#'. THREE.Color silently
+    // parses a bare 'e7d9c2' as WHITE (not the intended tan) — exactly how an interior
+    // background went pitch-white. Normalise EVERY colour through C() before use.
+    const C=v=>{ v=v||''; return v[0]==='#'?v:'#'+v; };
+    if(this._broke){                                  // fallback path: just set bg/fog
+      if(this._scene){ const c=new THREE.Color(C(cfg.bg||'e7d9c2'));
+        this._scene.background=c; if(this._scene.fog)this._scene.fog.color.copy(c); }
+      return this.interior;
+    }
+    if(on){
+      this._interiorBg=new THREE.Color(C(cfg.bg||'e7d9c2'));
+      if(this._scene){ this._scene.background=this._interiorBg;
+        if(this._scene.fog){ this._scene.fog.color.copy(this._interiorBg);
+          this._scene.fog.near=cfg.fogNear??16; this._scene.fog.far=cfg.fogFar??70; } }
+      if(this.hemi){ this.hemi.color.set(C(cfg.hemiSky||'fff1dc'));
+        this.hemi.groundColor.set(C(cfg.hemiGround||'d8c4a8')); this.hemi.intensity=cfg.hemiI??2.3; }
+      if(this.dir){ this.dir.color.set(C(cfg.dirColor||'ffe7c4')); this.dir.intensity=cfg.dirI??0.55;
+        const dp=cfg.dirPos||[5,16,8]; this.dir.position.set(dp[0],dp[1],dp[2]);
+        if(this.dir.target){ this.dir.target.position.set(0,0,0); } }
+    } else {
+      this._apply(0);                                 // repaint the outdoor time of day
+    }
+    return this.interior;
+  },
+
   _apply(dt, cam){
+    // interior mode owns the lights/bg/fog (set in setInterior); just hold the
+    // background/fog colour each frame (FX can swap scene.background) and bail.
+    if(this.interior){
+      if(this._scene){ this._scene.background=this._interiorBg;
+        if(this._scene.fog)this._scene.fog.color.copy(this._interiorBg); }
+      return;
+    }
     const P=samplePalette(this.phase, this._pal);
     // dome + fog + background
     if(this.dome){ this.dome.material.uniforms.top.value.copy(P.top); this.dome.material.uniforms.hor.value.copy(P.hor); }

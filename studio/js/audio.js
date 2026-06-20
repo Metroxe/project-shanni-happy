@@ -16,7 +16,7 @@
 const CFG = {
   sfx: { hop: 0.34, land: 0.42, step: 0.09, stepSoft: 0.08, move: 0.3, talk: 0.42, select: 0.42,
          squeak: 0.34, quest: 0.42, questStep: 0.44, questDone: 0.5, book: 0.4, bookClose: 0.36, flip: 0.3,
-         fs: 0.4, lift: 0.18 },
+         fs: 0.4, lift: 0.18, door: 0.4, chirp: 0.26, bubble: 0.12 },
   blip: 0.17,
   water: 0.14,   // ambient fountain trickle ceiling (faded in by player proximity — a spatial world sound)
 };
@@ -34,8 +34,16 @@ const GAIN_CEIL = 0.8; // master bus gain when volume = 1
 const clamp01 = v => Math.max(0, Math.min(1, v));
 let ctx = null, bus = null, comp = null, sfxGain = null, musicGain = null;
 
-// background-music state: one looping AudioBufferSourceNode through its sub-bus.
-let musicBuf = null, musicSrc = null, musicURL = null, musicLoading = null;
+// background music: one looping AudioBufferSourceNode through the music sub-bus, plus
+// a PER-URL decoded-buffer cache so each scene/room can carry its OWN track. Switching
+// tracks crossfades; switching back to an already-decoded track is instant + gapless;
+// re-asking for the track that's already looping is a no-op (no restart, no seam).
+// musicURL = the DESIRED track (the active scene's); musicPlayingURL = the track the
+// live source is actually looping. Keeping them separate is what makes the switch
+// correct: we only no-op when the PLAYING track already matches, and we never stop the
+// old track without starting the new one.
+let musicSrc = null, musicURL = null, musicPlayingURL = null;
+const musicBufs = {}, musicLoads = {};            // url -> AudioBuffer / pending load
 let musicStarted = false, lastMusicVol = 0.42;   // remembers level across an off→on toggle
 
 // THREE independent levels, each on its own localStorage key so they survive
@@ -91,14 +99,15 @@ function rampMusic(to, dur = 0.6) {
 
 // (re)start the looping source from the decoded buffer. AudioBufferSourceNode is
 // single-use, so each (re)start makes a fresh node. loop=true → gapless repeat.
-function playMusic(fadeIn) {
-  if (!musicBuf || !musicGain) return;
+function playMusic(buf, fadeIn, url) {
+  if (!buf || !musicGain) return;
   if (musicSrc) { try { musicSrc.stop(); } catch (e) {} musicSrc.disconnect(); musicSrc = null; }
   musicSrc = ctx.createBufferSource();
-  musicSrc.buffer = musicBuf; musicSrc.loop = true;
+  musicSrc.buffer = buf; musicSrc.loop = true;
   musicSrc.connect(musicGain);
   musicSrc.start();
-  if (fadeIn) { musicGain.gain.setValueAtTime(0.0001, ctx.currentTime); rampMusic(musicVol, 1.4); }
+  musicPlayingURL = url || musicURL;
+  if (fadeIn) { musicGain.gain.setValueAtTime(0.0001, ctx.currentTime); rampMusic(musicVol, 1.0); }
   else musicGain.gain.value = musicVol;
 }
 
@@ -234,6 +243,28 @@ const SFX = {
     note({ type: 'sine', f: semi(-12), f2: semi(-6), dur: 0.17, gain: v * 0.7, atk: 0.02 });
     noise({ dur: 0.12, gain: v * 0.4, freq: 600, q: 0.6 });
   },
+  // a shop door: a little brass bell jingle (two-three bright dings) + a soft wood
+  // latch. Played when stepping through a loading-zone door (player-driven, full).
+  door(v) {
+    [19, 24, 28].forEach((s, i) => note({ type: 'sine', f: semi(s), t0: i * 0.05, dur: 0.26, gain: v * 0.45, atk: 0.003 }));
+    note({ type: 'triangle', f: semi(22), t0: 0.02, dur: 0.2, gain: v * 0.25 });
+    noise({ t0: 0.015, dur: 0.07, gain: v * 0.4, freq: 480, q: 0.6 });   // wood thunk
+  },
+  // a tiny bird tweet — a quick bright up-slur. Spatial: gated by the player's
+  // proximity to the birdcage in the pet shop (mul passed through Sound.sfx).
+  chirp(v) {
+    note({ type: 'triangle', f: semi(28), f2: semi(34), dur: 0.07, gain: v * 0.7, atk: 0.004 });
+    note({ type: 'sine',     f: semi(33), f2: semi(38), t0: 0.06, dur: 0.08, gain: v * 0.45 });
+  },
+  // a single soft AQUARIUM bubble — a low rounded "bloop" that rises + pops, with a
+  // little random pitch so a stream never machine-guns. Deliberately gentle + far
+  // quieter than the fountain's water rush: a tank is not a fountain. Spatial: fired
+  // by the scene's `ambients` loop, gated by proximity (mul passed through).
+  bubble(v) {
+    const f = 150 + rand(-25, 70);
+    note({ type: 'sine', f: f * 0.85, f2: f * 2.0, dur: 0.10, gain: v, atk: 0.004 });
+    if (Math.random() < 0.4) note({ type: 'sine', f: f * 1.3, f2: f * 2.6, t0: 0.05, dur: 0.07, gain: v * 0.5 });
+  },
 };
 
 // ---- dialogue "wah" voice ----
@@ -337,6 +368,7 @@ export const Sound = {
   get musicVolume() { return musicVol; },
   get musicOn() { return musicVol > 0; },        // derived: "on" == audible
   get musicPlaying() { return !!musicSrc; },
+  get musicTrack() { return musicSrc ? musicPlayingURL : null; },   // the URL actually looping now (debug/QA)
 
   // read-only live gains, for verify-in-preview (see CLAUDE.md "Verify in preview")
   get levels() { return { ctx: ctx && ctx.state, bus: bus ? bus.gain.value : null,
@@ -349,12 +381,23 @@ export const Sound = {
   //   autoplay=false → "arm" only: set the URL + preload, but don't start the
   //   loop. The music slider (setMusicVolume) still starts it on demand. Used in
   //   dev so the track stays silent until you ask for it; prod passes true.
+  // Set the active scene's track + start/switch to it. If that track is ALREADY the one
+  // looping → no-op (no restart, no seam). If music is currently audible (a source is
+  // playing) OR the caller asks to autoplay, switch to the new track (the old source is
+  // replaced as the new one fades in — never stopped-without-start). If music is off and
+  // autoplay is false, just ARM the url so turning music on later plays THIS scene's track.
   startMusic(url, autoplay = true) {
     if (!ensure()) return;
     if (ctx.state === 'suspended') ctx.resume();
     if (url) musicURL = url;
     musicStarted = true;
-    loadMusicBuffer().then(buf => { if (buf && autoplay && musicVol > 0 && musicStarted) playMusic(true); });
+    const want = musicURL;
+    if (musicSrc && musicPlayingURL === want) return;            // already looping the right track
+    const shouldPlay = musicVol > 0 && (musicSrc != null || autoplay);
+    if (!shouldPlay) return;                                     // armed only — turning music on will start `want`
+    loadMusicBuffer(want).then(buf => {
+      if (buf && musicVol > 0 && musicStarted && musicURL === want) playMusic(buf, true, want);  // replaces the old source
+    });
   },
 
   stopMusic() { stopMusicNode(0.5); },
@@ -369,7 +412,7 @@ export const Sound = {
     if (ctx.state === 'suspended') ctx.resume();
     if (musicVol <= 0) stopMusicNode(0.4);                          // off
     else if (musicSrc) rampMusic(musicVol, 0.25);                   // already playing → re-level
-    else if (musicStarted) loadMusicBuffer().then(buf => { if (buf && musicVol > 0) playMusic(true); }); // was off → start
+    else if (musicStarted) { const want = musicURL; loadMusicBuffer(want).then(buf => { if (buf && musicVol > 0 && musicURL === want) playMusic(buf, true, want); }); } // was off → start the active scene's track
     return musicVol;
   },
   // convenience on/off that remembers the last audible level
@@ -389,23 +432,25 @@ export const Sound = {
   },
 };
 
-// fetch + decode the loop ONCE; cached. Returns the buffer (or null on failure).
-function loadMusicBuffer() {
-  if (musicBuf) return Promise.resolve(musicBuf);
-  if (musicLoading) return musicLoading;
-  if (!musicURL || !ctx) return Promise.resolve(null);
-  musicLoading = fetch(musicURL)
+// fetch + decode a track ONCE per URL; cached in musicBufs. Returns the buffer (or
+// null on failure — a missing/undecodable track degrades to "no music", never a crash).
+function loadMusicBuffer(url) {
+  url = url || musicURL;
+  if (!url || !ctx) return Promise.resolve(null);
+  if (musicBufs[url]) return Promise.resolve(musicBufs[url]);
+  if (musicLoads[url]) return musicLoads[url];
+  musicLoads[url] = fetch(url)
     .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.arrayBuffer(); })
     .then(ab => ctx.decodeAudioData(ab))
-    .then(buf => { musicBuf = buf; musicLoading = null; return buf; })
-    .catch(e => { musicLoading = null; console.warn('[music] load failed:', (e && e.message) || e); return null; });
-  return musicLoading;
+    .then(buf => { musicBufs[url] = buf; delete musicLoads[url]; return buf; })
+    .catch(e => { delete musicLoads[url]; console.warn('[music] load failed (' + url + '):', (e && e.message) || e); return null; });
+  return musicLoads[url];
 }
 
 // fade out + stop the current source (clock-accurate, no click); safe if none.
 function stopMusicNode(fade = 0.5) {
   if (!musicSrc || !ctx) return;
-  const s = musicSrc; musicSrc = null;
+  const s = musicSrc; musicSrc = null; musicPlayingURL = null;
   rampMusic(0.0001, fade);
   try { s.stop(ctx.currentTime + fade + 0.05); } catch (e) {}
   s.onended = () => { try { s.disconnect(); } catch (e) {} };

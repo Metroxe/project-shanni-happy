@@ -1,0 +1,105 @@
+{
+  "interior": true,
+  "music": "out/music/shop.ogg",
+  "ground": "c9b48f",
+  "bounds": { "xmin": -6.3, "xmax": 6.3, "zmin": -7.2, "zmax": 1.5 },
+  "spawn": { "x": -4.6, "z": -5.9 },
+  "spawns": {
+    "from_town": { "x": -4.6, "z": -5.9, "face": 1 }
+  },
+
+  "sky": { "bg": "e8cba2", "hemiSky": "fff1dc", "hemiGround": "d8c4a8", "hemiI": 2.4,
+           "dirColor": "ffe7c4", "dirI": 0.5, "fogNear": 22, "fogFar": 120 },
+
+  "room": {
+    "x": [-7.2, 7.2], "zBack": -8.3, "zFront": 3.0,
+    "floor": "d8bd97", "wall": "cdd9cf", "trim": "efe7d6", "base": "bfb09a",
+    "wallH": 4.9,
+    "lamps": [ { "x": -2.5, "z": -3.5 }, { "x": 3.5, "z": -3.0 } ]
+  },
+
+  "props": [
+    { "type": "rug", "x": 0.2, "z": -3.3, "w": 6.4, "d": 4.2, "color": "c98f86", "color2": "e0bcc5" },
+
+    { "type": "shelf", "x": 3.0, "z": -7.7, "w": 8.0, "d": 0.7, "h": 3.7, "color": "c2a07a", "board": "d9c3a3", "rows": 2 },
+    { "type": "tank", "x": 0.4, "z": -7.7, "y": 0.6, "w": 1.9, "h": 1.0, "d": 0.6, "water": "8fc6d8", "frame": "b7a890" },
+    { "type": "tank", "x": 3.0, "z": -7.7, "y": 0.6, "w": 1.9, "h": 1.0, "d": 0.6, "water": "8fd0bc", "frame": "b7a890" },
+    { "type": "tank", "x": 5.6, "z": -7.7, "y": 0.6, "w": 1.9, "h": 1.0, "d": 0.6, "water": "9cc0e0", "frame": "b7a890" },
+    { "type": "tank", "x": 1.7, "z": -7.7, "y": 2.1, "w": 1.9, "h": 1.0, "d": 0.6, "water": "94c9d2", "frame": "b7a890" },
+    { "type": "tank", "x": 4.3, "z": -7.7, "y": 2.1, "w": 1.9, "h": 1.0, "d": 0.6, "water": "a6c9e6", "frame": "b7a890" },
+
+    { "type": "sign", "x": 1.2, "z": -8.0, "y": 4.2, "w": 5.2, "h": 0.9, "text": "J & M PET SHOP", "bg": "9c89b8", "ink": "f4efe6" },
+
+    { "type": "counter", "x": 2.1, "z": -6.0, "w": 6.6, "d": 0.95, "h": 1.08, "color": "c2a07a", "top": "e4d4bd", "kick": "ad8e6c" },
+    { "type": "register", "x": 3.7, "z": -6.0, "color": "b6a2ca", "color2": "efe7d6" },
+    { "type": "critterbox", "x": 0.5, "z": -6.0 },
+
+    { "type": "shelf", "x": -6.7, "z": -4.4, "w": 5.2, "d": 0.6, "h": 3.0, "color": "c2a07a", "board": "d9c3a3", "rows": 2, "rot": 1.5708 },
+    { "type": "tank", "x": -6.6, "z": -3.2, "y": 1.75, "w": 1.7, "h": 0.9, "d": 0.6, "water": "8fd0bc", "frame": "b7a890", "rot": 1.5708 },
+    { "type": "tank", "x": -6.6, "z": -5.5, "y": 1.75, "w": 1.7, "h": 0.9, "d": 0.6, "water": "9cc0e0", "frame": "b7a890", "rot": 1.5708 },
+
+    { "type": "birdcage", "x": 5.2, "z": -1.4, "scale": 1.0, "bird": "f2c75a" },
+    { "type": "plant", "x": -5.7, "z": 0.4, "scale": 1.05 },
+    { "type": "hangplant", "x": -5.9, "z": -2.4, "drop": 1.2 },
+    { "type": "hangplant", "x": 6.1, "z": -5.3, "drop": 1.0 },
+
+    { "type": "mat", "x": -4.6, "z": -7.0, "w": 2.1, "d": 1.1, "color": "b6a2ca" }
+  ],
+
+  "portals": [
+    { "id": "to_town", "x": -4.6, "z": -6.9, "r": 1.7, "to": "town", "spawn": "from_petshop",
+      "label": "the street",
+      "door": { "x": -4.6, "z": -8.08, "face": "+z", "w": 1.7, "h": 3.0,
+                "panel": "b88a5e", "frame": "efe7d6", "window": "cfe0e6", "bell": true } }
+  ],
+
+  "ambients": [
+    { "type": "chirp",  "x": 5.2, "z": -1.4, "every": [2.6, 5.4] },
+    { "type": "bubble", "x": 3.0, "z": -7.4, "every": [0.35, 1.1] },
+    { "type": "bubble", "x": -6.3, "z": -4.4, "every": [0.45, 1.4] }
+  ],
+
+  "npcs": [
+    {
+      "name": "Adrian",
+      "tex": "out/adrian-paper.png",
+      "x": 1.6, "z": -6.6, "h": 2.3,
+      "quest": "q_hamsters",
+      "dialogue": {
+        "start": "intro",
+        "nodes": {
+          "intro":  { "text": "Oh! Hello there — welcome to the shop. I'm Adrian, I mind the place.", "next": "intro2" },
+          "intro2": { "text": "I'm in a bit of a flap, honestly. I left the hamster cage open and... well.", "next": "intro3" },
+          "intro3": { "text": "Five of my hamsters slipped out and scattered all over town. I can't chase them myself.", "next": "offer" },
+          "offer":  { "text": "You're so quick on your feet — would you help me round up my five little ones?", "choices": [
+            { "label": "Of course I'll help!", "next": "accept" },
+            { "label": "Where might they be?", "next": "hint" },
+            { "label": "Maybe later.",         "next": "later" }
+          ] },
+          "accept": { "text": "Oh, thank you, truly! Bring each one back here to me — gently, they're shy little things.", "action": "start:q_hamsters", "next": "hint" },
+          "hint":   { "text": "They love warm corners — try the plaza, along the main street, and out in the park. Listen for tiny squeaks!" },
+          "later":  { "text": "That's alright. I'll be right here behind the counter if you change your mind." },
+          "progress": { "text": "Any luck with my little escapees? They're awfully quick, I know.", "choices": [
+            { "label": "Still looking!", "next": "progAck" },
+            { "label": "Where again?",   "next": "hint" }
+          ] },
+          "progAck": { "text": "Thank you for trying. Every one you bring back is a weight off my heart." },
+          "ready":   { "text": "You found them ALL? Oh — come here, you fuzzy little troublemakers!", "next": "ready2" },
+          "ready2":  { "speaker": "Shen", "text": "Every last hamster, safe and sound!", "next": "ready3" },
+          "ready3":  { "text": "I can't thank you enough. The shop feels whole again — you're always welcome here. ✿" },
+          "done":    { "text": "There you are! The hamsters keep squeaking for you from their cage. Thank you again, friend. ✿" }
+        }
+      }
+    }
+  ],
+
+  "zones": [
+    { "id": "shop",
+      "center": [0, -3.4], "axisDeg": 0, "halfLen": 11, "halfWid": 11,
+      "height": 4.9, "back": 9.2, "side": 0, "lookAhead": 0.3, "lookY": 1.25,
+      "fov": 57, "pitchBias": -0.05, "follow": 6.0, "blendIn": 0.6 }
+  ],
+
+  "collectibles": [],
+  "quests": []
+}
