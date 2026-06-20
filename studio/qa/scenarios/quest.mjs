@@ -1,29 +1,14 @@
-// Fresh-context end-to-end test of the hamster quest now that Adrian lives INSIDE
-// the pet shop: enter shop → talk Adrian → accept → collect 5 hamsters in town →
-// return to the shop → talk Adrian → quest complete. Run: node studio/qa_quest.mjs
-import { chromium } from 'playwright';
-import http from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { existsSync, statSync } from 'node:fs';
-import { extname, join, normalize, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
-const HERE=dirname(fileURLToPath(import.meta.url));
-const PORT=8792, TYPES={'.html':'text/html','.js':'text/javascript','.json':'application/json','.png':'image/png','.ogg':'audio/ogg'};
-const server=http.createServer(async(req,res)=>{let p=decodeURIComponent(req.url.split('?')[0]);if(p==='/')p='/game.html';const fp=normalize(join(HERE,p));if(!existsSync(fp)||!statSync(fp).isFile()){res.writeHead(404);return res.end();}res.writeHead(200,{'content-type':TYPES[extname(fp)]||'application/octet-stream'});res.end(await readFile(fp));});
-await new Promise(r=>server.listen(PORT,r));
-const browser=await chromium.launch({args:['--enable-unsafe-swiftshader']});
-const fails=[];
-const log=(...a)=>console.log(...a);
-try{
-  const page=await browser.newPage({viewport:{width:1280,height:820}});
-  const errs=[]; page.on('pageerror',e=>errs.push(e.message));
-  await page.goto(`http://localhost:${PORT}/game.html`,{waitUntil:'load'});
-  await page.waitForFunction('window.__ready===true');
+// SCENARIO: hamster quest end-to-end now that Adrian lives INSIDE the pet shop — enter
+// shop → talk Adrian → accept → collect 5 hamsters in town → return → quest complete.
+// Run: node studio/qa/scenarios/quest.mjs
+import { withGamePage } from '../harness.mjs';
+
+const fails=[]; const log=(...a)=>console.log(...a);
+await withGamePage(async (page, ctx) => {
   await page.evaluate(`(()=>{__startAuto&&__startAuto();game.wipe();game.start(true);})()`);
   await page.waitForTimeout(250);
 
-  // chat helper: advance the conversation (picking choice 0 when a menu opens) until
-  // it closes, so movement isn't left gated by an open dialogue box.
+  // advance the conversation (picking choice 0 when a menu opens) until it closes
   const chatToEnd=async(cap=20)=>{ for(let i=0;i<cap;i++){ const a=await page.evaluate(`game.dialogue().active`);
     if(!a && i>0) return true; await page.evaluate(`game.talk()`); await page.waitForTimeout(300); } return false; };
 
@@ -33,7 +18,7 @@ try{
   await page.waitForTimeout(1500);
   const near=await page.evaluate(`game.dialogue().near`);
   if(near!=='Adrian') fails.push('cannot reach Adrian to start the quest (near='+near+')');
-  await chatToEnd();                   // intro→intro2→intro3→offer→[pick accept]→hint→end
+  await chatToEnd();
   await page.waitForTimeout(200);
   const dlgClosed=await page.evaluate(`!game.dialogue().active`);
   const started=await page.evaluate(`game.quests().some(q=>q.status==='active')`);
@@ -63,9 +48,10 @@ try{
   await chatToEnd();
   const done=await page.evaluate(`game.quests().some(q=>q.id==='q_hamsters'&&q.status==='done')`);
   if(!done) fails.push('quest did not complete after returning the hamsters to Adrian');
-  log('quest done:',done, JSON.stringify(await page.evaluate(`game.quests()`)));
+  log('quest done:',done);
 
-  if(errs.length) fails.push('page errors: '+errs.join(' | '));
-}finally{ await browser.close(); await new Promise(r=>server.close(r)); }
+  if(ctx.pageErrors.length) fails.push('page errors: '+ctx.pageErrors.join(' | '));
+}, { start: false });
+
 console.log(fails.length? '\n❌ QUEST QA FAILED:\n - '+fails.join('\n - ') : '\n✓ quest end-to-end QA clean');
 process.exit(fails.length?1:0);
