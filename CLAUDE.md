@@ -360,6 +360,7 @@ audit alone for these.
 | Windows/door sunk into ground | building `base`=`groundHeight`; box `bottom=base` (NO downward extension) |
 | Dark squares / mottled patch / flicker on a park-edge wall | box extended below base INTO the retaining wall (vertical z-fight) → `bottom=base` |
 | Two buildings/stairs flicker where they meet | overlapping footprints → `window.__overlaps()` must be `[]`; separate them |
+| Player clips THROUGH the steps going down stairs | `groundHeight` returned a SMOOTH RAMP through STEPPED stair boxes → her feet sat up to ~2 risers BELOW the tread tops in the lower half, so the step behind clipped her legs → snap grounding to the SAME tread tops the builder draws (`H - floor((z-zTop)/dz)*dy`); ease the RENDER height down (clamped `>=` true surface, never below) so descents glide without per-step snap. Guarded by `checks/stair-grounding.mjs` (`window.__stairGrounding()`=`[]`). General class: a billboard's grounding height must match the VISIBLE surface beneath her, never below it |
 | Road/plaza/sidewalk shimmer seam | coplanar surfaces same height → distinct per-kind `y`-eps (+ `lift`) |
 | Stray white/cream outline lines | `EdgesGeometry` on the wrong thing → `edge=false` on buildings + rounded/small props (keep only as deliberate die-cut) |
 | "Invisible circle" blocks a path | coarse box collider (`r=0.5·min(w,d)` → r=2 bulge) → tight perimeter ring (~0.55); confirm with `cameraQA.walk` |

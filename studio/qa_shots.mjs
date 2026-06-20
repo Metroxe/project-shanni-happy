@@ -66,7 +66,7 @@ const LOOKS = [
   ['detail-fountain', -20, 1.2, -50, 150, 16, 7],
   ['detail-stairs', 9.5, 2.5, 6, 250, 16, 12],   // stairs from the side (rails clip?)
   ['detail-playground', -15, 1, 17, 160, 14, 10],
-  ['detail-storefront', 5, 5.5, -10, 5, 6, 15],  // Corner Market south facade (windows/door on ground?)
+  ['detail-storefront', -14, 5.8, -20, 270, 8, 10],  // PET SHOP storefront door on the Corner Market road (-x) face
   ['detail-lamp', -16.6, 2.5, -14, 110, 8, 6],   // a street lamp
   ['detail-corner-bld', -14, 5, -9, 200, 8, 16], // big building inside-corner base
 ];

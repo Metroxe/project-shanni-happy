@@ -13,9 +13,28 @@ Everything reaches `main` through a **pull request** that must pass the **`smoke
 
 Repo: `Metroxe/project-shanni-happy`.
 
-**Run it through.** Narrate each step; don't pause for routine confirmations (staging,
-opening the PR, merging your own green PR). Stop only for real decisions: ambiguous scope,
-unexpected diffs, a failing check, or a peer session in flight.
+**Run it through, silently.** Do NOT narrate each step — work quietly and end with the
+one-line verdict in Phase 5. Don't pause for routine confirmations (staging, opening the
+PR, merging your own green PR). Keep every QA gate below — that's the work; run it, just
+don't narrate it.
+
+**When to stop and come to the user — the recoverable-vs-catastrophic line.** You're the
+engineer in charge of this deploy. Anything you can cleanly recover from, you handle
+yourself without asking:
+
+- A red `smoke` check or a QA failure → read the log, fix in the worktree, push, re-watch.
+- Branch fell behind `main` → read the incoming diff, then `gh pr update-branch`.
+
+Stop and ask ONLY when getting it wrong is irreversible or catastrophic:
+
+- A **save-breaking change you're unsure about** — shipping it without bumping
+  `SAVE_VERSION` wipes every player's progress and can't be undone (see Phase 1 step 3).
+- A peer already landed the same work, or an open PR / in-flight deploy collides.
+- It would require pushing to `main` directly or bypassing the `smoke` gate (never do this).
+- You're genuinely stuck — no path forward you can stand behind.
+
+The test, when in doubt: *can I cleanly undo or fix this myself if it goes wrong?* Yes → do
+it. No → it's the user's call; surface it.
 
 ## Phase 0 — Pre-flight & peer detection (always)
 
@@ -128,13 +147,16 @@ gh run watch $(gh run list -R Metroxe/project-shanni-happy --workflow=deploy.yml
 ```
 On failure → `gh run view <id> --log-failed`, surface it.
 
-## Phase 5 — Verify live & report
+## Phase 5 — Verify live & report (one line)
 
 ```sh
 curl -sI https://metroxe.github.io/project-shanni-happy/ | head -1     # expect HTTP/2 200
 ```
-Spot-check the deployed `game.html` contains your change if useful. Report: PR # + URL,
-`smoke` result, deploy run, live URL, and what shipped.
+Spot-check the deployed `game.html` contains your change if useful. Then end with **one
+line**: the goal restated + verdict + live URL — no table, no step recap. E.g. *"Shipped —
+pet-shop music live at https://metroxe.github.io/project-shanni-happy/ (smoke green, QA
+clean)."* Keep PR #, run IDs, and detail in your back pocket; surface them only on a failure
+or if asked.
 
 ## Phase 6 — Stay in the worktree (refresh, don't re-branch)
 
@@ -143,10 +165,9 @@ Only when in a worktree **and** the tree is clean:
 git fetch origin main -q
 git reset --hard origin/main      # branch now sits at the merged main tip
 ```
-Narrate: *"Refreshed `<branch>` to merged `main` (`<sha>`) — staying in this worktree;
-further work stacks here and the next /deploy re-PRs the same branch."* The remote branch
-was deleted on merge, so the next `git push -u origin HEAD` opens a clean new PR off the
-same name.
+Do this silently — no need to narrate the refresh. The remote branch was deleted on merge,
+so the next `git push -u origin HEAD` opens a clean new PR off the same name. (Standalone
+`/deploy` leaves the worktree in place for more work; ending the session is `/done`'s job.)
 
 ## Guards
 - Clean tree only for the refresh; worktree only (never touch `main` in the primary checkout).

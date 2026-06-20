@@ -41,7 +41,7 @@ await withGamePage(async (page, ctx) => {
   log('current step after collecting:',step);
 
   // 3) return to the shop and hand them in → quest complete
-  await page.evaluate(`(()=>{cameraQA.warp(-3,11.4);game.useDoor();})()`);
+  await page.evaluate(`(()=>{cameraQA.warp(-16.5,-20);game.useDoor();})()`);
   await page.waitForTimeout(1600);
   await page.evaluate(`(()=>{cameraQA.warp(1.6,-3.0);game.goTo(1.6,-6.6);})()`);
   await page.waitForTimeout(1500);
