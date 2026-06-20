@@ -829,10 +829,15 @@ function buildBackdrop(){
   // ends now reveal backdrop city, not sky. Overlap z-fight at this distance is invisible.
   // Outer rings (gapped, taller) add skyline depth above it. South gets extra pad because the
   // park camera dollies far south, so backdrop must stay BEHIND it, never between it and the park.
-  const rings=[{pad:3, step:5, h:[20,24], fill:1.7, jit:0},
-               {pad:9, step:8.5, h:[10,19], fill:0.55, jit:3},
-               {pad:21, step:12, h:[14,28], fill:0.55, jit:3},
-               {pad:35, step:16, h:[19,34], fill:0.55, jit:3}];
+  // The near TWO rings are now BOTH gapless (fill>1, jit 0) and TALL, so a near-horizontal
+  // outward look hits a continuous city wall, never sky between blocks or over a short roofline
+  // (the visual-sweep "SKY-GAP / over-rooftop abyss" finding: the old inner ring topped at 24 and
+  // the 2nd ring was gapped+short at 10-19, so sky leaked between its blocks just above ring 1).
+  // The outer two add a taller, only-lightly-gapped silhouette for depth; fog fades them.
+  const rings=[{pad:3,  step:5,  h:[28,34], fill:1.7,  jit:0},
+               {pad:9,  step:8,  h:[26,36], fill:1.35, jit:0},
+               {pad:20, step:12, h:[26,42], fill:0.95, jit:2},
+               {pad:34, step:16, h:[30,48], fill:0.72, jit:3}];
   for(const rg of rings){
     const x0=b.xmin-rg.pad, x1=b.xmax+rg.pad, z0=b.zmin-rg.pad, z1=b.zmax+rg.pad+18;
     const place=(x,z)=>{ const w=rg.step*rg.fill*(0.9+0.2*rnd()), d=rg.step*rg.fill*(0.9+0.2*rnd()), h=rg.h[0]+(rg.h[1]-rg.h[0])*rnd();
@@ -1047,6 +1052,34 @@ window.__items=()=>{ const out=[];
     out.push({kind:'building', x:b.x, z:b.z, y:groundHeight(b.x,b.z), size:Math.max(b.w,b.d,b.h), w:b.w, d:b.d, h:b.h, face:fd,
       label:'bld_'+((b.facade&&b.facade.sign)||i).toString().replace(/\s+/g,'')}); });
   return out; };
+// SKY-LEAK / ABYSS guard (studio/qa/checks/sky-leak.mjs): the world must be ringed by a
+// continuous, tall backdrop so no outward sightline from a play-edge hits sky/void. From each
+// of 8 perimeter points (4 edge-mids + 4 corners) we march OUTWARD (the direction a player
+// standing at that edge faces toward the world boundary) and require a backdrop/filler block
+// within `maxDist` whose top is ≥ `minTop`. A gap (no block) or a too-short backstop = a leak —
+// exactly the visual-sweep "SKY-GAP / over-rooftop abyss" finding (short 24-tall inner ring +
+// gapped 2nd ring). Geometric + cheap; mirrors what a player near each edge actually sees
+// (NOT the cross-map flat freecam angle, which fog handles at distance).
+window.__skyLeak=(opts)=>{ const b=SCENE.bounds, maxDist=(opts&&opts.maxDist)||70, minTop=(opts&&opts.minTop)||24, pad=1.5;
+  const outside=[]; scene.traverse(o=>{ if(!o.isMesh||!o.geometry)return; const p=o.position,g=o.geometry;
+    g.computeBoundingBox&&g.computeBoundingBox(); const bb=g.boundingBox; if(!bb)return;
+    const w=(bb.max.x-bb.min.x)*o.scale.x,h=(bb.max.y-bb.min.y)*o.scale.y,d=(bb.max.z-bb.min.z)*o.scale.z,topY=p.y+bb.max.y*o.scale.y;
+    if((p.x<b.xmin-pad||p.x>b.xmax+pad||p.z<b.zmin-pad||p.z>b.zmax+pad)&&h>4)
+      outside.push({x:p.x,z:p.z,topY,w,d}); });
+  const cx=(b.xmin+b.xmax)/2, cz=(b.zmin+b.zmax)/2;
+  const pts=[['N',cx,b.zmin+2,0,-1],['S',cx,b.zmax-2,0,1],['E',b.xmax-2,cz,1,0],['W',b.xmin+2,cz,-1,0],
+            ['NE',b.xmax-2,b.zmin+2,0.7,-0.7],['NW',b.xmin+2,b.zmin+2,-0.7,-0.7],
+            ['SE',b.xmax-2,b.zmax-2,0.7,0.7],['SW',b.xmin+2,b.zmax-2,-0.7,0.7]];
+  const probes=[], leaks=[];
+  for(const [dir,px,pz,ux,uz] of pts){ let hitAt=null,maxTop=-99;
+    for(let t=0;t<=maxDist+30;t+=1.5){ const sx=px+ux*t, sz=pz+uz*t;
+      for(const m of outside){ if(Math.abs(m.x-sx)<m.w/2+1&&Math.abs(m.z-sz)<m.d/2+1){ if(hitAt==null)hitAt=t; if(m.topY>maxTop)maxTop=m.topY; } }
+      if(hitAt!=null&&t>hitAt+24)break; }                 // sampled enough past first hit
+    const rec={dir,nearestAt:hitAt==null?null:+hitAt.toFixed(0),maxTop:maxTop<0?null:+maxTop.toFixed(0)};
+    probes.push(rec);
+    if(hitAt==null||hitAt>maxDist) leaks.push(Object.assign({why:'no-backstop'},rec));
+    else if(maxTop<minTop) leaks.push(Object.assign({why:'too-short'},rec)); }
+  return { leaks, probes, maxDist, minTop, backdropBlocks: outside.length }; };
 
 
 async function build(){

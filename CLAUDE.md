@@ -354,9 +354,10 @@ believable objects (hedges / construction `barrier`), backfill with `buildBackdr
 | Blurry / mis-aligned building textures | big stretched maps → MODEL foreground structure as separated thin geometry, texture only for flat grain + distant backdrop; uniform texel density; `checks/texture-density.mjs` |
 | Hard seam where two textures/materials meet | adjacent maps don't blend → named sweep line; share a palette/tile, soften the join |
 | Sky/light seeping through a gap between adjacent shopfronts | facade gap to the void → close the gap / build city behind it (abyss rule); named sweep line |
+| Sky/void over the rooftops or between backdrop blocks (short/gapped skyline) | backdrop ring too short or its near rings gapped → near rings GAPLESS (`fill>1, jit 0`) + tall in `buildBackdrop()`; deterministic `checks/sky-leak.mjs` (`window.__skyLeak()` → `leaks:[]`, casts outward from each edge, needs a tall backstop within range) |
 
 Debug hooks (all on `window`): `cameraQA.{static,framing,clip,path,transition,reach,walk,warp}`,
-`__overlaps()`, `__textureDensity()`, `__gh(x,z)`, `__probe(x,z)`, `__colliders(x,z,r)`,
+`__overlaps()`, `__textureDensity()`, `__skyLeak()`, `__gh(x,z)`, `__probe(x,z)`, `__colliders(x,z,r)`,
 `__freecam/__look` (free-cam for QA shots).
 
 ## Status / next
