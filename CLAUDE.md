@@ -136,8 +136,10 @@ always `git fetch origin main` and check for peers before acting.
   + GitHub Pages. **Live: https://metroxe.github.io/project-shanni-happy/**
 - DONE: **NPC dialogue system** (`studio/js/dialogue.js`) — walk-up proximity prompt
   over the NPC, bottom dialogue box with typewriter reveal, advance-on-button, and
-  branching **choice menus** (↑/↓ or d-pad to pick; Talk/Enter/Space/click to confirm);
-  movement is gated while talking. Data-driven: per-NPC trees live in `world.json` under
+  branching **choice menus** (↑/↓ or d-pad to pick; Talk/Enter/Space/click to confirm).
+  Movement is **not** gated while talking — any move input walks Shen and **ends the
+  conversation** (`resolveInput` calls `Dialogue.end()`); in an open choice menu ↑/↓
+  still navigate, ←/→ still walk you out. Data-driven: per-NPC trees live in `world.json` under
   `npcs[]` (`{name, tex, x, z, h, dialogue:{start, nodes:{id:{text, speaker?, next?,
   choices?}}}}`). NPCs render as grounded billboards with idle paper breathing + a greet
   hop. First NPC **Chrees** (buff, red headband, long hair, black tank) → `out/chrees-paper.png`.

@@ -1,8 +1,9 @@
 // Dialogue system for project-shanni-happy.
 // Data-driven branching dialogue with a bottom box, typewriter reveal, an
 // advance-on-button flow, and selectable choice options. UI-only: it owns its
-// own DOM and never touches the physics sim. game.html gates movement while a
-// conversation is active by checking Dialogue.active.
+// own DOM and never touches the physics sim. Movement is NOT gated while
+// talking — game.html lets the player walk during a conversation, and walking
+// away ends it (movement input calls Dialogue.end()).
 //
 // Dialogue data (per NPC in world.json):
 //   dialogue: {
