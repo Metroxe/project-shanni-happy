@@ -50,9 +50,14 @@ through another bush, or the infinite void past the map edge.
 6. **ORIENTATION** — a prop facing the wrong way (lamp head, bench, awning, a storefront facade/door not facing the street).
 7. **SCALE / PLACEMENT** — mis-sized, floating, half-buried, or oddly placed.
 8. **AESTHETIC** — clutter, clashing colour, anything off the calm clean pastel direction.
-9. **WHITE BACKGROUND** (interiors) — any pitch-white field beyond/above the walls (the bg colour failed to apply, usually a missing-`#` `THREE.Color` → white). The bg must be an intentional warm/coloured field.
-10. **FLOOR PAST WALLS** (interiors) — the floor plane extending beyond the walls / floating its cut edge against the bg instead of stopping at the room footprint.
-11. **WALL MISALIGNMENT** (interiors) — walls of different heights leaving a step/notch where they meet at a corner.
+9. **BLUR**: smeared / washed-out grain at close range (too few texels-per-metre, the old 256px `paperTex` smear).
+10. **STRETCH / NON-UNIFORM DENSITY**: grain scale differs between a wide face and a tall face (`BoxGeometry` 0..1 UVs instead of `worldUV` world-space density).
+11. **SEAM / BLEND-CLASH**: a tile line on a walk-past round-trip, or a grain-scale / resolution / hue jump across a boundary where two surfaces meet.
+12. **LOW-RES TEXT**: sign glyphs aliased, smeared, or stretched at reading distance (text baked into the wall canvas via `fillText` instead of a `makeSign()` board).
+13. **WHITE BACKGROUND** (interiors) — any pitch-white field beyond/above the walls (the bg colour failed to apply, usually a missing-`#` `THREE.Color` → white). The bg must be an intentional warm/coloured field.
+14. **FLOOR PAST WALLS** (interiors) — the floor plane extending beyond the walls / floating its cut edge against the bg instead of stopping at the room footprint.
+15. **WALL MISALIGNMENT** (interiors) — walls of different heights leaving a step/notch where they meet at a corner.
+16. **FOG-AS-ABYSS FALSE READ** — a fog-washed / flat-grey distant backdrop or retaining wall is NOT the void; confirm with `window.__camAbyss()` (0 void rays from every reachable cell) before calling it an abyss.
 
 ## Workflow (the robust loop)
 
@@ -73,6 +78,18 @@ through another bush, or the infinite void past the map edge.
    / `LOOKS` arrays in `qa_shots.mjs` (gameplay = `[name,x,z]`; look =
    `[name, tx,ty,tz, yawDeg,pitchDeg, dist]`). **When you add a new area/prop, add a
    shot for it** — especially a low outward angle to prove there's no void.
+
+   **Texture-at-resolution pass (mandatory whenever a surface is textured / retextured /
+   modeled).** The existing per-object close-up frames the WHOLE object
+   (`dist = Math.max(5, it.size*1.4+3.5)` in `qa_shots.mjs`), so a 14m building is shot
+   from ~23u. That is NOT a resolution read, which is exactly why blur/stretch/seam are
+   invisible today. ADD a pass keyed off `window.__items()` that frames each textured face
+   **face-on at player eye height from the minimum reachable standoff** (~3 to 4u, the
+   closest the player can actually get; reuse the `FACE_YAW` map so the camera sits on the
+   facade side), and shoots **each sign board straight-on at reading distance**, into
+   `studio/out/qa/textures/`. Then judge each against the bar: **CRISP + UNIFORM density +
+   SEAMLESS + BLENDS with neighbours + TEXT legible** at the real distance. Any one failing
+   fails the gate; a blurry / stretched / clashing / low-res-text surface cannot pass.
 
 2. **Inspect — multi-agent sweep (the maximum-rigour default).** Fan out vision
    inspectors over the PNGs with the **Workflow** tool. Use the template
@@ -118,7 +135,16 @@ require them clean:
    hair-different camera angle. z-fighting flips its winner between the two frames, so a
    pair that differs anywhere but the tiny shift = flicker. (Best caught by `__overlaps`,
    but the pair confirms visually.) A single still can't show flicker — that's why this exists.
-6. **`window.__clips()` — 3D INTERPENETRATION AUDIT (interiors).** `__overlaps()` is a 2D
+6. **Texture density audit** — now a wired deterministic check, `studio/qa/checks/texture-density.mjs`,
+   run by `node studio/qa_audit.mjs`. `game.html` exposes `window.__textureDensity()` →
+   `{lowDensity:[{label,texelsPerMetre}], target, tile}`: it walks every box/plane/circle face on the
+   shared paper map, computes texels-per-metre from `paperUV` geometry + the 1024px tile, and lists any
+   face well below the project `DENSITY×1024`≈184 t/m. The check **fails the audit if `lowDensity` is
+   non-empty** (and `⊘` skips until the probe exists), exactly as `__overlaps()` must be `[]`. It's
+   scoped to faces sampling the paper map, so sprites, sky, and not-yet-migrated ground don't
+   false-positive during a partial migration. Trust this numeric fact over the vision synthesizer (which
+   once mis-dismissed a real z-fight as a "hedge join"), the same way you trust the overlap audit.
+7. **`window.__clips()` — 3D INTERPENETRATION AUDIT (interiors).** `__overlaps()` is a 2D
    footprint check for the town; for a ROOM you need 3D. Every interior fixture (wall, door,
    counter, shelf, tanks, cages, plants, lamps, sign) is tagged `userData.fx`; `__clips()`
    compares them **per-mesh** and returns any pair that passes THROUGH each other (overlap
@@ -182,6 +208,13 @@ require them clean:
   building sits where the zone camera's `back` puts it; move the building out of the
   camera's dolly path or shrink `back`. Use the `byOcc` field that `cameraQA.path`
   now reports (it names the occluding building) to find the culprit instead of guessing.
+- **Blurry / stretched / clashing surface or low-res sign text** → the texture path was
+  never wired: load one 1024px `gen_paper` set via `loadPaper()`, `worldUV(geo,w,h,d,0.18)`
+  on every box, max anisotropy + mipmaps; decompose `facadeTex` into modeled pieces in
+  `makeFacade` and move sign text onto a `makeSign()` board. See the **`papercraft-texture`**
+  skill for the how-to. New near-coplanar pieces (sign board, window frames floating ~0.05u
+  off the wall) can reintroduce z-fighting / stray outlines: keep `edge=false` on them and
+  re-run `__overlaps()` + the flicker pairs after.
 
 ## Debug hooks (added to game.html for QA)
 

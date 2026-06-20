@@ -6,7 +6,7 @@
     "arc": { "spread": 1.05, "depth": 0.12, "elev": 0.4 },
     "clouds": { "count": 7, "radius": [55, 120], "y": [20, 38], "scale": [11, 22], "wind": 1.1, "opacity": 0.9 }
   },
-  "ground": "d9d3c7",
+  "ground": "c1bdb4",
   "music": "out/music/calm.ogg",
   "fog": [46, 165],
   "bounds": { "xmin": -38, "xmax": 38, "zmin": -68, "zmax": 30 },
@@ -22,40 +22,40 @@
                 "awning": "9bb6c2", "sign": "PET SHOP", "signBg": "8fa6b2" } }
   ],
 
-  "level": { "H": 4.5, "stone": "ded8cc", "wall": "d8d0c2" },
+  "level": { "H": 4.5, "stone": "b5b1ab", "wall": "d8d0c2" },
   "stairs": { "x0": 5.5, "x1": 13.5, "zTop": 2, "zBot": 10, "steps": 10,
-              "tread": "e4ddcf", "riser": "d6cdba", "rail": "f4efe6" },
+              "tread": "c6c1b6", "riser": "b8b1a8", "rail": "ddd8cf" },
 
   "rings": [
     { "cx": -20, "cz": -50, "r": 9.5, "segs": 22, "gapDeg": [58, 122], "h": 0.55,
-      "thick": 0.6, "color": "dfe7d6", "kind": "planter" }
+      "thick": 0.6, "color": "c0c7b4", "kind": "planter" }
   ],
 
   "walls": [
-    { "x": -25.3, "z": -17.4, "w": 0.5, "d": 39.6, "h": 0.6, "color": "cfdcc4", "kind": "hedge" },
-    { "x": -15.3, "z": -22.5, "w": 0.5, "d": 29.4, "h": 0.6, "color": "cfdcc4", "kind": "hedge" },
-    { "x": -9.75, "z": 2.3, "w": 31, "d": 0.5, "h": 0.6, "color": "cfdcc4", "kind": "hedge" },
-    { "x": 21.9, "z": 2.3, "w": 17, "d": 0.5, "h": 0.6, "color": "cfdcc4", "kind": "hedge" },
-    { "x": 30.3, "z": -2.85, "w": 0.5, "d": 10.8, "h": 0.6, "color": "cfdcc4", "kind": "hedge" },
-    { "x": 27.2, "z": -8.3, "w": 6.5, "d": 0.5, "h": 0.6, "color": "cfdcc4", "kind": "hedge" },
-    { "x": -30.3, "z": 18.5, "w": 0.5, "d": 18, "h": 0.6, "color": "cfdcc4", "kind": "hedge" },
-    { "x": 30.3, "z": 18.5, "w": 0.5, "d": 18, "h": 0.6, "color": "cfdcc4", "kind": "hedge" },
-    { "x": 0, "z": 27.3, "w": 61, "d": 0.5, "h": 0.6, "color": "cfdcc4", "kind": "hedge" }
+    { "x": -25.3, "z": -17.4, "w": 0.5, "d": 39.6, "h": 0.6, "color": "bdc7b1", "kind": "hedge" },
+    { "x": -15.3, "z": -22.5, "w": 0.5, "d": 29.4, "h": 0.6, "color": "bdc7b1", "kind": "hedge" },
+    { "x": -9.75, "z": 2.3, "w": 31, "d": 0.5, "h": 0.6, "color": "bdc7b1", "kind": "hedge" },
+    { "x": 21.9, "z": 2.3, "w": 17, "d": 0.5, "h": 0.6, "color": "bdc7b1", "kind": "hedge" },
+    { "x": 30.3, "z": -2.85, "w": 0.5, "d": 10.8, "h": 0.6, "color": "bdc7b1", "kind": "hedge" },
+    { "x": 27.2, "z": -8.3, "w": 6.5, "d": 0.5, "h": 0.6, "color": "bdc7b1", "kind": "hedge" },
+    { "x": -30.3, "z": 18.5, "w": 0.5, "d": 18, "h": 0.6, "color": "bdc7b1", "kind": "hedge" },
+    { "x": 30.3, "z": 18.5, "w": 0.5, "d": 18, "h": 0.6, "color": "bdc7b1", "kind": "hedge" },
+    { "x": 0, "z": 27.3, "w": 61, "d": 0.5, "h": 0.6, "color": "bdc7b1", "kind": "hedge" }
   ],
 
   "surfaces": [
-    { "kind": "plaza",    "shape": "disc", "x": -20, "z": -50, "r": 11.5, "color": "e2dccf", "y": 4.5 },
+    { "kind": "plaza",    "shape": "disc", "x": -20, "z": -50, "r": 11.5, "color": "c2beb5", "y": 4.5 },
 
     { "kind": "road",     "shape": "rect", "x": -20, "z": -22, "w": 6,  "d": 32, "color": "c7c3bd", "y": 4.5 },
-    { "kind": "sidewalk", "shape": "rect", "x": -24, "z": -22, "w": 2,  "d": 32, "color": "e0d8c8", "y": 4.5 },
-    { "kind": "sidewalk", "shape": "rect", "x": -16, "z": -22, "w": 2,  "d": 32, "color": "e0d8c8", "y": 4.5 },
+    { "kind": "sidewalk", "shape": "rect", "x": -24, "z": -22, "w": 2,  "d": 32, "color": "c1beb6", "y": 4.5 },
+    { "kind": "sidewalk", "shape": "rect", "x": -16, "z": -22, "w": 2,  "d": 32, "color": "c1beb6", "y": 4.5 },
 
     { "kind": "road",     "shape": "rect", "x": 9,  "z": -3, "w": 50, "d": 6, "color": "c7c3bd", "y": 4.5, "lift": 0.005 },
-    { "kind": "sidewalk", "shape": "rect", "x": 9,  "z": -6.6, "w": 50, "d": 2, "color": "e0d8c8", "y": 4.5 },
-    { "kind": "sidewalk", "shape": "rect", "x": 12, "z": 0.8, "w": 44, "d": 2, "color": "e0d8c8", "y": 4.5 },
+    { "kind": "sidewalk", "shape": "rect", "x": 9,  "z": -6.6, "w": 50, "d": 2, "color": "c1beb6", "y": 4.5 },
+    { "kind": "sidewalk", "shape": "rect", "x": 12, "z": 0.8, "w": 44, "d": 2, "color": "c1beb6", "y": 4.5 },
 
-    { "kind": "grass",    "shape": "rect", "x": 0, "z": 18.5, "w": 66, "d": 19, "color": "cfe5c4", "y": 0.0 },
-    { "kind": "path",     "shape": "rect", "x": 9.5, "z": 10.6, "w": 9, "d": 2.4, "color": "ddd0b8", "y": 0.0 }
+    { "kind": "grass",    "shape": "rect", "x": 0, "z": 18.5, "w": 66, "d": 19, "color": "c5d9b3", "y": 0.0 },
+    { "kind": "path",     "shape": "rect", "x": 9.5, "z": 10.6, "w": 9, "d": 2.4, "color": "bfbaad", "y": 0.0 }
   ],
 
   "buildings": [

@@ -137,12 +137,25 @@ try {
   const items = await page.evaluate('window.__items()');
   await mkdir(join(OUT, 'props'), { recursive: true });
   const itemShots = [];
-  // camera sits on the facade side, 3/4 angle. faceDir '-z' = facade on the -z edge → view from -z (yaw≈180).
-  const FACE_YAW = { '-z': 198, '+z': 18, '-x': 288, '+x': 108 };
+  // Buildings: frame the FACADE FACE HEAD-ON at eye level, with the camera OUTSIDE the footprint
+  // (NOT a far/high rooftop shot — that hid every facade defect). Target the face centre at mid
+  // height; FACE_N offsets the target onto the face, FACE_YAW puts the camera square in front.
+  const FACE_N = { '-z': [0, -1], '+z': [0, 1], '-x': [-1, 0], '+x': [1, 0] };
+  const FACE_YAW = { '-z': 180, '+z': 0, '-x': 270, '+x': 90 };
   for (const it of items) {
-    const dist = Math.max(5, it.size * 1.4 + 3.5), pitch = it.kind === 'building' ? 16 : 12, eyeUp = it.kind === 'building' ? it.size * 0.4 : 1.4;
-    const yaw = (it.face && FACE_YAW[it.face] != null) ? FACE_YAW[it.face] : 37;
-    await page.evaluate(`window.__look(${it.x}, ${it.y + eyeUp}, ${it.z}, ${yaw}, ${pitch}, ${dist})`);
+    let tx, ty, tz, yaw, pitch, dist;
+    if (it.kind === 'building' && it.face && FACE_N[it.face]) {
+      const [nx, nz] = FACE_N[it.face];
+      const along = (it.face === '-x' || it.face === '+x') ? it.w : it.d;   // half-depth along the normal
+      const faceLen = (it.face === '-x' || it.face === '+x') ? it.d : it.w;
+      tx = it.x + nx * along / 2; tz = it.z + nz * along / 2; ty = it.y + it.h * 0.5;
+      yaw = FACE_YAW[it.face]; pitch = 5; dist = Math.max(faceLen, it.h) * 1.15 + 4;
+    } else {
+      tx = it.x; tz = it.z; ty = it.y + 1.4;
+      yaw = (it.face && FACE_YAW[it.face] != null) ? FACE_YAW[it.face] : 37;
+      pitch = 12; dist = Math.max(5, it.size * 1.4 + 3.5);
+    }
+    await page.evaluate(`window.__look(${tx}, ${ty}, ${tz}, ${yaw}, ${pitch}, ${dist})`);
     await page.waitForTimeout(140);
     const file = join(OUT, 'props', it.label + '.png');
     await page.screenshot({ path: file });

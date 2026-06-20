@@ -483,28 +483,47 @@ function pose(s){
 const clampn=clamp, lerp=(a,b,t)=>a+(b-a)*t;
 const easeInOutCubic=u=>u<0.5?4*u*u*u:1-Math.pow(-2*u+2,3)/2;
 const expK=(dt,k)=>1-Math.exp(-k*dt);
-const GRAIN=0.62, texCache={};
-function paperTex(h){ if(texCache[h])return texCache[h];
-  const s=256,cv=document.createElement('canvas');cv.width=cv.height=s;const x=cv.getContext('2d');
-  const c=new THREE.Color(h),R=c.r*255,G=c.g*255,B=c.b*255;
-  x.fillStyle='#'+c.getHexString();x.fillRect(0,0,s,s);
-  const amp=26*GRAIN,img=x.getImageData(0,0,s,s),d=img.data;
-  for(let i=0;i<d.length;i+=4){const n=(Math.random()-0.5)*amp*1.4;
-    d[i]=clamp(d[i]+n,0,255);d[i+1]=clamp(d[i+1]+n,0,255);d[i+2]=clamp(d[i+2]+n,0,255);}
-  x.putImageData(img,0,0);x.globalAlpha=0.20*GRAIN;
-  for(let i=0;i<200;i++){const lt=Math.random()<.5;
-    x.strokeStyle=`rgb(${clamp(R+(lt?30:-30),0,255)},${clamp(G+(lt?30:-30),0,255)},${clamp(B+(lt?30:-30),0,255)})`;
-    x.lineWidth=Math.random()*1.4+0.4;x.beginPath();
-    const y=Math.random()*s,len=30+Math.random()*120,xx=Math.random()*s,ang=(Math.random()-.5)*0.4;
-    x.moveTo(xx,y);x.lineTo(xx+Math.cos(ang)*len,y+Math.sin(ang)*len);x.stroke();}
-  x.globalAlpha=1;
-  const t=new THREE.CanvasTexture(cv);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(1.6,1.6);
-  t.anisotropy=4;t.colorSpace=THREE.SRGBColorSpace;texCache[h]=t;return t;}
-function paperMat(h,flat){const t=paperTex(h);
-  return new THREE.MeshStandardMaterial({color:new THREE.Color(h),roughness:0.97,metalness:0,
-    flatShading:flat!==false,emissive:new THREE.Color(h),emissiveIntensity:0.05,map:t,bumpMap:t,bumpScale:1.4});}
+const texCache={};
+// ONE shared, crisp, seamless paper tile set (1024px gen_paper) sampled at a single fixed
+// texels-per-metre. paperMat tints it per-mesh (the pastel hex multiplies the near-neutral
+// map); paperUV() bakes uniform world-space density into each geometry's UVs so a tall thin
+// tower and a long low wall share the SAME grain scale (no stretch, no per-face density).
+// Replaces the old per-hex 256px paperTex canvas at a fixed repeat (blurry + stretched).
+const DENSITY=0.18;                 // tiles per world-metre (one 1024px tile ≈ 5.5m)
+let PAPER=null;
+function loadPaper(prefix){
+  const maxA=renderer.capabilities.getMaxAnisotropy();
+  const mk=(suffix,srgb)=>{ const t=loader.load(`${prefix}_${suffix}.png`);
+    t.wrapS=t.wrapT=THREE.RepeatWrapping; t.anisotropy=maxA;
+    t.colorSpace=srgb?THREE.SRGBColorSpace:THREE.NoColorSpace;
+    t.minFilter=THREE.LinearMipmapLinearFilter; t.magFilter=THREE.LinearFilter; return t; };
+  return {map:mk('color',true), bump:mk('bump',false)};
+}
+// Bake world-space density into a geometry's UVs (the shared tile stays at repeat 1×1, so a
+// UV value of N indexes N tiles). Exact per-face for boxes; size-scaled for planes/discs;
+// bounding-box-scaled for curved props. Keeps texels-per-metre constant on every surface.
+function paperUV(geo,density){
+  const uv=geo.attributes.uv; if(!uv)return; const p=geo.parameters||{};
+  if(p.width!=null&&p.height!=null&&p.depth!=null&&uv.count===24){     // BoxGeometry (1 seg): 6 faces ×4
+    const w=p.width,h=p.height,d=p.depth, span=[[d,h],[d,h],[w,d],[w,d],[w,h],[w,h]];
+    for(let f=0;f<6;f++){const[su,sv]=span[f];for(let i=0;i<4;i++){const vi=f*4+i;
+      uv.setXY(vi,uv.getX(vi)*su*density,uv.getY(vi)*sv*density);}}
+  } else if(p.width!=null&&p.height!=null&&p.depth==null){             // PlaneGeometry
+    for(let i=0;i<uv.count;i++)uv.setXY(i,uv.getX(i)*p.width*density,uv.getY(i)*p.height*density);
+  } else if(p.radius!=null){                                          // Circle / Sphere / Cone / Torus
+    const s=2*p.radius*density; for(let i=0;i<uv.count;i++)uv.setXY(i,uv.getX(i)*s,uv.getY(i)*s);
+  } else {                                                            // Cylinder + fallback: bbox average
+    geo.computeBoundingBox();const b=new THREE.Vector3();geo.boundingBox.getSize(b);
+    const s=(b.x+b.y+b.z)/3*density; for(let i=0;i<uv.count;i++)uv.setXY(i,uv.getX(i)*s,uv.getY(i)*s);}
+  uv.needsUpdate=true;
+}
+function paperMat(h,flat){
+  const m=new THREE.MeshStandardMaterial({color:new THREE.Color(h),roughness:0.97,metalness:0,
+    flatShading:flat!==false,emissive:new THREE.Color(h),emissiveIntensity:0.05});
+  if(PAPER){m.map=PAPER.map;m.bumpMap=PAPER.bump;m.bumpScale=0.22;}
+  return m;}
 const EDGEMAT=new THREE.LineBasicMaterial({color:'#fbf7f0'});
-function M(geo,col,flat,edge){const m=new THREE.Mesh(geo,paperMat(col,flat));
+function M(geo,col,flat,edge){ paperUV(geo,DENSITY); const m=new THREE.Mesh(geo,paperMat(col,flat));
   m.castShadow=true;m.receiveShadow=true;
   if(edge===true)m.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo,38),EDGEMAT));
   return m;}
@@ -528,6 +547,20 @@ function pointInZone(z,x,zc){const {along,across}=zoneLocal(z,x,zc);
 let ZONES=[],activeZone=null;
 const CAMRIG={pos:new THREE.Vector3(),tgt:new THREE.Vector3(),fov:40,pitch:0};
 let blend=null;
+// Keep the camera from sitting inside / behind a building wall (a flat slab filling the
+// frame: the "camera behind a wall" bug). Cast from the look target out to the ideal eye;
+// if a building BOX is between them, pull the eye IN to just before that wall. By
+// construction nothing then stands between the camera and the target, so Shen stays
+// visible (a sideways push could shove the camera to the far side and hide her instead).
+const _camRay=new THREE.Raycaster(), _camV=new THREE.Vector3();
+function pushCamOut(pos,tgt){
+  if(!tgt||!BUILDING_MESHES.length) return pos;
+  _camV.copy(pos).sub(tgt); const dist=_camV.length(); if(dist<1e-3) return pos;
+  _camV.divideScalar(dist); _camRay.set(tgt,_camV); _camRay.far=dist;
+  const hit=_camRay.intersectObjects(BUILDING_MESHES,false)[0];
+  if(hit) pos.copy(tgt).addScaledVector(_camV, Math.max(0.6, hit.distance-0.5));
+  return pos;
+}
 function rigFor(zone,s){ const {fx,fz}=zoneAxis(zone); const latx=-fz, latz=fx;
   const L=zoneLocal(zone,s.x,s.z);
   const a=clampn(L.along,-zone.halfLen,zone.halfLen);
@@ -538,9 +571,10 @@ function rigFor(zone,s){ const {fx,fz}=zoneAxis(zone); const latx=-fz, latz=fx;
   const b=zone.trackWid?clampn(L.across,-zone.trackWid,zone.trackWid):0;
   const cpx=zone.center[0]+fx*a+latx*b, cpz=zone.center[1]+fz*a+latz*b;
   const gyCam=groundHeight(cpx,cpz), gyP=groundHeight(s.x,s.z);
-  return { pos:new THREE.Vector3(cpx-fx*zone.back+latx*zone.side, gyCam+zone.height, cpz-fz*zone.back+latz*zone.side),
-    tgt:new THREE.Vector3(s.x+fx*zone.lookAhead, gyP+zone.lookY, s.z+fz*zone.lookAhead),
-    fov:zone.fov, pitch:zone.pitchBias }; }
+  const tgt=new THREE.Vector3(s.x+fx*zone.lookAhead, gyP+zone.lookY, s.z+fz*zone.lookAhead);
+  // pushCamOut keeps the eye out of buildings; trackWid keeps Shen a stable on-screen size.
+  const pos=pushCamOut(new THREE.Vector3(cpx-fx*zone.back+latx*zone.side, gyCam+zone.height, cpz-fz*zone.back+latz*zone.side), tgt);
+  return { pos, tgt, fov:zone.fov, pitch:zone.pitchBias }; }
 function pickZone(x,zc){ const SKIRT=0.8;
   if(activeZone){ const {along,across}=zoneLocal(activeZone,x,zc);
     if(Math.abs(along)<=activeZone.halfLen+SKIRT&&Math.abs(across)<=activeZone.halfWid+SKIRT){
@@ -648,31 +682,29 @@ function buildWalls(cols){
     const m=M(new THREE.BoxGeometry(w.w,h,w.d),'#'+(w.color||'cfdcc4'),false,false);
     m.position.set(w.x,gy+h/2,w.z); sceneRoot.add(m); pushBoxColliders(cols,w.x,w.z,w.w,w.d,0.5); }
 }
-// procedural storefront facade: sign band + awning + upper windows + display bays/door
-function facadeTex(f,wWorld,hWorld){
-  const k=48, W=Math.max(96,Math.round(wWorld*k)), Hp=Math.max(96,Math.round(hWorld*k));
-  const cv=document.createElement('canvas'); cv.width=W; cv.height=Hp; const x=cv.getContext('2d');
-  const wall='#'+(f.wall||'e7d3cc'), trim='#'+(f.trim||'f4efe6'), win='#'+(f.window||'cfe0e6'),
-    sign='#'+(f.signBg||'c98f86'), aw='#'+(f.awning||'d99fa9'), door='#'+(f.signBg||'c2a07a');
-  x.fillStyle=wall; x.fillRect(0,0,W,Hp);
-  const signH=Hp*0.14; x.fillStyle=sign; x.fillRect(0,0,W,signH);
-  if(f.sign){ x.fillStyle=trim; x.font='700 '+Math.round(signH*0.5)+'px sans-serif';
-    x.textAlign='center'; x.textBaseline='middle'; x.fillText(f.sign,W/2,signH*0.55); }
-  const awY=signH, awH=Hp*0.05, seg=W/(f.bays*4);
-  for(let i=0;i<f.bays*4;i++){ x.fillStyle=(i%2)?aw:trim; x.fillRect(i*seg,awY,seg+1,awH); }
-  const storeTop=Hp*0.66, upperTop=signH+awH+Hp*0.03;
-  const cols2=Math.max(2,f.bays), rows=Math.max(1,Math.floor((storeTop-upperTop)/(Hp*0.18))), cw=W/cols2, ch=(storeTop-upperTop)/rows;
-  for(let r=0;r<rows;r++)for(let c=0;c<cols2;c++){ const wx=c*cw+cw*0.24,wy=upperTop+r*ch+ch*0.2,ww=cw*0.52,wh=ch*0.58;
-    x.fillStyle=trim; x.fillRect(wx-3,wy-3,ww+6,wh+6); x.fillStyle=win; x.fillRect(wx,wy,ww,wh); }
-  const bw=W/f.bays, sHt=Hp*0.92-storeTop, doorBay=Math.floor(f.bays/2);
-  for(let i=0;i<f.bays;i++){ const bx=i*bw, pad=bw*0.12;
-    x.fillStyle=trim; x.fillRect(bx+pad-3,storeTop-3,bw-2*pad+6,sHt+6);
-    x.fillStyle=win; x.fillRect(bx+pad,storeTop,bw-2*pad,sHt);
-    if(i===doorBay){ const dw=(bw-2*pad)*0.5,dx=bx+bw/2-dw/2,dh=sHt*0.94;
-      x.fillStyle=door; x.fillRect(dx,storeTop+sHt-dh,dw,dh);
-      x.fillStyle=trim; x.fillRect(dx+dw*0.42,storeTop+sHt-dh*0.55,dw*0.12,dh*0.1); }
-    else { x.strokeStyle=trim; x.lineWidth=2; x.beginPath(); x.moveTo(bx+bw/2,storeTop); x.lineTo(bx+bw/2,storeTop+sHt); x.stroke(); } }
-  const t=new THREE.CanvasTexture(cv); t.colorSpace=THREE.SRGBColorSpace; t.anisotropy=4; return t;
+// In-world sign TEXT: its OWN crisp canvas sized to the board's world span at ~220 px/metre
+// × dpr (NOT baked into the wall at 48 px/m). Shrink-to-fit so a long name never overflows.
+function signTex(text, boardW, boardH, bg, fg){
+  const dpr=Math.min(devicePixelRatio||1, 2), ppm=220;
+  const cw=Math.min(2048, Math.max(64, Math.ceil(boardW*ppm*dpr))),
+        ch=Math.min(1024, Math.max(48, Math.ceil(boardH*ppm*dpr)));
+  const cv=document.createElement('canvas'); cv.width=cw; cv.height=ch; const x=cv.getContext('2d');
+  x.fillStyle=bg; x.fillRect(0,0,cw,ch);
+  x.textAlign='center'; x.textBaseline='middle';
+  let fs=Math.floor(ch*0.6); const maxW=cw*0.88;          // largest font whose text fits the board
+  do{ x.font='700 '+fs+'px "Segoe UI",system-ui,sans-serif'; if(x.measureText(text).width<=maxW)break; fs-=2; }while(fs>10);
+  x.fillStyle=fg; x.fillText(text, cw/2, ch*0.54);
+  const t=new THREE.CanvasTexture(cv); t.colorSpace=THREE.SRGBColorSpace;
+  t.anisotropy=renderer.capabilities.getMaxAnisotropy();
+  t.minFilter=THREE.LinearMipmapLinearFilter; t.magFilter=THREE.LinearFilter; t.generateMipmaps=true; return t;
+}
+// a die-cut sign board (paper-tinted box for thickness) with the crisp text on its front face
+function makeSign(text, boardW, boardH, bg, fg){
+  const g=new THREE.Group();
+  const board=M(new THREE.BoxGeometry(boardW, boardH, 0.08), bg, false, false); g.add(board);
+  const face=new THREE.Mesh(new THREE.PlaneGeometry(boardW*0.98, boardH*0.88),
+    new THREE.MeshStandardMaterial({map:signTex(text, boardW*0.98, boardH*0.88, bg, fg), roughness:0.92, metalness:0}));
+  face.position.z=0.045; g.add(face); return g;
 }
 function buildBuildings(cols){
   for(const bd of (SCENE.buildings||[])){
@@ -682,29 +714,57 @@ function buildBuildings(cols){
     const roofCol=(bd.facade&&bd.facade.signBg)||bd.color;
     const roof=M(new THREE.BoxGeometry(bd.w+0.3,0.4,bd.d+0.3),'#'+roofCol,false,false);
     roof.position.set(bd.x,top+0.2,bd.z); roof.castShadow=false; sceneRoot.add(roof);
-    if(bd.facade){ const dirs=Array.isArray(bd.faceDir)?bd.faceDir:[bd.faceDir||'-z']; for(const d of dirs) addFacade(bd,base,top,d); }
+    if(bd.facade){ const dirs=Array.isArray(bd.faceDir)?bd.faceDir:[bd.faceDir||'-z']; for(const d of dirs) makeFacade(bd,base,top,d); }
     pushBoxColliders(cols,bd.x,bd.z,bd.w,bd.d,0.5);
   }
 }
-// one storefront face: panel spans base→top (above ground only) + a 3D awning ledge
-function addFacade(bd,base,top,dir){
-  const f=bd.facade, h=top-base, faceLen=(dir==='-x'||dir==='+x')?bd.d:bd.w, off=0.05;
-  const panel=new THREE.Mesh(new THREE.PlaneGeometry(faceLen,h),
-    new THREE.MeshStandardMaterial({map:facadeTex(f,faceLen,h),roughness:0.95,metalness:0}));
-  panel.position.set(bd.x,base+h/2,bd.z);
-  if(dir==='-x'){panel.position.x=bd.x-bd.w/2-off; panel.rotation.y=-Math.PI/2;}
-  else if(dir==='+x'){panel.position.x=bd.x+bd.w/2+off; panel.rotation.y=Math.PI/2;}
-  else if(dir==='-z'){panel.position.z=bd.z-bd.d/2-off; panel.rotation.y=Math.PI;}
-  else {panel.position.z=bd.z+bd.d/2+off;}
-  sceneRoot.add(panel);
-  const awY=base+h*0.80, depth=0.7, side=(dir==='-x'||dir==='+x');
-  const aw=M(side?new THREE.BoxGeometry(depth,0.1,faceLen*0.97):new THREE.BoxGeometry(faceLen*0.97,0.1,depth),'#'+(f.awning||'d99fa9'),false,false);
-  if(dir==='-x')aw.position.set(bd.x-bd.w/2-depth/2-off,awY,bd.z);
-  else if(dir==='+x')aw.position.set(bd.x+bd.w/2+depth/2+off,awY,bd.z);
-  else if(dir==='-z')aw.position.set(bd.x,awY,bd.z-bd.d/2-depth/2-off);
-  else aw.position.set(bd.x,awY,bd.z+bd.d/2+depth/2+off);
-  aw.castShadow=false; sceneRoot.add(aw);
-  // (entrances stay in world.json as future loading-zone hooks; no floating doormat decal)
+// MODELED storefront on one face (no baked texture): a wall panel (the facade's wall tint)
+// + a crisp sign board + an awning ledge + a row of window frames/panes + a door, each a
+// thin paper piece proud of the wall. Built in a LOCAL frame (x = along the face, y = up
+// from base, z = outward), then rotated/placed onto the chosen face. Keep the kit SMALL.
+const FACE_ROT={'+z':0,'-z':Math.PI,'+x':Math.PI/2,'-x':-Math.PI/2};
+const FACE_N={'+z':[0,1],'-z':[0,-1],'+x':[1,0],'-x':[-1,0]};
+function makeFacade(bd,base,top,dir){
+  const f=bd.facade, h=top-base, faceLen=(dir==='-x'||dir==='+x')?bd.d:bd.w, g=new THREE.Group();
+  const wall='#'+(f.wall||'e7d3cc'), trim='#'+(f.trim||'f4efe6'), win='#'+(f.window||'cfe0e6'),
+        sbg='#'+(f.signBg||'c98f86'), awn='#'+(f.awning||'d99fa9'), door='#'+(f.door||f.signBg||'c2a07a');
+  // place point + normal of the face, and whether the ground in front is at door level. A
+  // "drop" face (e.g. the park-facing back of a cliff-edge shop) has no accessible ground,
+  // so it gets NO door (a door there is "physically impossible to reach").
+  const [nx,nz]=FACE_N[dir]||[0,-1];
+  let px=bd.x, pz=bd.z;
+  if(dir==='-x')px=bd.x-bd.w/2; else if(dir==='+x')px=bd.x+bd.w/2;
+  else if(dir==='-z')pz=bd.z-bd.d/2; else pz=bd.z+bd.d/2;
+  const drop=groundHeight(px+nx*1.5, pz+nz*1.5) < base-1;
+  // wall panel: tucks 0.25 BELOW base so its foot sinks into the sidewalk (no bright base
+  // seam / "light through" between wall and ground), gives the face its wall tint + grain.
+  const panel=M(new THREE.PlaneGeometry(faceLen,h+0.25),wall,true,false);
+  panel.position.set(0,h/2-0.125,0.02); panel.castShadow=false; g.add(panel);
+  // sign board over the top strip (crisp text, sized to span, capped so wide shops don't get a giant sign)
+  if(f.sign){ const bw=Math.min(faceLen*0.8, 8), bh=Math.min(h*0.13, 1.4);
+    const sign=makeSign(f.sign, bw, bh, sbg, trim); sign.position.set(0, h*0.9, 0.11); g.add(sign); }
+  // awning ledge
+  const awD=0.7, aw=M(new THREE.BoxGeometry(faceLen*0.97,0.1,awD),awn,false,false);
+  aw.position.set(0, h*0.80, 0.05+awD/2); aw.castShadow=false; g.add(aw);
+  // window rows: trim frame + proud pane, bays across. TALL fronts (h>=9) get a SECOND, lower
+  // row so the player standing right against a tall slab doesn't face a big blank lower wall
+  // (the plaza-north "blank wall + lone door" finding). The lower row skips the centre (door) bay.
+  const bays=Math.max(2, f.bays || Math.min(7,Math.max(3,Math.round(faceLen/5)))), cellW=faceLen/bays, midBay=Math.floor(bays/2);
+  const rows = h>=9 ? [{y:h*0.62,skipMid:false},{y:h*0.34,skipMid:true}] : [{y:h*0.54,skipMid:false}];
+  const winH=Math.min(h*0.20,2.3);
+  for(const row of rows){ for(let i=0;i<bays;i++){ if(row.skipMid&&i===midBay)continue;
+    const cx=-faceLen/2+cellW*(i+0.5), fw=Math.min(cellW*0.6,2.2);
+    const frame=M(new THREE.BoxGeometry(fw,winH,0.06),trim,false,false); frame.position.set(cx,row.y,0.09); g.add(frame);
+    const pane=M(new THREE.BoxGeometry(fw*0.78,winH*0.8,0.06),win,false,false); pane.position.set(cx,row.y,0.13); g.add(pane); } }
+  // door on the middle bay, GROUNDED (bottom tucked just below base, not floating) + a knob.
+  // Skipped on a drop face (no walkable ground in front).
+  if(!drop){
+    const dC=-faceLen/2+cellW*(midBay+0.5), dW=Math.min(cellW*0.5,1.6), dH=Math.min(h*0.34,2.6);
+    const dr=M(new THREE.BoxGeometry(dW,dH,0.08),door,false,false); dr.position.set(dC,dH/2-0.1,0.10); g.add(dr);
+    const knob=M(new THREE.BoxGeometry(0.08,0.08,0.06),trim,false,false); knob.position.set(dC+dW*0.32,dH*0.45,0.16); g.add(knob);
+  }
+  // place + orient the local group onto the face
+  g.position.set(px, base, pz); g.rotation.y=FACE_ROT[dir]||0; sceneRoot.add(g);
 }
 // ---- papercraft props (no cream edges on rounded/small props → no stray outlines) ----
 function makeBush(p){ const g=new THREE.Group(), s=p.scale||1, col='#'+(p.color||'c7ddb8');
@@ -786,22 +846,62 @@ function buildProps(cols){
 // hits the void. No colliders, no shadows; fog fades the far rings. Deterministic.
 function buildBackdrop(){
   const b=SCENE.bounds; let seed=20260618>>>0; const rnd=()=>{seed=(seed*1664525+1013904223)>>>0; return seed/4294967296;};
-  const palette=['cdd3da','d8d0c6','d2c7cf','c9d2cb','dcd4c4','cbcfd6','d6cdc2','d0c8d2'];
-  const rings=[{pad:6, step:8.5, h:[8,17]},{pad:18, step:12, h:[13,27]},{pad:33, step:16, h:[18,34]}];
+  // WARM pastel palette matched to the foreground city (was cool grey/mauve → read as a flat
+  // "grey curtain / void" in the open park, the recurring sweep complaint). Warm creams/tans/
+  // soft-rose so the distant skyline reads as a misty papercraft CITY, not grey nothing.
+  const palette=['ddd0c6','e3d5c4','dccabf','e0d4c6','d6c7ba','e5d8c6','d9cabd','decabf'];
+  // The INNERMOST ring (pad 3) is GAPLESS: blocks OVERLAP (fill>1) on a regular grid (jit 0)
+  // and rise to rooftop height, forming a continuous backstop right behind the play-space
+  // buildings. This is what stops bright sky showing through a gap BETWEEN two foreground
+  // buildings (the "light seeping through the building" bug) — open plaza corners + street
+  // ends now reveal backdrop city, not sky. Overlap z-fight at this distance is invisible.
+  // Outer rings (gapped, taller) add skyline depth above it. South gets extra pad because the
+  // park camera dollies far south, so backdrop must stay BEHIND it, never between it and the park.
+  // The near TWO rings are now BOTH gapless (fill>1, jit 0) and TALL, so a near-horizontal
+  // outward look hits a continuous city wall, never sky between blocks or over a short roofline
+  // (the visual-sweep "SKY-GAP / over-rooftop abyss" finding: the old inner ring topped at 24 and
+  // the 2nd ring was gapped+short at 10-19, so sky leaked between its blocks just above ring 1).
+  // The outer two add a taller, only-lightly-gapped silhouette for depth; fog fades them.
+  const rings=[{pad:3,  step:5,  h:[28,34], fill:1.7,  jit:0},
+               {pad:9,  step:8,  h:[26,36], fill:1.35, jit:0},
+               {pad:20, step:12, h:[26,42], fill:0.95, jit:2},
+               {pad:34, step:16, h:[30,48], fill:0.72, jit:3}];
   for(const rg of rings){
-    // extra pad on the +z (south/park) side: the park camera dollies far south
-    // looking north, so backdrop there must stay BEHIND it, never between it and the park.
     const x0=b.xmin-rg.pad, x1=b.xmax+rg.pad, z0=b.zmin-rg.pad, z1=b.zmax+rg.pad+18;
-    const place=(x,z)=>{ const w=rg.step*(0.4+0.3*rnd()), d=rg.step*(0.4+0.3*rnd()), h=rg.h[0]+(rg.h[1]-rg.h[0])*rnd();  // <1 step → adjacent fillers don't overlap (no distant z-fight)
+    const place=(x,z)=>{ const w=rg.step*rg.fill*(0.9+0.2*rnd()), d=rg.step*rg.fill*(0.9+0.2*rnd()), h=rg.h[0]+(rg.h[1]-rg.h[0])*rnd();
       const m=M(new THREE.BoxGeometry(w,h+3,d),'#'+palette[Math.floor(rnd()*palette.length)],false,false);
       m.position.set(x,(h-3)/2,z); m.castShadow=false; m.receiveShadow=false; sceneRoot.add(m); };
-    for(let x=x0;x<=x1;x+=rg.step){ place(x+(rnd()-.5)*3,z0); place(x+(rnd()-.5)*3,z1); }
-    for(let z=z0;z<=z1;z+=rg.step){ place(x0,z+(rnd()-.5)*3); place(x1,z+(rnd()-.5)*3); }
+    for(let x=x0;x<=x1;x+=rg.step){ place(x+(rnd()-.5)*rg.jit,z0); place(x+(rnd()-.5)*rg.jit,z1); }
+    for(let z=z0;z<=z1;z+=rg.step){ place(x0,z+(rnd()-.5)*rg.jit); place(x1,z+(rnd()-.5)*rg.jit); }
+  }
+}
+// Close SMALL gaps between adjacent buildings (open plaza corners, street-row joins) with a
+// filler block that overlaps both ends, so no bright sky shows through the seam between two
+// buildings ("light seeping through the building"). Only bridges genuinely-small gaps (<5.5u)
+// between buildings on the SAME ground level, so wide intended openings (streets, the plaza
+// mouth) stay open. Filler matches a neighbour's wall tint; no facade, no collider (it sits
+// inside the building cluster, unreachable).
+function buildCornerFillers(){
+  const bs=SCENE.buildings||[];
+  const add=(cx,cz,w,d,h,base,col)=>{ if(w<0.3||d<0.3)return; const m=M(new THREE.BoxGeometry(w,h,d),col,false,false);
+    m.position.set(cx, base+h/2, cz); m.castShadow=false; m.receiveShadow=false; sceneRoot.add(m); };
+  for(let i=0;i<bs.length;i++)for(let j=i+1;j<bs.length;j++){ const a=bs[i],c=bs[j];
+    const ax0=a.x-a.w/2,ax1=a.x+a.w/2,az0=a.z-a.d/2,az1=a.z+a.d/2;
+    const cx0=c.x-c.w/2,cx1=c.x+c.w/2,cz0=c.z-c.d/2,cz1=c.z+c.d/2;
+    const ba=groundHeight(a.x,a.z); if(Math.abs(ba-groundHeight(c.x,c.z))>1) continue;
+    const gx=Math.max(ax0,cx0)-Math.min(ax1,cx1), gz=Math.max(az0,cz0)-Math.min(az1,cz1), G=5.5; // >0 = gap on axis
+    if(gx>=G || gz>=G) continue;                     // far apart → intended opening (street/plaza mouth), not a seam
+    if(gx<=0.3 && gz<=0.3) continue;                 // already flush/overlapping → no visible gap
+    const h=Math.max(a.h,c.h), col='#'+((a.facade&&a.facade.wall)||a.color);
+    // per axis: if there's a gap, bridge edge→edge (+overlap into both); else span the shared extent.
+    const fx0=gx>0?Math.min(ax1,cx1)-0.6:Math.max(ax0,cx0)-0.4, fx1=gx>0?Math.max(ax0,cx0)+0.6:Math.min(ax1,cx1)+0.4;
+    const fz0=gz>0?Math.min(az1,cz1)-0.6:Math.max(az0,cz0)-0.4, fz1=gz>0?Math.max(az0,cz0)+0.6:Math.min(az1,cz1)+0.4;
+    add((fx0+fx1)/2,(fz0+fz1)/2, fx1-fx0, fz1-fz0, h, ba, col);
   }
 }
 function buildCity(cols){
   buildPlateau(cols); buildStairs(); buildSurfaces();
-  buildRings(cols); buildWalls(cols); buildBuildings(cols); buildProps(cols); buildBackdrop();
+  buildRings(cols); buildWalls(cols); buildBuildings(cols); buildCornerFillers(); buildProps(cols); buildBackdrop();
 }
 
 // ===== pet-shop INTERIOR builder (a flat papercraft "J&M Tropical Fish" room) =====
@@ -1061,6 +1161,25 @@ window.cameraQA={
     for(const [x,z] of cells){_warp(x,z);const v=shenVisible();if(!v.ok)fails.push({x:+x.toFixed(1),z:+z.toFixed(1),why:v.why});}
     _warp(SCENE.spawn.x,SCENE.spawn.z);
     return {cells:cells.length,fails:fails.length,byReason:fails.reduce((a,f)=>((a[f.why]=(a[f.why]||0)+1),a),{}),sample:fails.slice(0,30)};},
+  // CAMERA-CLIP QA — a building filling the frame is NOT a Shen-visibility fail (static()
+  // passes), so it needs its own check: for every reachable cell, is the camera eye inside
+  // a building footprint at wall height? rawClips = before the pushCamOut fix; residualClips
+  // = after (must be ~0). Catches the "camera behind a wall" composition bug.
+  clip:(stepSz)=>{ stepSz=stepSz||1.0; const cells=_reachable(stepSz);
+    const inB=(x,z,y,m)=>{ for(const bd of (SCENE.buildings||[])){ if(y>groundHeight(bd.x,bd.z)+bd.h+1)continue;
+      if(Math.abs(x-bd.x)<bd.w/2+m && Math.abs(z-bd.z)<bd.d/2+m) return bd; } return null; };
+    let raw=0; const residual=[];
+    for(const [x,z] of cells){ const zo=pickZone(x,z); if(!zo)continue;
+      const {fx,fz}=zoneAxis(zo); const a=clampn(zoneLocal(zo,x,z).along,-zo.halfLen,zo.halfLen);
+      const cpx=zo.center[0]+fx*a, cpz=zo.center[1]+fz*a, gyCam=groundHeight(cpx,cpz), latx=-fz, latz=fx;
+      const rx=cpx-fx*zo.back+latx*zo.side, rz=cpz-fz*zo.back+latz*zo.side, ry=gyCam+zo.height;
+      if(inB(rx,rz,ry,0.2)) raw++;                              // would clip without the fix
+      const r=rigFor(zo,{x,z}), p=r.pos, b=inB(p.x,p.z,p.y,0.2);// pushed eye
+      // only a real defect if that building is IN FRONT of the camera (in view), not behind/over it
+      if(b && (r.tgt.x-p.x)*(b.x-p.x)+(r.tgt.z-p.z)*(b.z-p.z)>0)
+        residual.push({x:+x.toFixed(1),z:+z.toFixed(1),bld:(b.facade&&b.facade.sign)||('bld@'+b.x)}); }
+    _warp(SCENE.spawn.x,SCENE.spawn.z);
+    return {cells:cells.length, rawClips:raw, residualClips:residual.length, sample:residual.slice(0,10)}; },
   // FRAMING sweep: at every reachable cell, assert Shen is big enough + not viewed top-down.
   // Reports minSize / maxPitch across the map so you can tune back/height/fov to the AIM.
   framing:(stepSz)=>{const cells=_reachable(stepSz),fails=[];let minSize=9,maxPitch=0;
@@ -1199,12 +1318,86 @@ window.__fixtures=()=>{ const out=[]; if(sceneRoot) sceneRoot.traverse(o=>{ if(o
   return out; };
 // every placed thing (props + buildings) with its ground height + size, so the QA
 // harness can frame EACH one individually for a per-object close-up screenshot.
+window.__gh=(x,z)=>groundHeight(x,z);
+// debug: raycast straight DOWN at a world (x,z) and report the surfaces hit, top-first, with
+// their lit-ish base colour — to identify what mesh a bright "bleed" strip actually is.
+window.__probe=(x,z)=>{ const rc=new THREE.Raycaster(new THREE.Vector3(x,80,z),new THREE.Vector3(0,-1,0));
+  return rc.intersectObjects(scene.children,true).filter(h=>h.object.material&&h.object.material.color)
+    .slice(0,6).map(h=>({y:+h.point.y.toFixed(2), geo:h.object.geometry&&h.object.geometry.type,
+      color:'#'+h.object.material.color.getHexString(), edge:!!h.object.isLineSegments})); };
+// QA probe for the texture-density check (studio/qa/checks/texture-density.mjs): for every
+// FLAT surface using the shared paper map, measure texels-per-metre per triangle edge. The
+// shared tile is 1024px at repeat 1×1 and paperUV bakes UVs to world-size×DENSITY, so
+// texels = uvLen·1024 / worldLen, ideally ≈ DENSITY·1024 ≈ 184 t/m everywhere. Report any
+// face well BELOW that (reads blurry/stretched — the old 256px/face bug). []=crisp+uniform.
+// Curved props (bbox-fallback UVs) are excluded; this guards the walls/floors/facade pieces.
+window.__textureDensity=()=>{ const TILE=1024, MIN=70, map=PAPER&&PAPER.map, low=[];
+  scene.traverse(o=>{ if(!o.isMesh||!o.material||o.material.map!==map||!map)return;
+    const g=o.geometry, t=g.type;
+    if(t!=='BoxGeometry'&&t!=='PlaneGeometry'&&t!=='CircleGeometry')return;   // flat surfaces only
+    const uv=g.attributes&&g.attributes.uv, pos=g.attributes&&g.attributes.position; if(!uv||!pos)return;
+    const idx=g.index, n=idx?idx.count:pos.count; let minT=Infinity;
+    for(let i=0;i+2<n;i+=3){ const a=idx?idx.getX(i):i, b=idx?idx.getX(i+1):i+1, c=idx?idx.getX(i+2):i+2;
+      for(const [p,q] of [[a,b],[a,c],[b,c]]){
+        const wlen=Math.hypot(pos.getX(q)-pos.getX(p),pos.getY(q)-pos.getY(p),pos.getZ(q)-pos.getZ(p));
+        const ulen=Math.hypot(uv.getX(q)-uv.getX(p),uv.getY(q)-uv.getY(p));
+        if(wlen>0.1&&ulen>1e-4){ const v=ulen*TILE/wlen; if(v<minT)minT=v; } } }
+    if(isFinite(minT)&&minT<MIN) low.push({label:t+'@'+o.position.x.toFixed(0)+','+o.position.z.toFixed(0), texelsPerMetre:Math.round(minT)}); });
+  return {lowDensity:low, target:Math.round(TILE*DENSITY), tile:TILE}; };
 window.__items=()=>{ const out=[];
   (SCENE.props||[]).forEach((p,i)=>out.push({kind:p.type, x:p.x, z:p.z, y:groundHeight(p.x,p.z), size:2, face:null, label:p.type+'_'+i}));
   (SCENE.buildings||[]).forEach((b,i)=>{ const fd=Array.isArray(b.faceDir)?b.faceDir[0]:(b.faceDir||'-z');
-    out.push({kind:'building', x:b.x, z:b.z, y:groundHeight(b.x,b.z), size:Math.max(b.w,b.d,b.h), face:fd,
+    out.push({kind:'building', x:b.x, z:b.z, y:groundHeight(b.x,b.z), size:Math.max(b.w,b.d,b.h), w:b.w, d:b.d, h:b.h, face:fd,
       label:'bld_'+((b.facade&&b.facade.sign)||i).toString().replace(/\s+/g,'')}); });
   return out; };
+// SKY-LEAK / ABYSS guard (studio/qa/checks/sky-leak.mjs): the world must be ringed by a
+// continuous, tall backdrop so no outward sightline from a play-edge hits sky/void. From each
+// of 8 perimeter points (4 edge-mids + 4 corners) we march OUTWARD (the direction a player
+// standing at that edge faces toward the world boundary) and require a backdrop/filler block
+// within `maxDist` whose top is ≥ `minTop`. A gap (no block) or a too-short backstop = a leak —
+// exactly the visual-sweep "SKY-GAP / over-rooftop abyss" finding (short 24-tall inner ring +
+// gapped 2nd ring). Geometric + cheap; mirrors what a player near each edge actually sees
+// (NOT the cross-map flat freecam angle, which fog handles at distance).
+window.__skyLeak=(opts)=>{ const b=SCENE.bounds, maxDist=(opts&&opts.maxDist)||70, minTop=(opts&&opts.minTop)||24, pad=1.5;
+  const outside=[]; scene.traverse(o=>{ if(!o.isMesh||!o.geometry)return; const p=o.position,g=o.geometry;
+    g.computeBoundingBox&&g.computeBoundingBox(); const bb=g.boundingBox; if(!bb)return;
+    const w=(bb.max.x-bb.min.x)*o.scale.x,h=(bb.max.y-bb.min.y)*o.scale.y,d=(bb.max.z-bb.min.z)*o.scale.z,topY=p.y+bb.max.y*o.scale.y;
+    if((p.x<b.xmin-pad||p.x>b.xmax+pad||p.z<b.zmin-pad||p.z>b.zmax+pad)&&h>4)
+      outside.push({x:p.x,z:p.z,topY,w,d}); });
+  const cx=(b.xmin+b.xmax)/2, cz=(b.zmin+b.zmax)/2;
+  const pts=[['N',cx,b.zmin+2,0,-1],['S',cx,b.zmax-2,0,1],['E',b.xmax-2,cz,1,0],['W',b.xmin+2,cz,-1,0],
+            ['NE',b.xmax-2,b.zmin+2,0.7,-0.7],['NW',b.xmin+2,b.zmin+2,-0.7,-0.7],
+            ['SE',b.xmax-2,b.zmax-2,0.7,0.7],['SW',b.xmin+2,b.zmax-2,-0.7,0.7]];
+  const probes=[], leaks=[];
+  for(const [dir,px,pz,ux,uz] of pts){ let hitAt=null,maxTop=-99;
+    for(let t=0;t<=maxDist+30;t+=1.5){ const sx=px+ux*t, sz=pz+uz*t;
+      for(const m of outside){ if(Math.abs(m.x-sx)<m.w/2+1&&Math.abs(m.z-sz)<m.d/2+1){ if(hitAt==null)hitAt=t; if(m.topY>maxTop)maxTop=m.topY; } }
+      if(hitAt!=null&&t>hitAt+24)break; }                 // sampled enough past first hit
+    const rec={dir,nearestAt:hitAt==null?null:+hitAt.toFixed(0),maxTop:maxTop<0?null:+maxTop.toFixed(0)};
+    probes.push(rec);
+    if(hitAt==null||hitAt>maxDist) leaks.push(Object.assign({why:'no-backstop'},rec));
+    else if(maxTop<minTop) leaks.push(Object.assign({why:'too-short'},rec)); }
+  return { leaks, probes, maxDist, minTop, backdropBlocks: outside.length }; };
+// CAMERA-RAYCAST ABYSS guard (studio/qa/checks/camera-abyss.mjs): the definitive "never the
+// abyss" test — at every reachable cell it sets the REAL zone camera and casts a grid of rays
+// through the frame; a ray that hits NOTHING is sky/void. The downward gameplay cameras should
+// see CITY+GROUND across the whole frame, so a void ray BELOW `ceiling` (ndc.y) = a reachable
+// view looking off the edge. (Catches what __skyLeak's edge-cast misses: a CENTER camera whose
+// look-direction has a gap, e.g. the park-center view.) Only a thin top strip of sky-dome above
+// `ceiling` is allowed. Returns the offending cells.
+window.__camAbyss=(opts)=>{ opts=opts||{}; const ceiling=opts.ceiling==null?0.55:opts.ceiling, step=opts.step||3;
+  const cells=opts.cells|| _reachable(step);
+  const rc=new THREE.Raycaster(); const meshes=[]; scene.traverse(o=>{ if(o.isMesh&&o.visible)meshes.push(o); });
+  const leaks=[]; let worst=null;
+  for(const [x,z] of cells){ window.cameraQA.warp(x,z); cam.updateMatrixWorld();
+    let lowestVoidY=9;
+    for(let ix=-0.8;ix<=0.8;ix+=0.2){ for(let iy=-0.3;iy<=0.9;iy+=0.1){
+      rc.setFromCamera({x:ix,y:iy},cam); rc.far=500;
+      if(!rc.intersectObjects(meshes,false).length){ if(iy<lowestVoidY)lowestVoidY=iy; } } }
+    if(lowestVoidY<ceiling){ const rec={x:+x.toFixed(1),z:+z.toFixed(1),lowestVoidY:+lowestVoidY.toFixed(2)};
+      leaks.push(rec); if(!worst||rec.lowestVoidY<worst.lowestVoidY)worst=rec; } }
+  window.cameraQA.warp(SCENE.spawn.x,SCENE.spawn.z);
+  return { leaks:leaks.slice(0,20), leakCount:leaks.length, cells:cells.length, ceiling, worst }; };
 
 
 async function build(){
@@ -1223,6 +1416,10 @@ async function build(){
   // optional post-processing finishing pass. window.__fx(name) switches live.
   FX.init({renderer,scene,camera:cam,skyColor:'cfe0f2',groundColor:world.ground});
   window.__fx=(name)=>{const p=FX.setPreset(name);resize();return p;};
+  // load the ONE shared crisp paper tile set BEFORE any scene geometry is built (textures
+  // populate async; the Texture objects exist synchronously so the scene builders — buildCity,
+  // makeFacade, paperMat — can reference them via PAPER now). PERSISTENT across scene switches.
+  PAPER=loadPaper('out/textures/paper');
   // base ground plane (PERSISTENT; hidden inside interiors, where a wood floor covers the room)
   groundPlane=new THREE.Mesh(new THREE.PlaneGeometry(400,400),
     new THREE.MeshStandardMaterial({color:hex(world.ground),roughness:1,metalness:0}));

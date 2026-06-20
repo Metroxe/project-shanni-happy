@@ -25,6 +25,14 @@ clutter, no clashing colours, no stray lines/artifacts, calm negative space.
   dark braids, dusty-rose jacket over gray tee, cream floral skirt).
 - Environments use the same flat pastel paper set (flat bands, soft rounded hills,
   cream die-cut props, contact shadows). See the 6 mood specs in `studio/specs/all.json`.
+- **Foreground = model it; texture only flat grain.** In the reachable world (plaza,
+  street, stairs, park) build structure as *separate modeled paper pieces* (sign board,
+  awning, window frames, door) and keep the kit small (no fussy mullions, brick, or trim).
+  Texture carries only flat pastel grain: one small shared seamless tile at a single fixed
+  texels-per-metre, big or unique textures are reserved for the unreachable backdrop, and
+  every in-world sign sits on its **own die-cut board**, never baked into a wall. Test: if
+  you can NAME it (a sign, a window, a door) model it; if you can only FEEL it (grain,
+  mottle) texture it. Full how-to lives in the **`papercraft-texture`** skill.
 
 ## Renderers (two, by purpose)
 
@@ -316,7 +324,13 @@ detection commands + root-cause code refs live in the **`/papercraft-env-qa`** s
    reachable). Footprint overlaps = z-fight/clipping; unreachable = a wall blocks a route.
    **Every single thing placed in a session must be screenshotted and looked at** — zone
    shots hide per-object defects (a barrier that reads as a bench, a prop facing wrong, a
-   shrub clipping a wall). Inspect the `props/` close-ups, not just the wide shots.
+   shrub clipping a wall). Inspect the `props/` close-ups, not just the wide shots. Also
+   capture a **texture close-up of every textured surface at the CLOSEST reachable gameplay
+   distance** (plus each sign straight-on); a blurry / stretched / clashing / low-res-text
+   surface fails the gate (the whole-object `props/` frame is too far away to be a resolution
+   read). Once a texel-density audit is wired into `qa_shots.mjs`, also require it to print
+   **`✓ texture density uniform`**. (Both the close-up pass and the audit are to-build; see
+   the `/papercraft-env-qa` and `/papercraft-texture` skills.)
 3. In the preview (`/zone-camera`): `cameraQA.static()`=0 + `cameraQA.path()` round-trips=0,
    AND `cameraQA.walk([a],[b])` on every corridor (`stuckAt` null).
 4. **Multi-agent picture sweep** over `studio/out/qa/*.png` (template
@@ -353,19 +367,28 @@ audit alone for these.
 | Clip THROUGH a prop (slide/climber) | one centre collider → per-part `cols:[{dx,dz,r}]` |
 | Prop faces the wrong way | make it orientation-free (lamp = top globe) or set per-prop `rot` |
 | Props that don't belong / overlap | bushes on a road, bench on a bush → streets = lamps/trees, park = bushes; space props ≥~3u; the `placement` lens |
+| Blurry / smeared wall or prop up close | 256px `paperTex` + fixed `repeat 1.6` (too few texels/m) → one 1024px `gen_paper` set via `loadPaper()`, `paperUV(geo,0.18)`, max anisotropy + mipmaps |
+| Grain stretched (wide vs tall face differ) | `BoxGeometry` 0..1 UVs → `paperUV()` so texels-per-metre is constant on every face |
+| Sign text low-res / stretched | text baked into the `facadeTex` wall canvas (`k=48` px/m) → a dedicated `makeSign()` board at ~220 px/m × dpr on its own thin box off the wall |
+| Fake structure painted into a wall | a sign / window / door drawn into `facadeTex` → MODEL it as a thin box/plane in `makeFacade` (foreground = model it; texture only flat grain) |
+| Neighbour textures clash at a seam | mismatched density/phase or two unrelated maps → ONE shared paper map, per-mesh tint, same `DENSITY`, world-space (`paperUV` or triplanar) phase |
+| Texture not QA'd at resolution | the deterministic `texture-density` check (`window.__textureDensity()` → `{lowDensity:[]}`, run by `node studio/qa_audit.mjs`) now guards texels-per-metre per face; ALSO shoot every changed surface at the CLOSEST reachable distance + each sign straight-on (crisp / uniform / seamless / blended / legible) |
+| Blurry / mis-aligned building textures | big stretched maps → MODEL foreground structure as separated thin geometry, texture only for flat grain + distant backdrop; uniform texel density; `checks/texture-density.mjs` |
+| Hard seam where two textures/materials meet | adjacent maps don't blend → named sweep line; share a palette/tile, soften the join |
+| Sky/light seeping through a gap between adjacent shopfronts | facade gap to the void → close the gap / build city behind it (abyss rule); named sweep line |
+| Sky/void over the rooftops or between backdrop blocks (short/gapped skyline) | backdrop ring too short or its near rings gapped → near rings GAPLESS (`fill>1, jit 0`) + tall in `buildBackdrop()`; deterministic `checks/sky-leak.mjs` (`window.__skyLeak()` → `leaks:[]`, casts outward from each edge) AND `checks/camera-abyss.mjs` (`window.__camAbyss()` → `leakCount:0`, raycasts the REAL zone camera at every reachable cell — catches a center-view gap the edge-cast misses) |
+| Sweep cries "ABYSS/void" but geometry is sound | the vision synthesizer mis-reads **fog-washed / flat-grey backdrop or a retaining wall** as void — TRUST `__camAbyss()` (0 void rays from every reachable cell) over the synthesizer; the fix (if any) is warming/de-flattening the distant palette (diorama-lens taste), NOT adding geometry |
 | **Interior background is pitch WHITE** | a colour string reached `THREE.Color` **without a leading `#`** → `THREE.Color('e8cba2')` silently parses to WHITE (only `'#e8cba2'` is correct). Normalise every colour (`v[0]==='#'?v:'#'+v`) before `new THREE.Color()` / `.set()`. Each scene sets an intentional non-white bg via `Sky.setInterior`. Guarded by `checks/scene-background.mjs` (`window.__sceneBackgrounds()`). |
 | **Interior floor runs past the walls / floats against the bg** | the floor plane is bigger than the room → its cut edge floats. Size it to the room footprint only (`(x1-x0)+th × (zF-zB)+th`, no `+9`/forward bias). Beyond the walls is the BACKGROUND colour, not more floor. Guarded by `checks/floor-bounds.mjs` (`window.__floorOverruns()`=`[]`). |
 | **Room walls don't line up at the corners** | side walls and back wall built at different heights (e.g. `wallH` 4.5 vs `backH` 5.4) → a step at the corner. Give a room ONE wall height. |
 | **Door/shelf/sign has the WALL drawn over it; one prop clips THROUGH another** | a fixture recessed INTO the wall (placed at wall centre `z`) → the wall front occludes it; or a shelf board spans a tank. Mount fixtures PROUD of the wall front face (`zBack + th/2`); a tank SITS ON a shelf board (y-touch). `window.__clips()` / `window.__interiorOverlaps()` (3D per-mesh audit over `userData.fx`-tagged fixtures) must be `[]` — guarded by `checks/interior-overlap.mjs`. |
 | **A long/thin prop (shelf) walls off the room** | a single circular collider `r=½·max(w,d)` (≈4u for a width-8 shelf) bulges a huge invisible wall → blocked the counter. Use `pushBoxColliders` matching the footprint (swap w/d when rotated). Tell: `cameraQA.static`/`framing` cell count drops. |
-| Blurry / mis-aligned building textures | big stretched maps → MODEL foreground structure as separated thin geometry, texture only for flat grain + distant backdrop; uniform texel density; `checks/texture-density.mjs` |
-| Hard seam where two textures/materials meet | adjacent maps don't blend → named sweep line; share a palette/tile, soften the join |
-| Sky/light seeping through a gap between adjacent shopfronts | facade gap to the void → close the gap / build city behind it (abyss rule); named sweep line |
 | Edits not showing on reload | browser cached `specs/world.json` → fetched `cache:'no-store'`; hard-reload. **The preview hard-caches ES modules and WON'T re-fetch even on reload** — a fix can be in the served file yet the page runs old code (symptom: `'newThing' in window.audio` is false). FIX: `studio/js/*.js` are imported in `game.html` with a `?v=N` cache-bust — **bump N when you edit any module**. Also verify in a FRESH headless context (`node studio/qa_audit.mjs` / `studio/qa/scenarios/*`). |
 
-Debug hooks (all on `window`): `cameraQA.{static,framing,path,transition,reach,walk,warp}`,
+Debug hooks (all on `window`): `cameraQA.{static,framing,clip,path,transition,reach,walk,warp}`,
 `__overlaps()` (town 2D footprints), `__clips()`/`__interiorOverlaps()` (interior 3D per-mesh),
-`__floorOverruns()`, `__sceneBackgrounds()`, `__fixtures()` (per-fixture AABBs), `__colliders(x,z,r)`,
+`__floorOverruns()`, `__sceneBackgrounds()`, `__fixtures()` (per-fixture AABBs), `__textureDensity()`,
+`__skyLeak()`, `__camAbyss()`, `__gh(x,z)`, `__probe(x,z)`, `__colliders(x,z,r)`,
 `__freecam/__look` (free-cam for QA shots — they STOP the auto loop; call `__startAuto()` after).
 Deterministic gate: `node studio/qa_audit.mjs` (auto-runs `studio/qa/checks/*`). See `studio/qa/README.md`.
 

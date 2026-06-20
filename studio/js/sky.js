@@ -274,7 +274,11 @@ export const Sky = {
     // for a texture when a preset is active — we always reset it to our time-of-day colour.
     if(this._scene){ this._scene.background=this._bg.copy(P.hor); if(this._scene.fog)this._scene.fog.color.copy(P.hor); }
     // hemisphere fill
-    if(this.hemi){ this.hemi.color.copy(P.hs); this.hemi.groundColor.copy(P.hg); this.hemi.intensity=P.hi; }
+    // The near-white sky fill at full strength over-brightens up-facing floors so light
+    // surfaces clip to white (the "light bleeding under the walls": albedo×light > 1, no tone
+    // mapping in the default FX-off render). Trim the ambient fill so light floors stay below
+    // the clip; the strong directional sun keeps the scene light + airy (walls stay sunlit).
+    if(this.hemi){ this.hemi.color.copy(P.hs); this.hemi.groundColor.copy(P.hg); this.hemi.intensity=P.hi*0.6; }
 
     // sun + moon arc — STYLIZED for a flat papercraft game in a walled scene. Rather than
     // a realistic overhead arc (which spends the day above this low, slightly-downward
