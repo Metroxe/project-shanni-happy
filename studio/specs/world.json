@@ -7,9 +7,20 @@
     "clouds": { "count": 7, "radius": [55, 120], "y": [20, 38], "scale": [11, 22], "wind": 1.1, "opacity": 0.9 }
   },
   "ground": "c1bdb4",
+  "music": "out/music/calm.ogg",
   "fog": [46, 165],
   "bounds": { "xmin": -38, "xmax": 38, "zmin": -68, "zmax": 30 },
   "spawn": { "x": -20, "z": -41 },
+  "spawns": {
+    "from_petshop": { "x": -3, "z": 11.9, "face": 1 }
+  },
+  "portals": [
+    { "id": "to_petshop", "x": -3, "z": 11.4, "r": 1.8, "to": "petshop", "spawn": "from_town",
+      "label": "the Pet Shop",
+      "door": { "x": -3, "z": 10.02, "face": "+z", "w": 1.8, "h": 3.1, "y": 0,
+                "panel": "b88a5e", "frame": "efe7d6", "window": "cfe0e6", "bell": true,
+                "awning": "9bb6c2", "sign": "PET SHOP", "signBg": "8fa6b2" } }
+  ],
 
   "level": { "H": 4.5, "stone": "b5b1ab", "wall": "d8d0c2" },
   "stairs": { "x0": 5.5, "x1": 13.5, "zTop": 2, "zBot": 10, "steps": 10,
@@ -188,37 +199,6 @@
           "t2":   { "text": "Hop everywhere you go, champ. Your legs remember it better than your head does.", "next": "menu" },
           "area": { "text": "Quiet little block, but it grows on you. Adrian runs the pet shop just down past the stairs — good soul, always could use a hand.", "next": "menu" },
           "bye":  { "text": "Catch you later. Stay bouncy! ✿" }
-        }
-      }
-    },
-    {
-      "name": "Adrian",
-      "tex": "out/adrian-paper.png",
-      "x": -10, "z": 0.8, "h": 2.3,
-      "quest": "q_hamsters",
-      "dialogue": {
-        "start": "intro",
-        "nodes": {
-          "intro":  { "text": "Oh! Hello there. I'm Adrian — I mind the little pet shop just here.", "next": "intro2" },
-          "intro2": { "text": "I'm in a bit of a flap, honestly. I left the hamster cage open and... well.", "next": "intro3" },
-          "intro3": { "text": "Five of my hamsters slipped out and scattered all over town. I can't chase them myself.", "next": "offer" },
-          "offer":  { "text": "You're so quick on your feet — would you help me round up my five little ones?", "choices": [
-            { "label": "Of course I'll help!", "next": "accept" },
-            { "label": "Where might they be?", "next": "hint" },
-            { "label": "Maybe later.",         "next": "later" }
-          ] },
-          "accept": { "text": "Oh, thank you, truly! Bring each one back to me — gently, they're shy little things.", "action": "start:q_hamsters", "next": "hint" },
-          "hint":   { "text": "They love warm corners — try the plaza, along the main street, and down in the park past the steps. Listen for tiny squeaks!" },
-          "later":  { "text": "That's alright. I'll be right here if you change your mind." },
-          "progress": { "text": "Any luck with my little escapees? They're awfully quick, I know.", "choices": [
-            { "label": "Still looking!", "next": "progAck" },
-            { "label": "Where again?",   "next": "hint" }
-          ] },
-          "progAck": { "text": "Thank you for trying. Every one you bring back is a weight off my heart." },
-          "ready":   { "text": "You found them ALL? Oh — come here, you fuzzy little troublemakers!", "next": "ready2" },
-          "ready2":  { "speaker": "Shen", "text": "Every last hamster, safe and sound!", "next": "ready3" },
-          "ready3":  { "text": "I can't thank you enough. The shop feels whole again — you're always welcome here. ✿" },
-          "done":    { "text": "There you are! The hamsters keep squeaking for you. Thank you again, friend. ✿" }
         }
       }
     }

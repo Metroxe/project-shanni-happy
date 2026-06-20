@@ -51,24 +51,38 @@ function backup(rawStr) {
 
 // Serialize live sim state → on-disk blob. Only durable fields; transient
 // physics/animation is intentionally dropped (recomputed fresh on load).
-// `extra` carries owned-elsewhere durable state (e.g. quest progress from the
-// Quests engine) — a plain object that load() passes back through untouched.
+// `extra` carries owned-elsewhere durable state (a plain object passed through):
+//   extra.quests    — quest progress from the Quests engine
+//   extra.collected — the GLOBAL collected-id set (array). With loading zones the
+//                     live S.collectibles only holds the ACTIVE scene's pickups, so
+//                     collected hamsters from another scene must come from here, not
+//                     from S, or they'd be dropped the moment you change rooms.
+//   extra.scene     — id of the scene the player is currently in (which world spec
+//                     their x/z belong to). Absent on old saves → town (default).
 export function write(S, world, build, extra) {
   const s = store(); if (!s) return;
+  const collected = (extra && Array.isArray(extra.collected))
+    ? extra.collected.filter(id => id != null)
+    : S.collectibles.filter(c => c.got && c.id != null).map(c => c.id);
   const data = {
     v: SAVE_VERSION,
     build: build || 'dev',          // which deploy wrote this — debug only
     t: Date.now(),                  // savedAt (ms); informational
+    scene: (extra && typeof extra.scene === 'string') ? extra.scene : undefined,
     player: { x: round(S.x), z: round(S.z), facing: S.facing === -1 ? -1 : 1 },
-    collected: S.collectibles.filter(c => c.got && c.id != null).map(c => c.id),
+    collected,
     quests: (extra && extra.quests && typeof extra.quests === 'object') ? extra.quests : {},
     npcs: {},                       // reserved: future conversation state
   };
   try { s.setItem(KEY, JSON.stringify(data)); } catch {}
 }
 
-// Load + sanitize → { player:{x,z,facing}, collected:Set<id> } or null.
-export function load(world) {
+// Load + sanitize → { player:{x,z,facing}, collected:Set<id>, quests, scene } or
+// null. `scenes` is a map { sceneId: spec } of ALL known scenes (so we can clamp
+// the player to the bounds of the scene they were saved in, and validate collected
+// ids against the union of every scene's pickups). A plain single world spec is
+// also accepted (back-compat) and treated as the only scene.
+export function load(scenes) {
   const s = store(); if (!s) return null;
   let rawStr;
   try { rawStr = s.getItem(KEY); } catch { return null; }
@@ -93,8 +107,17 @@ export function load(world) {
     if (!raw || raw.v !== SAVE_VERSION) { backup(rawStr); wipe(); return null; }
   }
 
-  try { return sanitize(raw, world); }
+  try { return sanitize(raw, normScenes(scenes)); }
   catch { backup(rawStr); wipe(); return null; }
+}
+
+// Normalize the `scenes` arg into a { id: spec } map. Accepts either an actual
+// map, or a single world spec (back-compat) → wrapped as { town: spec }.
+function normScenes(scenes) {
+  if (scenes && typeof scenes === 'object' && (scenes.bounds || scenes.collectibles || scenes.spawn)) {
+    return { town: scenes };               // looks like a single world spec
+  }
+  return (scenes && typeof scenes === 'object') ? scenes : {};
 }
 
 // Step an older-schema blob UP to the current version. Return the upgraded blob
@@ -110,23 +133,33 @@ function migrate(raw) {
   return raw;
 }
 
-// Trust nothing: clamp to current world bounds, intersect ids with the world
-// that exists NOW, default everything missing.
-function sanitize(raw, world) {
-  const b = (world && world.bounds) || { xmin: -12, xmax: 12, zmin: -12, zmax: 6 };
+// Trust nothing: resolve which scene the save belongs to (default = first known
+// scene / town), clamp the player to THAT scene's bounds, intersect collected ids
+// with the union of every scene's pickups, default everything missing.
+function sanitize(raw, scenes) {
+  const ids = Object.keys(scenes);
+  const def = ids[0] || 'town';
+  const scene = (typeof raw.scene === 'string' && scenes[raw.scene]) ? raw.scene : def;
+  const spec = scenes[scene] || {};
+  const b = spec.bounds || { xmin: -12, xmax: 12, zmin: -12, zmax: 6 };
+  const sp = spec.spawn || {};
   const p = raw.player || {};
   const player = {
-    x: clampNum(p.x, b.xmin, b.xmax, 0),
-    z: clampNum(p.z, b.zmin, b.zmax, 2),
+    x: clampNum(p.x, b.xmin, b.xmax, Number.isFinite(sp.x) ? sp.x : 0),
+    z: clampNum(p.z, b.zmin, b.zmax, Number.isFinite(sp.z) ? sp.z : 2),
     facing: p.facing === -1 ? -1 : 1,
   };
-  const valid = new Set((world.collectibles || []).map(c => c.id).filter(id => id != null));
+  // valid ids = union across ALL scenes, so a hamster collected in town stays
+  // collected even while the save was written from inside the pet shop.
+  const valid = new Set();
+  for (const id of ids) for (const c of (scenes[id].collectibles || []))
+    if (c.id != null) valid.add(c.id);
   const collected = new Set(
     (Array.isArray(raw.collected) ? raw.collected : []).filter(id => valid.has(id)));
   // quest progress is owned by the Quests engine; pass the blob through (it
   // validates/clamps per-quest on its own init). Missing → empty (fresh quests).
   const quests = (raw.quests && typeof raw.quests === 'object' && !Array.isArray(raw.quests)) ? raw.quests : {};
-  return { player, collected, quests };
+  return { player, collected, quests, scene };
 }
 
 // Apply a sanitized save onto a fresh sim state (mutates S). The collected-id
