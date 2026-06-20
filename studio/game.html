@@ -403,6 +403,11 @@ const cam=new THREE.PerspectiveCamera(40,1,0.1,300);
 
 const SHEN_H=1.9, SHEN_W=SHEN_H*0.4634, GROUND_EPS=0.02;
 const WALK_HOP=0.24, MAX_LIFT=1.5, FH=0.95, PLAYER_R=0.42;
+// Framing guardrails (enforced by cameraQA.framing): Shen's sprite must fill >= this
+// fraction of viewport height (never a tiny dot), and the view must sit <= this far
+// below horizontal (a 3/4 view, never a top-down plan view). Design AIM is comfortably
+// inside these: ~0.14 size, <= ~32 deg pitch. These are the hard floor/ceiling.
+const CAM_MIN_FRAC=0.125, CAM_MAX_PITCH=40*Math.PI/180;
 const TALK_R=2.4; const _tv=new THREE.Vector3();
 // Positional NPC/world sound: full volume within HEAR_NEAR, silent past HEAR_FAR
 // (squared rolloff). Ambient animation loops (e.g. Chrees' reps) are only audible
@@ -536,11 +541,18 @@ function pushCamOut(pos,tgt){
   if(hit) pos.copy(tgt).addScaledVector(_camV, Math.max(0.6, hit.distance-0.5));
   return pos;
 }
-function rigFor(zone,s){ const {fx,fz}=zoneAxis(zone);
-  const a=clampn(zoneLocal(zone,s.x,s.z).along,-zone.halfLen,zone.halfLen);
-  const cpx=zone.center[0]+fx*a, cpz=zone.center[1]+fz*a;
-  const gyCam=groundHeight(cpx,cpz), gyP=groundHeight(s.x,s.z), latx=-fz, latz=fx;
+function rigFor(zone,s){ const {fx,fz}=zoneAxis(zone); const latx=-fz, latz=fx;
+  const L=zoneLocal(zone,s.x,s.z);
+  const a=clampn(L.along,-zone.halfLen,zone.halfLen);
+  // Open-area zones (trackWid>0) ALSO follow the player across the axis, clamped to
+  // +/-trackWid, so a wide sideways wander can't grow the camera distance — Shen keeps a
+  // stable on-screen size. Corridor zones leave trackWid unset (b=0) → ride the centerline
+  // (the angle is still fixed; this only TRANSLATES the eye, never an orbit/free follow).
+  const b=zone.trackWid?clampn(L.across,-zone.trackWid,zone.trackWid):0;
+  const cpx=zone.center[0]+fx*a+latx*b, cpz=zone.center[1]+fz*a+latz*b;
+  const gyCam=groundHeight(cpx,cpz), gyP=groundHeight(s.x,s.z);
   const tgt=new THREE.Vector3(s.x+fx*zone.lookAhead, gyP+zone.lookY, s.z+fz*zone.lookAhead);
+  // pushCamOut keeps the eye out of buildings; trackWid keeps Shen a stable on-screen size.
   const pos=pushCamOut(new THREE.Vector3(cpx-fx*zone.back+latx*zone.side, gyCam+zone.height, cpz-fz*zone.back+latz*zone.side), tgt);
   return { pos, tgt, fov:zone.fov, pitch:zone.pitchBias }; }
 function pickZone(x,zc){ const SKIRT=0.8;
@@ -894,6 +906,20 @@ function shenVisible(){ cam.updateMatrixWorld();cam.matrixWorldInverse.copy(cam.
   const hit=_ray.intersectObjects(BUILDING_MESHES,false);
   if(hit.length)return {ok:false,why:'occluded',occ:hit[0].object.userData.bn||'?'};
   return {ok:true};}
+// FRAMING QA — separate from visibility: measures whether Shen is well-FRAMED at rest.
+// size = sprite height as a fraction of the viewport (project foot->head, NDC y spans 2);
+// pitch = how far below horizontal the camera looks. Guardrails: not a tiny dot, not top-down.
+function shenFraming(){ cam.updateMatrixWorld();cam.matrixWorldInverse.copy(cam.matrixWorld).invert();
+  const gy=groundHeight(S.x,S.z);
+  const foot=new THREE.Vector3(S.x,gy+0.04,S.z).project(cam);
+  const head=new THREE.Vector3(S.x,gy+SHEN_H,S.z).project(cam);
+  const size=Math.abs(head.y-foot.y)/2;
+  cam.getWorldDirection(_dir);
+  const pitch=Math.asin(clampn(-_dir.y,-1,1));
+  const r={size:+size.toFixed(3),pitchDeg:+(pitch*180/Math.PI).toFixed(1)};
+  if(size<CAM_MIN_FRAC)return Object.assign({ok:false,why:'too-small'},r);
+  if(pitch>CAM_MAX_PITCH)return Object.assign({ok:false,why:'too-steep'},r);
+  return Object.assign({ok:true},r); }
 window.cameraQA={
   warp:(x,z)=>_warp(x,z),
   static:(stepSz)=>{const cells=_reachable(stepSz),fails=[];
@@ -919,6 +945,16 @@ window.cameraQA={
         residual.push({x:+x.toFixed(1),z:+z.toFixed(1),bld:(b.facade&&b.facade.sign)||('bld@'+b.x)}); }
     _warp(SCENE.spawn.x,SCENE.spawn.z);
     return {cells:cells.length, rawClips:raw, residualClips:residual.length, sample:residual.slice(0,10)}; },
+  // FRAMING sweep: at every reachable cell, assert Shen is big enough + not viewed top-down.
+  // Reports minSize / maxPitch across the map so you can tune back/height/fov to the AIM.
+  framing:(stepSz)=>{const cells=_reachable(stepSz),fails=[];let minSize=9,maxPitch=0;
+    for(const [x,z] of cells){_warp(x,z);const f=shenFraming();
+      if(f.size<minSize)minSize=f.size; if(f.pitchDeg>maxPitch)maxPitch=f.pitchDeg;
+      if(!f.ok)fails.push({x:+x.toFixed(1),z:+z.toFixed(1),why:f.why,size:f.size,pitchDeg:f.pitchDeg,zone:activeZone&&activeZone.id});}
+    _warp(SCENE.spawn.x,SCENE.spawn.z);
+    return {cells:cells.length,fails:fails.length,minSize:+minSize.toFixed(3),maxPitch:+maxPitch.toFixed(1),
+      byReason:fails.reduce((a,f)=>((a[f.why]=(a[f.why]||0)+1),a),{}),
+      byZone:fails.reduce((a,f)=>((a[f.zone]=(a[f.zone]||0)+1),a),{}),sample:fails.slice(0,30)};},
   transition:(from,to,steps)=>{steps=steps||700;const ws=started;started=true;_warp(from[0],from[1]);
     held.up=held.down=held.left=held.right=false;aiTarget={x:to[0],z:to[1]};const fails=[];let reached=false;
     for(let i=0;i<steps;i++){S=step(S,resolveInput(),1/60);cameraFrame(S,1/60);
@@ -986,6 +1022,25 @@ window.__probe=(x,z)=>{ const rc=new THREE.Raycaster(new THREE.Vector3(x,80,z),n
   return rc.intersectObjects(scene.children,true).filter(h=>h.object.material&&h.object.material.color)
     .slice(0,6).map(h=>({y:+h.point.y.toFixed(2), geo:h.object.geometry&&h.object.geometry.type,
       color:'#'+h.object.material.color.getHexString(), edge:!!h.object.isLineSegments})); };
+// QA probe for the texture-density check (studio/qa/checks/texture-density.mjs): for every
+// FLAT surface using the shared paper map, measure texels-per-metre per triangle edge. The
+// shared tile is 1024px at repeat 1×1 and paperUV bakes UVs to world-size×DENSITY, so
+// texels = uvLen·1024 / worldLen, ideally ≈ DENSITY·1024 ≈ 184 t/m everywhere. Report any
+// face well BELOW that (reads blurry/stretched — the old 256px/face bug). []=crisp+uniform.
+// Curved props (bbox-fallback UVs) are excluded; this guards the walls/floors/facade pieces.
+window.__textureDensity=()=>{ const TILE=1024, MIN=70, map=PAPER&&PAPER.map, low=[];
+  scene.traverse(o=>{ if(!o.isMesh||!o.material||o.material.map!==map||!map)return;
+    const g=o.geometry, t=g.type;
+    if(t!=='BoxGeometry'&&t!=='PlaneGeometry'&&t!=='CircleGeometry')return;   // flat surfaces only
+    const uv=g.attributes&&g.attributes.uv, pos=g.attributes&&g.attributes.position; if(!uv||!pos)return;
+    const idx=g.index, n=idx?idx.count:pos.count; let minT=Infinity;
+    for(let i=0;i+2<n;i+=3){ const a=idx?idx.getX(i):i, b=idx?idx.getX(i+1):i+1, c=idx?idx.getX(i+2):i+2;
+      for(const [p,q] of [[a,b],[a,c],[b,c]]){
+        const wlen=Math.hypot(pos.getX(q)-pos.getX(p),pos.getY(q)-pos.getY(p),pos.getZ(q)-pos.getZ(p));
+        const ulen=Math.hypot(uv.getX(q)-uv.getX(p),uv.getY(q)-uv.getY(p));
+        if(wlen>0.1&&ulen>1e-4){ const v=ulen*TILE/wlen; if(v<minT)minT=v; } } }
+    if(isFinite(minT)&&minT<MIN) low.push({label:t+'@'+o.position.x.toFixed(0)+','+o.position.z.toFixed(0), texelsPerMetre:Math.round(minT)}); });
+  return {lowDensity:low, target:Math.round(TILE*DENSITY), tile:TILE}; };
 window.__items=()=>{ const out=[];
   (SCENE.props||[]).forEach((p,i)=>out.push({kind:p.type, x:p.x, z:p.z, y:groundHeight(p.x,p.z), size:2, face:null, label:p.type+'_'+i}));
   (SCENE.buildings||[]).forEach((b,i)=>{ const fd=Array.isArray(b.faceDir)?b.faceDir[0]:(b.faceDir||'-z');
@@ -1075,6 +1130,7 @@ async function build(){
 
   S=initState(world.collectibles, world.spawn);
   try{const r=await fetch('build.json',{cache:'no-store'});if(r.ok){const j=await r.json();BUILD=j.sha||'dev';}}catch{}
+  Sound.quietInDev(BUILD==='dev');   // dev worktree boots silent — effects + music off until you choose a level
   const saved=Save.load(world);
   if(saved)Save.apply(S,saved);          // preview at the saved spot behind the title
   // quests — the engine reads the LIVE collected set + collectible kinds (closures

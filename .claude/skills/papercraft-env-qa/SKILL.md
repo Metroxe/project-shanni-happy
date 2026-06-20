@@ -122,14 +122,15 @@ require them clean:
    hair-different camera angle. z-fighting flips its winner between the two frames, so a
    pair that differs anywhere but the tiny shift = flicker. (Best caught by `__overlaps`,
    but the pair confirms visually.) A single still can't show flicker — that's why this exists.
-6. **Texture density audit** (to ADD to `qa_shots.mjs`; not wired yet): alongside the
-   geometry audit, compute texels-per-metre per face from `__items()` geometry + the map
-   pixel size + the wired `worldUV`/`repeat` density, and print `✓ texture density uniform`
-   or list faces whose density drifts outside a tight band (~5%) of the project `DENSITY`,
-   exactly as `__overlaps()` must be `[]`. Scope it to opaque textured box/plane faces; skip sprites,
-   sky, and not-yet-migrated ground so legacy faces don't false-positive during a partial
-   migration. Trust this numeric fact over the vision synthesizer (which once mis-dismissed
-   a real z-fight as a "hedge join"), the same way you trust the overlap audit.
+6. **Texture density audit** — now a wired deterministic check, `studio/qa/checks/texture-density.mjs`,
+   run by `node studio/qa_audit.mjs`. `game.html` exposes `window.__textureDensity()` →
+   `{lowDensity:[{label,texelsPerMetre}], target, tile}`: it walks every box/plane/circle face on the
+   shared paper map, computes texels-per-metre from `paperUV` geometry + the 1024px tile, and lists any
+   face well below the project `DENSITY×1024`≈184 t/m. The check **fails the audit if `lowDensity` is
+   non-empty** (and `⊘` skips until the probe exists), exactly as `__overlaps()` must be `[]`. It's
+   scoped to faces sampling the paper map, so sprites, sky, and not-yet-migrated ground don't
+   false-positive during a partial migration. Trust this numeric fact over the vision synthesizer (which
+   once mis-dismissed a real z-fight as a "hedge join"), the same way you trust the overlap audit.
 
 **Two real bugs this caught (don't reintroduce):**
 - **Coarse box colliders.** A box footprint must become a TIGHT perimeter ring of small

@@ -24,9 +24,11 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { existsSync, statSync } from 'node:fs';
 import { extname, join, normalize, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { findRoot, worldHash, writeStamp } from '../.claude/hooks/qa-lib.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));   // studio/
 const ROOT = HERE;                                       // serve studio/ as the site root
+const REPO = findRoot(HERE);                             // worktree root (for the QA stamp)
 const OUT = resolve(process.argv[2] || join(HERE, 'out', 'qa'));
 const PORT = 8787;
 const BASE = `http://localhost:${PORT}`;
@@ -89,6 +91,7 @@ await mkdir(OUT, { recursive: true });
 
 const browser = await chromium.launch({ args: ['--enable-unsafe-swiftshader'] });
 const shots = [];
+let audit = null;   // { overlaps, unreachable, errs } — hoisted so the exit code + stamp can see it
 try {
   const page = await browser.newPage({ viewport: { width: VW, height: VH } });
   const errs = [];
@@ -171,9 +174,21 @@ try {
 
   await writeFile(join(OUT, 'index.json'), JSON.stringify({ at: Date.now(), viewport: [VW, VH], shots, itemShots, overlaps, unreachable: reach.unreachable, pageErrors: errs }, null, 2));
   if (errs.length) console.log('PAGE ERRORS:\n  ' + errs.join('\n  '));
+  audit = { overlaps, unreachable: reach.unreachable, errs };
   console.log(overlaps.length || reach.unreachable.length ? '\n❌ GEOMETRY AUDIT FOUND ISSUES (see above)' : '\n✓ geometry audit clean (no overlaps, all reachable)');
 } finally {
   await browser.close();
   await new Promise(r => server.close(r));
 }
 console.log(`\nCaptured ${shots.length} QA shots → ${OUT}`);
+
+// Same gate as qa_audit.mjs: exit non-zero on any deterministic issue, and on a fully
+// clean run stamp the current world content so the Stop hook clears. (The screenshots
+// still need a human/agent eye — the heavy pass also runs the visual sweep — but the
+// deterministic audit being clean is a hard precondition either way.)
+if (!audit || audit.overlaps.length || audit.unreachable.length || audit.errs.length) {
+  console.error('\n❌ qa_shots: geometry audit not clean — no stamp written, gate stays closed.');
+  process.exit(1);
+}
+const st = writeStamp(REPO, worldHash(REPO), { at: new Date().toISOString(), by: 'qa_shots.mjs' });
+console.log(`✓ geometry audit clean — stamped ${st.hash.slice(0, 12)}… → .claude/.qa-stamp`);

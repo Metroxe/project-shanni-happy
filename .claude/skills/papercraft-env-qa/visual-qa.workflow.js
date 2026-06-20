@@ -19,6 +19,16 @@ const TAXONOMY = `Hunt for these defect classes (papercraft city, clean flat pas
 6. ORIENTATION — a prop facing the wrong way (lamp head, bench, awning, a storefront door/facade not facing the street/sidewalk).
 7. SCALE/PLACEMENT — anything mis-sized, oddly placed, floating, or half-buried.
 8. AESTHETIC — clashing colors, visual clutter, anything off the calm clean pastel papercraft direction.
+
+NAMED REGRESSIONS — specific defects Christopher has flagged before; check each BY NAME in every shot (append when he reports a new SUBJECTIVE one that can't be a deterministic code check — see CLAUDE.md "QA reflex" step 3). Deterministic versions live in studio/qa/checks/:
+  a. PITCH-WHITE / blank background in any room or loading zone — every scene must have an intentional non-white skybox/colour.
+  b. FLOOR OVERRUN — a room/zone floor that visibly continues PAST the wall/seam into the void; the floor must stop at the wall.
+  c. INTERIOR OVERLAP — a door with wall texture over it, a fish tank inside a shelf, any two interior pieces interpenetrating.
+  d. WALLS NOT FLUSH — interior walls that don't line up at corners, sit at inconsistent heights, or leave a gap.
+  e. BLURRY / MIS-ALIGNED TEXTURE — stretched low-res maps, building textures that don't line up across faces (prefer modelled structure over big textures in the foreground).
+  f. TEXTURE SEAM — a hard, unblended join where two materials/textures meet.
+  g. SKY-GAP — pale sky/light seeping through a vertical gap between two adjacent shopfronts/buildings (an abyss leak).
+
 For EACH defect: which shot, which class, severity (high/med/low), and a precise detail of WHAT and WHERE in the frame. If a shot looks clean, do not invent problems. Be specific and visual.`;
 
 const READ = files => `You are a meticulous visual-QA inspector for a 3D papercraft game. Read (open) EACH of these image files and look at them carefully:\n${files.map(f).join('\n')}\n\n${TAXONOMY}\n\nReturn your findings.`;

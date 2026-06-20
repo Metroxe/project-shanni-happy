@@ -28,8 +28,9 @@ Companion to [SKILL.md](SKILL.md). Working implementation: `studio/test-scene.ht
       "side":0,                        // lateral nudge off the centerline (+ = axis-right)
       "lookAhead":2.0,                 // aim this far ahead of the player down the corridor
       "lookY":1.2,                     // aim height above local ground
-      "fov":38, "pitchBias":-0.06,     // narrow fov compresses a stairwell; pitchBias = extra tilt (rad)
+      "fov":38, "pitchBias":-0.06,     // narrow fov compresses a stairwell; pitchBias = extra tilt (rad; +up / -down)
       "follow":5.5,                    // exp tracking rate (1/s) within the zone
+      "trackWid":0,                    // OPTIONAL >0: eye also follows the player across the axis (±trackWid). Open areas only; keeps Shen a constant size. Unset/0 = ride the centerline.
       "blendIn":0.85 }                 // seconds to cross-blend when ENTERING this zone
   ],
   "collectibles": [ { "x":0, "z":-12 } ]
@@ -65,14 +66,19 @@ Build matching geometry: a base ground plane (y0), solid step boxes over `x∈[x
 
 ```js
 function rigFor(zone,S){                        // ONE fixed camera per zone (no travel-direction sign)
-  const {fx,fz}=zoneAxis(zone);
-  const a=clamp(zoneLocal(zone,S.x,S.z).along,-zone.halfLen,zone.halfLen);  // player projected onto centerline (clamped)
-  const cpx=zone.center[0]+fx*a, cpz=zone.center[1]+fz*a;                   // centerline point (no lateral term -> stable)
-  const latx=-fz, latz=fx;                                                  // eye sits behind the zone AXIS, always
+  const {fx,fz}=zoneAxis(zone); const latx=-fz, latz=fx;                    // eye sits behind the zone AXIS, always
+  const L=zoneLocal(zone,S.x,S.z);
+  const a=clamp(L.along,-zone.halfLen,zone.halfLen);                        // player projected onto centerline (clamped)
+  const b=zone.trackWid?clamp(L.across,-zone.trackWid,zone.trackWid):0;     // OPEN zones also follow across (±trackWid); else 0 -> stable centerline
+  const cpx=zone.center[0]+fx*a+latx*b, cpz=zone.center[1]+fz*a+latz*b;     // centerline point (+ optional lateral follow)
   return { pos:V3(cpx-fx*zone.back+latx*zone.side, groundHeight(cpx,cpz)+zone.height, cpz-fz*zone.back+latz*zone.side),
            tgt:V3(S.x+fx*zone.lookAhead, groundHeight(S.x,S.z)+zone.lookY, S.z+fz*zone.lookAhead),  // aims at the LIVE player
            fov:zone.fov, pitch:zone.pitchBias };
 }
+// trackWid only TRANSLATES the eye to follow her across an open field; the angle/height are
+// still fixed, so there is no orbit and no reversal-flip (that bug was a direction-dependent
+// ANGLE, not position tracking). Corridors leave trackWid=0 so the eye stays glued to the
+// centerline (no sideways wobble as she walks a 6-wide road).
 
 function cameraFrame(S,dt){
   const next=pickZone(S.x,S.z);
@@ -135,14 +141,35 @@ function shenVisible(opts={}){
   if(dist<minDist) return {ok:false,why:'too-close',dist:+dist.toFixed(2)};
   const dir=chest.clone().sub(cam.position), dlen=dir.length(); dir.normalize();
   _ray.set(cam.position,dir); _ray.far=dlen-0.4; _ray.near=0;
-  if(_ray.intersectObjects(BUILDING_MESHES,false).length) return {ok:false,why:'occluded'};
+  if(_ray.intersectObjects(BUILDING_MESHES,false).length) return {ok:false,why:'occluded'};  // NOTE: BUILDINGS only — a billboard tree/bush in front of her won't be flagged; eyeball prop-heavy areas
   return {ok:true};
+}
+// FRAMING — visible is not enough. size = sprite height / viewport (project foot->head; NDC y spans 2);
+// pitch = how far below horizontal the camera looks. Floor/ceiling = CAM_MIN_FRAC / CAM_MAX_PITCH.
+function shenFraming(){
+  cam.updateMatrixWorld(); cam.matrixWorldInverse.copy(cam.matrixWorld).invert();
+  const gy=groundHeight(S.x,S.z);
+  const foot=new THREE.Vector3(S.x,gy+0.04,S.z).project(cam);
+  const head=new THREE.Vector3(S.x,gy+SHEN_H,S.z).project(cam);
+  const size=Math.abs(head.y-foot.y)/2;
+  cam.getWorldDirection(_dir); const pitch=Math.asin(clamp(-_dir.y,-1,1));
+  const r={size:+size.toFixed(3), pitchDeg:+(pitch*180/Math.PI).toFixed(1)};
+  if(size<CAM_MIN_FRAC) return Object.assign({ok:false,why:'too-small'},r);
+  if(pitch>CAM_MAX_PITCH) return Object.assign({ok:false,why:'too-steep'},r);
+  return Object.assign({ok:true},r);
 }
 window.cameraQA={
   static:(step)=>{ const cells=_reachable(step), fails=[];
     for(const [x,z] of cells){ game.warp(x,z,true); const v=shenVisible(); if(!v.ok) fails.push({x:+x.toFixed(1),z:+z.toFixed(1),why:v.why}); }
     game.reset();
     return {cells:cells.length, fails:fails.length, byReason:fails.reduce((a,f)=>((a[f.why]=(a[f.why]||0)+1),a),{}), sample:fails.slice(0,30)}; },
+  framing:(step)=>{ const cells=_reachable(step), fails=[]; let minSize=9,maxPitch=0;
+    for(const [x,z] of cells){ game.warp(x,z,true); const f=shenFraming();
+      if(f.size<minSize)minSize=f.size; if(f.pitchDeg>maxPitch)maxPitch=f.pitchDeg;
+      if(!f.ok) fails.push({x:+x.toFixed(1),z:+z.toFixed(1),why:f.why,size:f.size,pitchDeg:f.pitchDeg,zone:activeZone&&activeZone.id}); }
+    game.reset();
+    return {cells:cells.length, fails:fails.length, minSize:+minSize.toFixed(3), maxPitch:+maxPitch.toFixed(1),
+      byReason:fails.reduce((a,f)=>((a[f.why]=(a[f.why]||0)+1),a),{}), byZone:fails.reduce((a,f)=>((a[f.zone]=(a[f.zone]||0)+1),a),{}), sample:fails.slice(0,30)}; },
   transition:(from,to,steps=700)=>{ game.warp(from[0],from[1],true);
     held.up=held.down=held.left=held.right=false; aiTarget={x:to[0],z:to[1]}; const fails=[]; let reached=false;
     for(let i=0;i<steps;i++){ S=step(S,resolveInput(),1/60); cameraFrame(S,1/60);   // step the sim BY HAND (preview throttles setInterval)
@@ -164,7 +191,7 @@ And `game.warp(x,z,snap)` MUST call `applyCamera()` in the snap branch, or the s
 
 ### Running it
 1. `preview_start` the worktree localhost; navigate to the scene; poll `window.__ready` (the tab is slow — wait up to ~10s).
-2. `cameraQA.static()` → fix until `fails:0`.
+2. `cameraQA.static()` → fix until `fails:0` (visibility), then `cameraQA.framing()` → fix until `fails:0` (size + angle; read `minSize`/`maxPitch` to see headroom).
 3. `cameraQA.transition(...)` for each adjacent pair AND the cross-junction pairs (left↔right, climb, road↔start) → fix until `0`.
 4. **`cameraQA.path([...])` for round-trips** — down a road and back, up the stairs and back down, junction→left→junction→right. Reversals hit transitions a one-way sweep never sees. Don't skip this.
 5. Eyeball it: `game.warp(failX,failZ,true)` then `preview_screenshot` for any failure before AND after the fix.
@@ -178,6 +205,9 @@ And `game.warp(x,z,snap)` MUST call `applyCamera()` in the snap branch, or the s
 | `occluded` | Abut buildings (no gaps to walk behind); don't place a wall between a zone's eye and its road. |
 | `too-close` | Raise `back`/`height`, or add camera-collision (raycast eye→player, pull the eye in / clamp the player away). |
 | `behind-camera` / camera in a wall on reversal | A direction-dependent camera flipped the eye to the wrong side. **One fixed camera per zone** (drop the travel sign). |
+| `too-small` (framing) | Eye too far. **Lower `back`** (and `height` to match the angle). Open area where she drifts far → add **`trackWid`** so the eye follows her across, instead of zooming out. |
+| `too-steep` (framing) | Plan-view angle. Lower `height` and/or shorten the eye-to-target drop; keep `height` ≲ ~0.7×`back`; remove big negative `pitchBias`. Don't fix it by pulling `back` way out — that shrinks her and can walk the eye into a neighbour building. |
+| prop in front of her (not flagged) | The occlusion ray tests BUILDINGS only; a tree/bush between eye and Shen slips through. Eyeball prop-heavy zones; nudge the prop or pick the camera side with fewer props. |
 | character floats / cliff | Gate `groundHeight` to the corridor x-extent and make the plateau underlie the whole road (§2). |
 
 ## 6. Case studies (real failures this scene hit)
@@ -188,4 +218,6 @@ And `game.warp(x,z,snap)` MUST call `applyCamera()` in the snap branch, or the s
 
 **C. Walk left down a road, come back, walk right → camera dives behind a wall; and descending the stairs gave a "looking down" angle.** Both were one bug: a direction-dependent camera (`dirSign`) gave each zone TWO angles, and reversing flipped the eye to the other side — for the stairs that side is *inside the north buildings* (green-wall screenshot). A straight A→B sweep passed; `cameraQA.path([[0,-29],[-18,-29],[0,-29],[18,-29]])` and `transition([0,-30],[0,4])` (descend) caught it. Fix: **one fixed camera per zone** — `rigFor` lost its sign; the stairs always looks up, you walk toward the camera coming down. 0 fails.
 
-Lessons baked into the harness: **flood-fill reachability first** (most "can't see Shen" bugs are uncontained spots, not camera math) and **always run round-trips** (`path`) — reversals are a different test than one-way crossings.
+**D. Corner read as top-down; park let Shen shrink to a dot.** Two framing failures `static` never caught (she was on-screen, just badly framed). The corner was `height:10` over `back:6.5` + `pitchBias:-0.12` ≈ a 56° plan view; the park was a 62-wide open field with a centerline-only camera, so wandering off-center grew the distance and she shrank to ~5% of the screen. Fixes: (1) corner → a LOWER, CLOSER rig (`height:5.5`, `back:7.5`, `pitchBias:0`) for a ~26° 3/4 view that also keeps her big — the first instinct (pull `back` out to flatten) made it worse, shrinking her and walking the eye into the Pet Shop's corner (a new `occluded`); (2) park → `trackWid:27` so the eye follows her across the field, holding a constant ~16% size everywhere. Added `cameraQA.framing()` (size + pitch) as a permanent 0-failure gate so neither can silently regress. A side effect surfaced: pulling the hroad/stairs cameras IN to enlarge Shen made the hroad→stairs blend graze the Pet Shop on the west-edge descent — fixed by smaller `back` on both so the blend diagonal crosses the building's plane while still north of it (`cameraQA.path` round-trips through the descent caught it; `static` did not).
+
+Lessons baked into the harness: **flood-fill reachability first** (most "can't see Shen" bugs are uncontained spots, not camera math), **always run round-trips** (`path`) — reversals are a different test than one-way crossings — and **visible ≠ well-framed** (run `framing` too; small/top-down pass every visibility check).

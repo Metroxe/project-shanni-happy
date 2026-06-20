@@ -145,11 +145,13 @@ fights, fall back to `edge=false`.
 3. **Texture-at-resolution**: screenshot every changed surface at the **closest** gameplay
    distance the player can reach it (not just a wide shot), and each sign **straight-on**;
    confirm crisp + uniform density + seamless + blends with neighbours + legible text.
-   Once the density audit is wired into `qa_shots.mjs` (see `/papercraft-env-qa`), require
-   it to print **`✓ texture density uniform`** (per-face texels-per-metre within a few
-   percent of `DENSITY`).
-4. `smoke` green; re-run **`/zone-camera`** QA (0 fails) even though textures don't move
-   geometry.
+   The deterministic **`texture-density`** check now guards this automatically: `game.html`
+   exposes `window.__textureDensity()` → `{lowDensity:[{label,texelsPerMetre}]}` (faces well
+   below `DENSITY×1024`≈184 t/m), and `studio/qa/checks/texture-density.mjs` fails the audit if
+   `lowDensity` is non-empty. So **`node studio/qa_audit.mjs` must stay green** — but it's not a
+   substitute for the screenshots above (a crisp face can still clash or read wrong).
+4. `node studio/qa_audit.mjs` green (boot + camera + geometry + texture-density); re-run
+   **`/zone-camera`** QA (0 fails) even though textures don't move geometry.
 
 ## Files
 

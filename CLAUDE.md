@@ -68,6 +68,17 @@ multiplier to `Sound.sfx(name, mul)`; `proxGain(x,z)` in `game.html` is the stan
 sound, ask: does it come from a spot in the world? If yes, gate it through `proxGain` in the
 same change** — same reflex as shipping its sound at all.
 
+**The third rule: sounds are contextually correct (right sound, right loudness).** A sound must
+match its *source* — don't reuse a sound that merely exists. (Christopher flagged this: the fish
+tanks used the **fountain water** ambient — wrong identity AND wrong level, "fountains are
+obviously louder than fish"; "remember this general concept, not this exact example.") So pick the
+SFX that fits the object and scale its base level to how loud that object really is (a fish tank is
+a soft `bubble`, quieter than a fountain). **Music is per-scene/contextual too:** each area gets a
+track that fits it, the **overworld track is exclusive to the overworld**, and an interior track may
+be **shared across like rooms** (e.g. every pet-shop-style indoor). Switch the track on the scene
+change and never let one scene's music bleed into another (the music swap ships with the
+loading-zone change).
+
 **The system:** all **SFX + the dialogue voice** are **procedural Web Audio**, synthesized at
 play time in `studio/js/audio.js` — **no asset files for those** (same ethos as the art:
 programmatic, no hand-authoring). The module exports `Sound`; it's already wired into
@@ -127,8 +138,13 @@ OGG (`out/music/calm.ogg`), because real-time music synthesis isn't practical. I
 
 ```sh
 python3 -m venv studio/.venv && studio/.venv/bin/pip install -r studio/requirements.txt
+npm install && npx playwright install chromium   # once per worktree — the QA scripts + Stop hook need it
 .claude/serve.sh            # prints http://localhost:<port>/game.html for THIS worktree
 ```
+The `npm`/playwright step powers `studio/qa_audit.mjs`, `studio/qa_shots.mjs`, and
+`test/smoke.mjs` (all headless-Chromium). The committed **Stop hook** won't let a turn end
+with un-audited world changes, and clearing it runs `qa_audit.mjs` — so without playwright
+local QA can't pass. (See the **QA reflex** section.)
 Then `preview_start` the **`game`** config and open the printed URL (e.g.
 `/game.html` or `/env-live.html`). The asset pipeline is the `papercraft-asset`
 skill (`.claude/skills/papercraft-asset/`).
@@ -182,6 +198,64 @@ always `git fetch origin main` and check for peers before acting.
   git-ignored** (holds this worktree's unique port + absolute `studio/` path) — never
   commit it or hardcode a port.
 
+## QA reflex — a problem pointed out ONCE becomes a permanent check (not optional)
+
+Christopher reports a visual/world/interaction problem **once**. He should never have to
+report the same *class* of problem twice. When he points one out, the job is not just to fix
+*that instance* — it is to make sure that kind of defect is **caught automatically, forever,
+before anything is ever called done.** This is the standing reflex; treat every bug report as
+"add a permanent check," not "patch this spot."
+
+**The four-step reflex — do all four, every time he flags something:**
+1. **Fix** the instance he pointed at.
+2. **Generalize** it to the class. "This hamster sits on the centre-line and freezes me" →
+   "no pickup may sit on a forced corridor." "These two shops flicker where they touch" →
+   "no two footprints overlap." Name the *category*, not the coordinate.
+3. **Promote it to a check — prefer DETERMINISTIC code over an eyeball.** This is the most
+   important step and the one that keeps the system from rotting:
+   - **If it can be detected in code (geometry, reachability, framing, boot), write a
+     deterministic assertion** that fails loudly — like `window.__overlaps()` or
+     `cameraQA.reach()`. Add it as **a new file in `studio/qa/checks/`** (auto-discovered by
+     `qa_audit.mjs` — no central file to edit, so branches never conflict; add a `window.__*`
+     probe in `game.html` if the check needs one). Write it **generically** — "no overlaps in
+     general", never "this one example". Code never forgets, runs in seconds, gates
+     automatically. **Always try this first.** See `studio/qa/README.md`.
+   - **Only if it is genuinely subjective** (colour clash, "reads as the wrong object",
+     "looks web-ish") does it go into the **visual sweep as a NAMED line** — append it to the
+     `TAXONOMY` in `.claude/skills/papercraft-env-qa/visual-qa.workflow.js` and the
+     recurring-failure-modes table below, as "we were burned by X — specifically check X." A
+     generic "look for clipping" is weaker than a named past failure.
+4. **Record it** — the failure-modes table in the World/asset QA gate section below + a
+   `feedback` memory, so it survives across sessions. See [[shanni-world-qa-gate]] and
+   [[shanni-qa-capture-reflex]].
+
+**Two tiers of QA, and the gate runs them automatically:**
+- **Deterministic audit (fast, always-correct, never forgets):** `node studio/qa_audit.mjs`
+  is a thin runner over an **auto-discovered registry** — every `studio/qa/checks/*.mjs`
+  (boot, geometry, reachability, camera framing/visibility today). **Exit 1 on any failure**;
+  on a clean pass it writes `.claude/.qa-stamp` (the world-file hash). Runs on **every**
+  world-touching change — it is cheap. New deterministic checks are **new files** in
+  `studio/qa/checks/`. All QA scripts boot via the shared `studio/qa/harness.mjs`
+  (`withGamePage`, free port — never copy-paste a server or hardcode a port).
+- **Visual sweep (needs EYES — screenshots, seriously looked at):** `node studio/qa_shots.mjs`
+  (full screenshot battery + per-object close-ups, exit-coded + stamps) → the **multi-agent
+  picture sweep** (`/papercraft-env-qa`). **The best way to catch a visual problem is to take
+  a screenshot and actually study it** — a deterministic check is NOT a substitute for
+  looking. Run this for **any** visual/world change (not deploy-only) and **always** before
+  `/deploy` + `/done`. This is the "really big sub-agent QA run" — scale it up freely;
+  thoroughness over brevity. Full contract + how to add checks/scenarios: `studio/qa/README.md`.
+
+**The hard gate (enforced, not just documented):** a committed **Stop hook**
+(`.claude/settings.json` → `.claude/hooks/qa-gate.mjs`) refuses to let a turn end while
+`studio/game.html`, `studio/specs/world.json`, or `studio/js/*` are **dirty vs `HEAD` AND
+have not passed the deterministic audit since the last edit** (it compares the live world
+hash to `.claude/.qa-stamp`). The hook is instant — it never launches a browser, it just
+checks git + the stamp. **To clear a block: run `node studio/qa_audit.mjs`** (fix anything it
+reports; it re-stamps on a clean pass). The hook fails *open* on any internal error, so it can
+never wedge a session, and it self-limits to one block per stop via `stop_hook_active`. The
+shared world-file list + hash live in `.claude/hooks/qa-lib.mjs` (imported by both the audit
+and the hook so they can't drift). See [[shanni-qa-capture-reflex]].
+
 ## Cameras — ALWAYS QA them (not optional)
 
 Whenever you add, move, or tune a camera/zone, you MUST run the camera QA as part of
@@ -190,17 +264,29 @@ building it — it is part of "done", not a follow-up. Invoke the **`/zone-camer
 
 > **Shen must be visible from every reachable spot and through every transition.**
 
-Two design rules: **one fixed camera per zone** (never vary the angle by travel
-direction — that flips the eye into a wall on reversal), and **contain the player** so
-every reachable spot is inside a zone.
+But **visible is the floor, not the goal** — also enforce the **framing rules**:
+> **Shen is never a tiny dot (≥ ~13% of the screen, AIM ~15%+), and never looked
+> down on top-down (3/4 view, angle ≤ ~32°).** She sits BEHIND and slightly above,
+> not overhead. For an open area where she'd drift far, DON'T zoom out — keep the camera
+> close and use a zone **`trackWid`** so the eye follows her across the field (constant
+> size). The hard floor/ceiling are `CAM_MIN_FRAC` / `CAM_MAX_PITCH` in `game.html`.
+
+Three design rules: **one fixed camera per zone** (never vary the angle by travel
+direction — that flips the eye into a wall on reversal), **contain the player** so
+every reachable spot is inside a zone, and **keep her big + low-angle** (small-ish
+`back`, `height` ≲ ~0.7×`back`; pulling `back` way out to flatten the angle is the trap
+that shrinks her and walks the eye into neighbouring buildings).
 
 Workflow every time: author the camera → serve the worktree on localhost (never
-`file://`) → in the preview run `cameraQA.static()`, `cameraQA.transition([a],[b])` for
+`file://`) → in the preview run `cameraQA.static()` (visibility) AND `cameraQA.framing()`
+(size + angle; reports `minSize`/`maxPitch`), `cameraQA.transition([a],[b])` for
 cross-junction pairs, AND `cameraQA.path([...])` for **round-trips** (down a road and
-back, up the stairs and back — reversals hit transitions a one-way sweep misses) →
-`game.warp(x,z,true)` + screenshot any failure → fix → re-run until **0 failures**. A
-camera change with unrun or failing QA is not finished. Reference + harness:
-`studio/test-scene.html`.
+back, up the stairs and back — reversals hit transitions a one-way sweep misses; they
+also catch a blend grazing a building that `static` won't) → `cameraQA.warp(x,z)` +
+screenshot any failure → fix → re-run until **0 failures** on both. (The occlusion
+check raycasts BUILDINGS only, so eyeball prop-heavy areas — a tree between camera and
+Shen won't be flagged.) A camera change with unrun or failing QA is not finished.
+Reference + harness: `studio/test-scene.html`.
 
 ## World/asset QA gate — RUN EVERY PUSH that touches a world or asset (not optional)
 
@@ -212,6 +298,10 @@ detection commands + root-cause code refs live in the **`/papercraft-env-qa`** s
 (this is the standing summary so it's not forgotten between sessions).
 
 **The gate (all must pass):**
+0. `node studio/qa_audit.mjs` → the fast deterministic audit (boot + `__overlaps` + `reach`
+   + `framing` + `static`), **exit 0 = clean** (and it stamps `.claude/.qa-stamp`, clearing
+   the Stop hook). This is the always-run floor; run it after every world edit. The steps
+   below are the heavy battery on top of it.
 1. `node test/smoke.mjs studio` → green (boots, no JS errors).
 2. `node studio/qa_shots.mjs` → captures the zone battery + flicker pairs + a **per-object
    close-up of EVERY placed prop & building** (`studio/out/qa/props/`) AND prints
@@ -251,19 +341,47 @@ believable objects (hedges / construction `barrier`), backfill with `buildBackdr
 | Clip THROUGH a prop (slide/climber) | one centre collider → per-part `cols:[{dx,dz,r}]` |
 | Prop faces the wrong way | make it orientation-free (lamp = top globe) or set per-prop `rot` |
 | Props that don't belong / overlap | bushes on a road, bench on a bush → streets = lamps/trees, park = bushes; space props ≥~3u; the `placement` lens |
-| Blurry / smeared wall or prop up close | 256px `paperTex` + fixed `repeat 1.6` (too few texels/m) → one 1024px `gen_paper` set via `loadPaper()`, `worldUV(geo,w,h,d,0.18)`, max anisotropy + mipmaps |
-| Grain stretched (wide vs tall face differ) | `BoxGeometry` 0..1 UVs → `worldUV()` so texels-per-metre is constant on every face |
+| Blurry / smeared wall or prop up close | 256px `paperTex` + fixed `repeat 1.6` (too few texels/m) → one 1024px `gen_paper` set via `loadPaper()`, `paperUV(geo,0.18)`, max anisotropy + mipmaps |
+| Grain stretched (wide vs tall face differ) | `BoxGeometry` 0..1 UVs → `paperUV()` so texels-per-metre is constant on every face |
 | Sign text low-res / stretched | text baked into the `facadeTex` wall canvas (`k=48` px/m) → a dedicated `makeSign()` board at ~220 px/m × dpr on its own thin box off the wall |
-| Fake structure painted into a wall | a sign / window / door drawn into `facadeTex` → MODEL it as a thin box/plane in `addFacade` (foreground = model it; texture only flat grain) |
-| Neighbour textures clash at a seam | mismatched density/phase or two unrelated maps → ONE shared paper map, per-mesh tint, same `DENSITY`, world-space (`worldUV` or triplanar) phase |
-| Texture not QA'd at resolution | shoot every changed surface at the CLOSEST reachable distance + each sign straight-on; confirm crisp / uniform / seamless / blended / legible; add a `✓ texture density uniform` audit to `qa_shots.mjs` and require it before deploy |
+| Fake structure painted into a wall | a sign / window / door drawn into `facadeTex` → MODEL it as a thin box/plane in `makeFacade` (foreground = model it; texture only flat grain) |
+| Neighbour textures clash at a seam | mismatched density/phase or two unrelated maps → ONE shared paper map, per-mesh tint, same `DENSITY`, world-space (`paperUV` or triplanar) phase |
+| Texture not QA'd at resolution | the deterministic `texture-density` check (`window.__textureDensity()` → `{lowDensity:[]}`, run by `node studio/qa_audit.mjs`) now guards texels-per-metre per face; ALSO shoot every changed surface at the CLOSEST reachable distance + each sign straight-on (crisp / uniform / seamless / blended / legible) |
 | Edits not showing on reload | browser cached `specs/world.json` → it's fetched `cache:'no-store'`; hard-reload |
+| Interior: door covered by a wall, fish tank inside a shelf | interior pieces overlap/z-fight → `checks/interior-overlap.mjs` (`window.__interiorOverlaps()`=`[]`); expose interior pieces to an overlap audit like buildings |
+| Floor bleeds past the room/zone seam (visible past the wall) | floor extent > zone bounds → floor must END at the wall (`bottom`/extent clamped); `checks/floor-bounds.mjs` (`window.__floorOverruns()`=`[]`) |
+| Pitch-white / blank loading-zone background | a scene with no skybox/clear-colour → every zone sets an intentional non-white bg; `checks/scene-background.mjs` |
+| Blurry / mis-aligned building textures | big stretched maps → MODEL foreground structure as separated thin geometry, texture only for flat grain + distant backdrop; uniform texel density; `checks/texture-density.mjs` |
+| Hard seam where two textures/materials meet | adjacent maps don't blend → named sweep line; share a palette/tile, soften the join |
+| Sky/light seeping through a gap between adjacent shopfronts | facade gap to the void → close the gap / build city behind it (abyss rule); named sweep line |
 
-Debug hooks (all on `window`): `cameraQA.{static,path,transition,reach,walk}`,
-`__overlaps()`, `__colliders(x,z,r)`, `__freecam/__look` (free-cam for QA shots).
+Debug hooks (all on `window`): `cameraQA.{static,framing,clip,path,transition,reach,walk,warp}`,
+`__overlaps()`, `__textureDensity()`, `__gh(x,z)`, `__probe(x,z)`, `__colliders(x,z,r)`,
+`__freecam/__look` (free-cam for QA shots).
 
 ## Status / next
 
+- DONE: **QA capture reflex + hard gate** — a problem Christopher reports once becomes a
+  permanent check (fix → generalize → promote to a **deterministic** assertion → record).
+  New **`studio/qa/`** = the single QA home: a shared `harness.mjs` (`withGamePage`, free
+  port — kills the copy-pasted server + the `PORT=8788` collision) and an **auto-discovered
+  check registry** (`qa/checks/*.mjs`); `studio/qa_audit.mjs` is now a thin runner over it,
+  exit-coded, stamps `.claude/.qa-stamp` on a clean pass. **Add a check = add a file** (no
+  central edit → branches don't conflict). `qa_shots.mjs` exit-codes + stamps. Contract +
+  per-branch fold-in: `studio/qa/README.md`. A committed **Stop hook**
+  (`.claude/settings.json` → `.claude/hooks/qa-gate.mjs`, shared hash in
+  `.claude/hooks/qa-lib.mjs`) **blocks finishing a turn while world files are dirty + un-audited**
+  (instant: git + stamp, never launches a browser; fails open; one block per stop). Clear it
+  with `node studio/qa_audit.mjs`. Heavy multi-agent sweep runs on every `/deploy` + geometry
+  change. Verified end-to-end (clean→pass, dirty→block exit 2, re-audit→clear). See the **QA
+  reflex** section above + [[shanni-qa-capture-reflex]].
+- DONE: **Camera framing pass** — every zone retuned to a calmer 3/4 view (no top-down;
+  the worst, the `corner`, went from ~56° to ~26°) and a bigger Shen (min ~13%, AIM ~15%+
+  of screen). New **`trackWid`** zone field gives the open `park` a 2D follow so she stays
+  a constant size wherever she roams (was a tiny dot off-centre). New **`cameraQA.framing()`**
+  + `CAM_MIN_FRAC`/`CAM_MAX_PITCH` guardrails in `game.html` make "not too small / not
+  top-down" permanent 0-failure gates. Full QA green (framing, visibility, round-trips).
+  Rules written into `/zone-camera` (SKILL + REFERENCE) and the Cameras section above.
 - DONE: character cutout + die-cut; walk + jump (hop); 6 environment moods;
   pipeline migrated into the repo; **3D Paper-Mario game loop** (`studio/game.html`
   + `studio/js/sim.js`) — perspective follow-camera (Shen always centred),
