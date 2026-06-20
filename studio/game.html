@@ -1127,12 +1127,13 @@ addEventListener('keydown',e=>{const k=e.key.toLowerCase();
   if(k==='escape'&&!e.repeat){e.preventDefault();toggleJournal();return;}
   if(k==='m'&&!e.repeat){Sound.toggle();syncMenu();return;}
   if(journalOpen())return;                   // open journal eats other keys
-  if(Dialogue.active){                       // dialogue captures all input
-    if(k==='arrowup'||k==='w')Dialogue.move(-1);
-    else if(k==='arrowdown'||k==='s')Dialogue.move(1);
-    else if(k===' '||k==='enter'||k==='e')Dialogue.advance();
-    if(['arrowup','arrowdown','arrowleft','arrowright',' ','enter'].includes(k))e.preventDefault();
-    return;
+  if(Dialogue.active){                       // talking: advance / pick — but movement keys fall through so you can walk away
+    if(k===' '||k==='enter'||k==='e'){Dialogue.advance();e.preventDefault();return;}
+    if(Dialogue.choiceMode){                 // an open choice menu owns up/down; left/right still walk you out
+      if(k==='arrowup'||k==='w'){Dialogue.move(-1);e.preventDefault();return;}
+      if(k==='arrowdown'||k==='s'){Dialogue.move(1);e.preventDefault();return;}
+    }
+    // any movement key falls through below → Shen walks, which ends the conversation
   }
   if(k==='arrowup'||k==='w')held.up=true; else if(k==='arrowdown'||k==='s')held.down=true;
   else if(k==='arrowleft'||k==='a')held.left=true; else if(k==='arrowright'||k==='d')held.right=true;
@@ -1259,7 +1260,7 @@ function holdBtn(id,set){const b=document.getElementById(id);
   ['pointerup','pointerleave','pointercancel'].forEach(ev=>b.addEventListener(ev,()=>set(false)));}
 // up/down double as choice navigation while talking
 function navBtn(id,dir,set){const b=document.getElementById(id);
-  b.addEventListener('pointerdown',e=>{e.preventDefault(); if(Dialogue.active)Dialogue.move(dir); else set(true);});
+  b.addEventListener('pointerdown',e=>{e.preventDefault(); if(Dialogue.active&&Dialogue.choiceMode)Dialogue.move(dir); else set(true);});
   ['pointerup','pointerleave','pointercancel'].forEach(ev=>b.addEventListener(ev,()=>set(false)));}
 navBtn('bU',-1,v=>held.up=v); navBtn('bD',1,v=>held.down=v);
 holdBtn('bL',v=>held.left=v);holdBtn('bR',v=>held.right=v);
@@ -1281,7 +1282,7 @@ function tapAdvance(e){
 document.getElementById('dlg').addEventListener('pointerdown',tapAdvance);
 canvas.addEventListener('pointerdown',e=>{ if(started) tapAdvance(e); });
 function resolveInput(){
-  if(!started||Dialogue.active) return {moveX:0,moveZ:0,jump:false};
+  if(!started) return {moveX:0,moveZ:0,jump:false};
   // camera-relative: UP = into the screen (where the camera looks), LEFT/RIGHT = screen-relative
   const fwd=(held.up?1:0)-(held.down?1:0), stf=(held.right?1:0)-(held.left?1:0);
   let mx=0,mz=0;
@@ -1289,6 +1290,10 @@ function resolveInput(){
   else if(aiMove){mx=aiMove.x;mz=aiMove.z;}
   else if(aiTarget){const dx=aiTarget.x-S.x,dz=aiTarget.z-S.z,d=Math.hypot(dx,dz);
     if(d<0.18)aiTarget=null; else{mx=dx/d;mz=dz/d;}}
+  if(Dialogue.active){                       // talking: walking away ends the conversation; no hop mid-chat
+    if(mx!==0||mz!==0)Dialogue.end();
+    edgeJump=aiJump=false;
+    return {moveX:mx,moveZ:mz,jump:false};}
   const jump=edgeJump||aiJump; edgeJump=false;aiJump=false;
   return {moveX:mx,moveZ:mz,jump};}
 
