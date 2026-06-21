@@ -10,6 +10,23 @@
 #
 # Encoding the .ogg needs `oggenc` (brew install vorbis-tools) — this Homebrew
 # ffmpeg ships without libvorbis. Tested on M4 Pro: torch 2.12, transformers 5.12.
+#
+# ⚠️ DO NOT generate musicgen-MEDIUM locally on Apple-Silicon MPS — a 30s render
+# OOM-killed the host (the model + 1500-token activations exhaust unified memory).
+# CPU is stable but still holds ~6GB. OFFLOAD generation to the system76 GPU box
+# (`system76-cf`, RTX 3080 Ti 16GB) instead — generation runs on CUDA there and
+# never touches this machine's memory. gen_music.py now auto-picks cuda>mps>cpu.
+#
+#   ssh system76-cf 'mkdir -p ~/shanni-music/out/music/raw'
+#   scp studio/gen_music.py system76-cf:~/shanni-music/
+#   ssh system76-cf 'cd ~/shanni-music && python3 -m venv .venv && . .venv/bin/activate \
+#       && pip install torch torchaudio transformers scipy soundfile numpy'
+#   ssh system76-cf 'cd ~/shanni-music && .venv/bin/python gen_music.py \
+#       --name gym --seeds 0,1,2,3 --dur 30 --prompt "<prompt>"'   # runs on CUDA, ~30s/clip
+#   scp 'system76-cf:~/shanni-music/out/music/raw/gym-s*.wav' studio/out/music/raw/
+#   # then make_loop.py + verify_loop.mjs run LOCALLY (lightweight: numpy/soundfile/oggenc,
+#   # no torch) to build the seamless loop and pick the cleanest seed.
+# (system76-cf: ⚠️ never reboot it — no auto sshd/cloudflared means a reboot locks you out.)
 torch
 torchaudio
 transformers
