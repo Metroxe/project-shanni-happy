@@ -41,6 +41,10 @@ DEFAULT_PROMPT = (
 def pick_device(want: str) -> str:
     if want != "auto":
         return want
+    # Prefer a real GPU. CUDA first (the system76 offload box — generating locally on
+    # Apple-Silicon MPS OOM-killed the host), then MPS, then CPU as the slow fallback.
+    if torch.cuda.is_available():
+        return "cuda"
     if torch.backends.mps.is_available():
         return "mps"
     return "cpu"
@@ -53,7 +57,7 @@ def main():
     ap.add_argument("--seeds", default="0", help="comma-separated seeds, one clip each")
     ap.add_argument("--dur", type=float, default=30.0, help="seconds per clip (MusicGen tops out ~30s)")
     ap.add_argument("--model", default="facebook/musicgen-medium")
-    ap.add_argument("--device", default="auto", choices=["auto", "mps", "cpu"])
+    ap.add_argument("--device", default="auto", choices=["auto", "cuda", "mps", "cpu"])
     ap.add_argument("--guidance", type=float, default=3.0)
     ap.add_argument("--temperature", type=float, default=1.0)
     args = ap.parse_args()
@@ -80,6 +84,8 @@ def main():
         torch.manual_seed(seed)
         if device == "mps":
             torch.mps.manual_seed(seed)
+        elif device == "cuda":
+            torch.cuda.manual_seed_all(seed)
         print(f"[gen] seed={seed} generating…", flush=True)
         with torch.no_grad():
             audio = model.generate(

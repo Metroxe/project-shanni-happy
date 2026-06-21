@@ -1,6 +1,6 @@
 {
   "interior": true,
-  "music": "out/music/shop.ogg",
+  "music": "out/music/gym.ogg",
   "ground": "c9b48f",
   "bounds": { "xmin": -9.0, "xmax": 9.0, "zmin": -10.0, "zmax": 2.6 },
   "spawn": { "x": 0, "z": -8.5 },
