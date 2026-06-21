@@ -16,7 +16,7 @@
 const CFG = {
   sfx: { hop: 0.34, land: 0.42, step: 0.09, stepSoft: 0.08, move: 0.3, talk: 0.42, select: 0.42,
          squeak: 0.34, quest: 0.42, questStep: 0.44, questDone: 0.5, book: 0.4, bookClose: 0.36, flip: 0.3,
-         fs: 0.4, lift: 0.18, door: 0.4, chirp: 0.26, bubble: 0.12, plip: 0.16 },
+         fs: 0.4, lift: 0.18, door: 0.4, chirp: 0.26, bubble: 0.12, plip: 0.16, clink: 0.16 },
   blip: 0.17,
   water: 0.14,   // ambient fountain trickle ceiling (faded in by player proximity — a spatial world sound)
 };
@@ -275,6 +275,15 @@ const SFX = {
     const f = 700 + rand(-110, 200);
     note({ type: 'sine', f: f * 1.7, f2: f * 0.7, dur: 0.13, gain: v * 0.9, atk: 0.003 });
     if (Math.random() < 0.5) note({ type: 'sine', f: f * 2.4, f2: f * 1.2, t0: 0.02, dur: 0.08, gain: v * 0.4 });
+  },
+  // a soft metallic weight "tink" — the ambient settle of dumbbells/plates in a working gym.
+  // Gentle + a little random pitch so it never rings the same twice. Spatial: fired by the
+  // gym's `ambients` loop near the free-weight area, gated by player proximity (mul passed in).
+  clink(v) {
+    const f = 620 + rand(-50, 90);
+    note({ type: 'triangle', f, dur: 0.09, gain: v * 0.7, atk: 0.002 });
+    note({ type: 'sine', f: f * 1.5, t0: 0.02, dur: 0.07, gain: v * 0.4, atk: 0.002 });
+    noise({ dur: 0.05, gain: v * 0.22, freq: 3000, q: 1.2, type: 'bandpass' });
   },
 };
 

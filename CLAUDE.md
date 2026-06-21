@@ -597,6 +597,26 @@ Deterministic gate: `node studio/qa_audit.mjs` (auto-runs `studio/qa/checks/*`).
     (cross-scene persistence + old-save compat), `studio/qa_quest.mjs` (full hamster loop with Adrian
     inside). All green; smoke + town `qa_shots` geometry audit still clean; multi-agent visual sweep =
     enclosed/on-aesthetic. New SFX: `door`, `chirp`.
+- DONE: **GYM scene (`specs/gym.json`) — third loading zone, north of the stairs.** The town's big
+  **Corner Market → GYM**: relabelled facade ("GYM"), `faceDir` gained `+z` so its south face (the
+  blank wall facing the road/stairs) is now a storefront (windows + sign + awning + door at x≈8.2,
+  right above the stairs). A trigger-only `to_gym` portal (NO `door` geom — the facade door is the
+  visual) + `from_gym` town spawn. The gym interior is a decent-sized walled room (`room.x [-10,10]`,
+  z `-11..3.5`, one wall height) with new MODELED paper fixtures (no images): **treadmill** (deck +
+  dark belt + front cowl + console screen + handlebar), **gymbench** (×2), **squatrack** (uprights +
+  top crossbar + barbell/plates + safety arms), **dumbbells** (A-frame rack of paired dumbbells),
+  **cooler** (water cooler) — builders in the `IPROP` map, each returns a `footprint:{w,d}` so
+  `buildInteriorProps` lays a tight box-collider ring (never one fat circle). Reuses `counter`/
+  `register` (front desk), `mat`/`rug`, `plant`/`hangplant`, `sign`. **Chrees MOVED here** (out of
+  the town `npcs`, now empty) doing dumbbell curls (his `curl` rep + proximity `lift`), dialogue
+  rewritten for the gym. Sound: shares the calm **indoor loop `shop.ogg`** (interiors share one
+  indoor track — a dedicated gym loop is an open follow-up) + a new proximity `clink` ambient near
+  the free-weights (`audio.js`, `audio.js?v=4`). One fixed `gym` zone camera (axisDeg 0 + `trackWid`
+  follow → constant size). QA: deterministic audit 9/9 clean (incl. interior overlap/floor/bg),
+  `cameraQA.static`/`framing` 0 fails in the gym, reach all cells, town↔gym round-trip clean, smoke
+  green, audio scenario extended (gym block: indoor music + `clink` + Chrees `lift`), gym battery
+  captured (`studio/qa/scenarios/gym-shots.mjs`) + two-agent visual sweep (treadmill + squat rack
+  beefed after it). No `SAVE_VERSION` bump (additive scene). New SFX: `clink`.
 - IN FLIGHT: **Premium look overhaul** (make it less "web-ish"). Working brief + A–Z of style
   directions + concerns + method: **`studio/PREMIUM_LOOK.md`** — READ IT before doing visual work.
   Two pieces already exist: (1) a post-processing finishing lens `studio/js/fx.js` (`EffectComposer`

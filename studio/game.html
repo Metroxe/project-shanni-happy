@@ -595,7 +595,7 @@ let started=false, BUILD='dev';
 // (S.collectibles only ever holds the ACTIVE scene's pickups), and it is the single
 // source of truth the save + quest engine read. kindMap maps every id→kind across
 // all scenes. portals/ambients are the active scene's; nearPortal drives the prompt.
-const SCENE_URLS={ town:'specs/world.json', petshop:'specs/petshop.json' };
+const SCENE_URLS={ town:'specs/world.json', petshop:'specs/petshop.json', gym:'specs/gym.json' };
 let SPECS={}, curScene='town', sceneRoot=null, groundPlane=null;
 let collected=new Set(), kindMap={};
 let portals=[], ambients=[], nearPortal=null, portalCooldown=0;
@@ -868,7 +868,10 @@ function buildBuildings(cols){
 const FACE_ROT={'+z':0,'-z':Math.PI,'+x':Math.PI/2,'-x':-Math.PI/2};
 const FACE_N={'+z':[0,1],'-z':[0,-1],'+x':[1,0],'-x':[-1,0]};
 function makeFacade(bd,base,top,dir){
-  const f=bd.facade, h=top-base, faceLen=(dir==='-x'||dir==='+x')?bd.d:bd.w, g=new THREE.Group();
+  // One building can host DIFFERENT storefronts on different faces (e.g. Pet Shop on the
+  // west, GYM on the south) — facade.faces[dir] overrides the base facade for that face
+  // (its own sign/signBg/awning/window/door + a `storefront` big-window treatment).
+  const f=Object.assign({}, bd.facade, (bd.facade.faces&&bd.facade.faces[dir])||{}), h=top-base, faceLen=(dir==='-x'||dir==='+x')?bd.d:bd.w, g=new THREE.Group();
   const wall='#'+(f.wall||'e7d3cc'), trim='#'+(f.trim||'f4efe6'), win='#'+(f.window||'cfe0e6'),
         sbg='#'+(f.signBg||'c98f86'), awn='#'+(f.awning||'d99fa9'), door='#'+(f.door||f.signBg||'c2a07a');
   // place point + normal of the face, and whether the ground in front is at door level. A
@@ -896,12 +899,15 @@ function makeFacade(bd,base,top,dir){
   // a building hosting a real portal/storefront door sets facade.noDoor so it doesn't draw a
   // redundant fake door (and the lower row keeps its mid window instead of reserving the slot).
   const drawDoor = !drop && !f.noDoor;
-  const rows = h>=9 ? [{y:h*0.62,skipMid:false},{y:h*0.34,skipMid:drawDoor}] : [{y:h*0.54,skipMid:false}];
-  const winH=Math.min(h*0.20,2.3);
+  // a `storefront` face gets BIG street-level display windows on its lower row (a gym/shop
+  // frontage you can see in through), the door flanked by glass; upper row stays small panes.
+  const big=!!f.storefront, winH=Math.min(h*0.20,2.3);
+  const rows = h>=9 ? [{y:h*0.62,skipMid:false,big:false},{y:big?h*0.30:h*0.34,skipMid:drawDoor,big}] : [{y:h*0.54,skipMid:false,big}];
   for(const row of rows){ for(let i=0;i<bays;i++){ if(row.skipMid&&i===midBay)continue;
-    const cx=-faceLen/2+cellW*(i+0.5), fw=Math.min(cellW*0.6,2.2);
-    const frame=M(new THREE.BoxGeometry(fw,winH,0.06),trim,false,false); frame.position.set(cx,row.y,0.09); g.add(frame);
-    const pane=M(new THREE.BoxGeometry(fw*0.78,winH*0.8,0.06),win,false,false); pane.position.set(cx,row.y,0.13); g.add(pane); } }
+    const cx=-faceLen/2+cellW*(i+0.5);
+    const wH=row.big?Math.min(h*0.34,3.5):winH, fw=row.big?Math.min(cellW*0.86,4.9):Math.min(cellW*0.6,2.2);
+    const frame=M(new THREE.BoxGeometry(fw,wH,0.06),trim,false,false); frame.position.set(cx,row.y,0.09); g.add(frame);
+    const pane=M(new THREE.BoxGeometry(fw*(row.big?0.88:0.78),wH*(row.big?0.88:0.8),0.06),win,false,false); pane.position.set(cx,row.y,0.13); g.add(pane); } }
   // door on the middle bay, GROUNDED (bottom tucked just below base, not floating) + a knob.
   // Skipped on a drop face (no walkable ground in front) or a noDoor facade (real portal door).
   if(drawDoor){
@@ -1240,8 +1246,70 @@ function iHangplant(p){ const g=new THREE.Group(), drop=p.drop||1.1, R=SCENE.roo
 function iMat(p){ const g=new THREE.Group(), w=p.w||2, d=p.d||1.1;
   const m=M(new THREE.BoxGeometry(w,0.05,d),'#'+(p.color||'b6a2ca'),true,false); m.castShadow=false; m.receiveShadow=true; g.add(m);
   return {group:g,h:0.1,rad:Math.max(w,d)/2,shadowR:0,noShadow:true}; }
+// ---- gym fixtures (treadmill, weight bench, squat rack, dumbbell rack, water cooler) ----
+// Same papercraft vocabulary as the shop (boxes/cylinders + paper material, no cream edges).
+// Each returns a `footprint:{w,d}` so buildInteriorProps lays a TIGHT box-collider ring
+// matching the piece (a single circle would bulge an invisible wall across the floor).
+// A cardio treadmill: a low deck topped by a prominent DARK full-length running belt
+// (the key "treadmill" read), side rails, a raised front motor cowl, and a tall upright
+// console (big angled screen + handlebar). Default faces +z (console toward the camera).
+function iTreadmill(p){ const g=new THREE.Group();
+  const frame='#'+(p.frame||'c2c5c9'), belt='#'+(p.belt||'6f6a62'), screen='#'+(p.console||'9fc4d4'), grip='#'+(p.grip||'cfcabd');
+  const deck=M(new THREE.BoxGeometry(0.86,0.14,2.0),frame,false,false); deck.position.set(0,0.1,-0.2); g.add(deck);
+  const belt0=M(new THREE.BoxGeometry(0.58,0.06,1.78),belt,false,false); belt0.position.set(0,0.2,-0.28); belt0.castShadow=false; g.add(belt0);
+  for(const sx of [-0.39,0.39]){ const rail=M(new THREE.BoxGeometry(0.1,0.12,1.86),frame,false,false); rail.position.set(sx,0.22,-0.24); g.add(rail); }
+  const cowl=M(new THREE.BoxGeometry(0.78,0.34,0.48),frame,false,false); cowl.position.set(0,0.27,0.72); g.add(cowl);  // raised front (belt rolls under it)
+  for(const sx of [-0.3,0.3]){ const post=M(new THREE.CylinderGeometry(0.05,0.055,1.05,8),frame,false,false); post.position.set(sx,0.8,0.78); g.add(post); }
+  const con=M(new THREE.BoxGeometry(0.7,0.46,0.09),frame,false,false); con.position.set(0,1.34,0.73); con.rotation.x=0.3; g.add(con);
+  const scr=M(new THREE.BoxGeometry(0.54,0.32,0.05),screen,false,false); scr.position.set(0,1.36,0.775); scr.rotation.x=0.3; g.add(scr);
+  const bar=M(new THREE.CylinderGeometry(0.04,0.04,0.74,8),grip,false,false); bar.rotation.z=Math.PI/2; bar.position.set(0,1.06,0.92); g.add(bar);
+  for(const sx of [-0.34,0.34]){ const gh=M(new THREE.CylinderGeometry(0.04,0.04,0.42,8),grip,false,false); gh.rotation.x=0.55; gh.position.set(sx,0.94,0.69); g.add(gh); }
+  return {group:g,h:1.6,rad:1.05,shadowR:1.05,footprint:{w:0.9,d:2.1}}; }
+// A flat weight bench: a padded top on a low frame with end legs. Footprint runs along x.
+function iGymbench(p){ const g=new THREE.Group();
+  const frame='#'+(p.frame||'b3aa9d'), pad='#'+(p.pad||'cf9f93');
+  const seat=M(new THREE.BoxGeometry(1.7,0.16,0.5),pad,false,false); seat.position.y=0.52; g.add(seat);
+  const rail=M(new THREE.BoxGeometry(1.5,0.1,0.12),frame,false,false); rail.position.set(0,0.4,0); g.add(rail);
+  for(const sx of [-0.72,0.72]){ const a=M(new THREE.BoxGeometry(0.12,0.42,0.46),frame,false,false); a.position.set(sx,0.21,0); g.add(a); }
+  return {group:g,h:0.7,rad:1.0,shadowR:0.95,footprint:{w:1.8,d:0.55}}; }
+// A squat rack: two tall uprights on feet, a barbell racked across with end plates, plus a
+// pair of forward safety arms. Default faces +z. Footprint drives the collider.
+function iSquatRack(p){ const g=new THREE.Group();
+  const frame='#'+(p.frame||'aeb2b6'), bar='#'+(p.bar||'cfcabd'), plate='#'+(p.plate||'8d8a86');
+  for(const sx of [-0.85,0.85]){
+    const foot=M(new THREE.BoxGeometry(0.3,0.14,1.2),frame,false,false); foot.position.set(sx,0.07,0); g.add(foot);
+    const up=M(new THREE.BoxGeometry(0.16,2.4,0.16),frame,false,false); up.position.set(sx,1.2,-0.25); g.add(up);
+    const hook=M(new THREE.BoxGeometry(0.11,0.13,0.28),frame,false,false); hook.position.set(sx,1.62,-0.1); g.add(hook);
+    const arm=M(new THREE.BoxGeometry(0.1,0.1,0.85),frame,false,false); arm.position.set(sx,1.0,0.22); g.add(arm); }
+  const top=M(new THREE.BoxGeometry(1.86,0.14,0.16),frame,false,false); top.position.set(0,2.34,-0.25); g.add(top);  // top crossbar → reads as a rack frame, not two posts
+  const bb=M(new THREE.CylinderGeometry(0.05,0.05,2.3,10),bar,false,false); bb.rotation.z=Math.PI/2; bb.position.set(0,1.68,-0.25); g.add(bb);
+  for(const sx of [-1.0,1.0]){ const pl=M(new THREE.CylinderGeometry(0.27,0.27,0.1,16),plate,false,false); pl.rotation.z=Math.PI/2; pl.position.set(sx,1.68,-0.25); g.add(pl); }
+  return {group:g,h:2.5,rad:1.2,shadowR:1.2,footprint:{w:2.0,d:1.3}}; }
+// A dumbbell rack: an A-frame with two tilted tiers, each holding a row of paired dumbbells
+// (handle + two end weights in soft accent colours). Default faces +z. Footprint along x.
+function iDumbbellrack(p){ const g=new THREE.Group();
+  const frame='#'+(p.frame||'b39c84'), board='#'+(p.board||'cdb89a');
+  for(const sx of [-1.05,1.05]){ const side=M(new THREE.BoxGeometry(0.12,1.0,0.55),frame,false,false); side.position.set(sx,0.5,0); g.add(side); }
+  const accents=['cf9f93','9cc8dd','f2c75a','b6a2ca','9bb0a6'];
+  const tiers=[{y:0.92,z:-0.06},{y:0.5,z:0.12}];
+  tiers.forEach((tr,ti)=>{ const bd=M(new THREE.BoxGeometry(2.1,0.1,0.5),board,false,false); bd.position.set(0,tr.y,tr.z); bd.rotation.x=0.18; g.add(bd);
+    for(let i=0;i<4;i++){ const dx=-0.78+i*0.52, c='#'+accents[(ti*4+i)%accents.length];
+      const h=M(new THREE.CylinderGeometry(0.035,0.035,0.34,8),frame,false,false); h.rotation.z=Math.PI/2; h.position.set(dx,tr.y+0.12,tr.z+0.06); g.add(h);
+      for(const ex of [-0.16,0.16]){ const w=M(new THREE.CylinderGeometry(0.1,0.1,0.1,12),c,false,false); w.rotation.z=Math.PI/2; w.position.set(dx+ex,tr.y+0.12,tr.z+0.06); g.add(w); } } });
+  return {group:g,h:1.1,rad:1.2,shadowR:1.1,footprint:{w:2.3,d:0.62}}; }
+// A water cooler: a slim body + a translucent blue bottle on top + a little spout.
+function iCooler(p){ const g=new THREE.Group();
+  const body='#'+(p.body||'dfe3e6');
+  const b=M(new THREE.BoxGeometry(0.42,0.92,0.42),body,false,false); b.position.y=0.46; g.add(b);
+  const neck=M(new THREE.CylinderGeometry(0.12,0.16,0.14,12),body,false,false); neck.position.y=0.99; g.add(neck);
+  const bottle=new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.17,0.5,16),
+    new THREE.MeshStandardMaterial({color:hex(p.bottle||'9cc8dd'),emissive:hex(p.bottle||'9cc8dd'),emissiveIntensity:0.25,roughness:0.3,transparent:true,opacity:0.7}));
+  bottle.position.y=1.32; g.add(bottle);
+  const spout=M(new THREE.BoxGeometry(0.12,0.1,0.1),'#b5b1a8',false,false); spout.position.set(0,0.66,0.24); g.add(spout);
+  return {group:g,h:1.6,rad:0.34,shadowR:0.42,cooler:true}; }
 const IPROP={rug:iRug,counter:iCounter,register:iRegister,critterbox:iCritterbox,shelf:iShelf,tank:iTank,
-  sign:iSign,birdcage:iBirdcage,plant:iPlant,hangplant:iHangplant,mat:iMat};
+  sign:iSign,birdcage:iBirdcage,plant:iPlant,hangplant:iHangplant,mat:iMat,
+  treadmill:iTreadmill,gymbench:iGymbench,squatrack:iSquatRack,dumbbells:iDumbbellrack,cooler:iCooler};
 const ifish=[];                      // {m,ph,ax,base} drifting fish for the draw loop
 function buildInteriorProps(cols){
   ifish.length=0;
@@ -1262,6 +1330,11 @@ function buildInteriorProps(cols){
     // a huge "invisible wall" into the room (it blocked the path to the counter). Use a
     // tight box-perimeter ring matching its actual footprint (swap w/d when rotated 90°).
     else if(p.type==='shelf'){ pushBoxColliders(cols,p.x,p.z, rot?p.d:p.w, rot?p.w:p.d); }
+    // gym gear (treadmill/bench/squat rack/dumbbell rack) is long+thin too → a tight box ring
+    // matching its footprint (w/d swapped when rotated 90°), never one fat circle that walls
+    // off the floor. Cooler is small/round → one snug circle.
+    else if(r.footprint){ const sw=Math.abs(Math.sin(rot))>0.5; pushBoxColliders(cols,p.x,p.z, sw?r.footprint.d:r.footprint.w, sw?r.footprint.w:r.footprint.d); }
+    else if(r.cooler){ cols.push({x:p.x,z:p.z,r:0.42}); }
     else if(p.type==='birdcage'||p.type==='plant'){ cols.push({x:p.x,z:p.z,r:(r.rad||0.6)*0.9}); }
     // a tank is NOT a fountain — its sound is soft proximity-gated bubbles from the scene's
     // `ambients` loop, never the loud fountain water rush. Here we only register its drifting fish.

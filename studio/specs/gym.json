@@ -1,0 +1,103 @@
+{
+  "interior": true,
+  "music": "out/music/shop.ogg",
+  "ground": "c9b48f",
+  "bounds": { "xmin": -9.0, "xmax": 9.0, "zmin": -10.0, "zmax": 2.6 },
+  "spawn": { "x": 0, "z": -8.5 },
+  "spawns": {
+    "from_town": { "x": 0, "z": -8.5, "face": 1 }
+  },
+
+  "sky": { "bg": "d9dad0", "hemiSky": "f2f0e6", "hemiGround": "d2d2c4", "hemiI": 2.4,
+           "dirColor": "fbf1da", "dirI": 0.5, "fogNear": 24, "fogFar": 130 },
+
+  "room": {
+    "x": [-10, 10], "zBack": -11, "zFront": 3.5,
+    "floor": "cbb491", "wall": "c9d3d4", "trim": "eee7d8", "base": "b3a991",
+    "wallH": 5.0,
+    "lamps": [ { "x": -5.5, "z": -6.5 }, { "x": 5.5, "z": -6.5 }, { "x": 0, "z": -1.5 }, { "x": -6.5, "z": -0.5 } ]
+  },
+
+  "props": [
+    { "type": "sign", "x": 0, "z": -10.7, "y": 3.95, "w": 4.8, "h": 0.92, "text": "CHREES' GYM", "bg": "d98e6e", "ink": "f6efe4" },
+    { "type": "sign", "x": -9.7, "z": -3.5, "y": 3.1, "w": 2.8, "h": 0.7, "text": "TRAIN HAPPY", "bg": "8fb0a6", "ink": "f6efe4", "rot": 1.5708 },
+
+    { "type": "rug", "x": -4.2, "z": 0.4, "w": 6.4, "d": 4.6, "color": "b9b2c4", "color2": "d6cfe0" },
+
+    { "type": "treadmill", "x": -8.0, "z": -9.1 },
+    { "type": "treadmill", "x": -5.7, "z": -9.1 },
+    { "type": "treadmill", "x": -3.4, "z": -9.1 },
+
+    { "type": "counter", "x": 6.2, "z": -9.6, "w": 4.6, "d": 1.0, "h": 1.08, "color": "c2a07a", "top": "e4d4bd", "kick": "ad8e6c" },
+    { "type": "register", "x": 6.9, "z": -9.6, "color": "b6a2ca", "color2": "efe7d6" },
+    { "type": "cooler", "x": 3.1, "z": -9.9, "body": "dfe3e6", "bottle": "9cc8dd" },
+    { "type": "plant", "x": 9.2, "z": -9.8, "scale": 1.0 },
+
+    { "type": "squatrack", "x": -1.6, "z": -5.4, "frame": "aeb2b6", "bar": "cfcabd", "plate": "8d8a86" },
+
+    { "type": "gymbench", "x": 4.9, "z": -4.6, "frame": "b3aa9d", "pad": "cf9f93" },
+    { "type": "gymbench", "x": 4.9, "z": -1.7, "frame": "b3aa9d", "pad": "cf9f93" },
+
+    { "type": "dumbbells", "x": 8.4, "z": -3.4, "rot": -1.5708, "frame": "b39c84", "board": "cdb89a" },
+    { "type": "mat", "x": 6.7, "z": -3.4, "w": 2.0, "d": 2.6, "color": "9bb0a6" },
+
+    { "type": "mat", "x": -5.0, "z": 0.2, "w": 2.0, "d": 1.1, "color": "b6a2ca" },
+    { "type": "mat", "x": -2.6, "z": 0.9, "w": 2.0, "d": 1.1, "color": "b6a2ca", "rot": 0.4 },
+
+    { "type": "hangplant", "x": -9.0, "z": -8.6, "drop": 1.2 },
+    { "type": "hangplant", "x": 9.0, "z": -6.4, "drop": 1.0 },
+    { "type": "plant", "x": -8.9, "z": 2.0, "scale": 1.05 },
+    { "type": "plant", "x": 8.9, "z": 2.0, "scale": 1.0 }
+  ],
+
+  "portals": [
+    { "id": "to_town", "x": 0, "z": -8.7, "r": 1.8, "to": "town", "spawn": "from_gym",
+      "label": "the street",
+      "door": { "x": 0, "z": -10.78, "face": "+z", "w": 1.8, "h": 3.0,
+                "panel": "b88a5e", "frame": "eee7d6", "window": "cfe0e6", "bell": true } }
+  ],
+
+  "ambients": [
+    { "type": "clink", "x": 8.4, "z": -3.4, "every": [3.0, 6.0] },
+    { "type": "clink", "x": -1.6, "z": -5.4, "every": [4.5, 8.0] }
+  ],
+
+  "npcs": [
+    {
+      "name": "Chrees",
+      "tex": "out/chrees-down-paper.png",
+      "poses": { "down": "out/chrees-down-paper.png", "curl": "out/chrees-curl-paper.png" },
+      "rep": { "seq": ["down", "curl"], "beat": 0.72, "sfxOn": "curl" },
+      "x": 1.8, "z": 0.6, "h": 2.4,
+      "dialogue": {
+        "start": "g1",
+        "nodes": {
+          "g1":   { "text": "Hey, look who bounced in! Welcome to my gym, champ.", "next": "g2" },
+          "g2":   { "text": "Name's Chrees. Used to train out on the street — built this little place so I'd have a roof when it rained.", "next": "g3" },
+          "g3":   { "speaker": "Shen", "text": "It's great in here, Chrees!", "next": "menu" },
+          "menu": { "text": "So — what're you after today?", "choices": [
+            { "label": "Got any training tips?",     "next": "t1" },
+            { "label": "What's all this gear?",       "next": "gear" },
+            { "label": "What's good around here?",    "next": "area" },
+            { "label": "I'd better get going.",       "next": "bye" }
+          ] },
+          "t1":   { "text": "Easy — stay light on your feet. Keep moving and the bounce takes care of itself.", "next": "t2" },
+          "t2":   { "text": "Hop everywhere you go. Your legs remember it better than your head does.", "next": "menu" },
+          "gear": { "text": "Treadmills by the wall, a squat rack in the middle, benches and dumbbells over there. Front desk's just for show — it's free, ha.", "next": "menu" },
+          "area": { "text": "Quiet little block, but it grows on you. Adrian runs the pet shop just down past the stairs — good soul, always could use a hand.", "next": "menu" },
+          "bye":  { "text": "Catch you later. Stay bouncy! ✿" }
+        }
+      }
+    }
+  ],
+
+  "zones": [
+    { "id": "gym",
+      "center": [0, -4], "axisDeg": 0, "halfLen": 12, "halfWid": 13, "trackWid": 8,
+      "height": 5.0, "back": 10.6, "side": 0, "lookAhead": 0.3, "lookY": 1.25,
+      "fov": 55, "pitchBias": -0.04, "follow": 6.0, "blendIn": 0.6 }
+  ],
+
+  "collectibles": [],
+  "quests": []
+}

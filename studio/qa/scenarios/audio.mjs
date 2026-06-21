@@ -54,6 +54,28 @@ await withGamePage(async (page, ctx) => {
   if(!(shopAgain&&shopAgain.includes('shop'))) fails.push('re-entering the shop did not switch back to the shop track (playing: '+shopAgain+')');
   console.log('shop again, now playing: '+shopAgain);
 
+  // ---- GYM: shared calm-indoor loop + a proximity-gated free-weight `clink` ambient +
+  // Chrees' curl-rep `lift` (no silent room, the right sound from the right spot). ----
+  await page.evaluate(`game.enter('gym','from_town')`);
+  await page.waitForTimeout(600);
+  const gymTrack=await page.evaluate('window.audio.musicTrack');
+  if(!(gymTrack&&gymTrack.includes('shop'))) fails.push('gym is not playing the shared indoor loop (playing: '+gymTrack+')');
+  console.log('gym now playing: '+gymTrack);
+  // weight clinks near the dumbbell rack (a gym room sound, NOT silent, NOT the fountain)
+  await page.evaluate(`(()=>{ window.__spy.sfx.length=0; window.__spy.water=0; cameraQA.warp(8.0,-3.4); })()`);
+  await page.waitForTimeout(9500);
+  const ga=await page.evaluate('window.__spy');
+  const clinks=ga.sfx.filter(s=>s==='clink').length;
+  if(clinks<1) fails.push('expected weight clinks near the gym dumbbell rack, got '+clinks+' (sfx: '+[...new Set(ga.sfx)].join(',')+')');
+  if(ga.water>0.001) fails.push('gym is driving the FOUNTAIN water ambient ('+ga.water.toFixed(3)+') — should be 0');
+  console.log('gym free-weight ambient: clinks='+clinks+'  fountainWaterLevel='+ga.water.toFixed(3));
+  // Chrees works out here: his curl pose-loop fires the proximity `lift` near him
+  await page.evaluate(`(()=>{ window.__spy.sfx.length=0; cameraQA.warp(1.8,2.4); })()`);
+  await page.waitForTimeout(3500);
+  const lifts=(await page.evaluate('window.__spy.sfx')).filter(s=>s==='lift').length;
+  if(lifts<2) fails.push("Chrees' curl lifts not firing near him in the gym, got "+lifts);
+  console.log('Chrees lifts near him: '+lifts);
+
   if(ctx.pageErrors.length) fails.push('page errors: '+ctx.pageErrors.join(' | '));
 }, { start: false, launchArgs: ['--autoplay-policy=no-user-gesture-required'] });
 
