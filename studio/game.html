@@ -813,11 +813,16 @@ function applyCamera(){ _eye.copy(CAMRIG.pos); _tgt.copy(CAMRIG.tgt); _dir.copy(
   if(CAMRIG.pitch)cam.rotateX(CAMRIG.pitch);
   if(Math.abs(cam.fov-CAMRIG.fov)>1e-3){cam.fov=CAMRIG.fov;cam.updateProjectionMatrix();} }
 function cameraFrame(s,dt){ dt=Math.min(dt,0.05); const next=pickZone(s.x,s.z);
-  if(activeZone&&next!==activeZone){ blend={fromZone:activeZone,pos:CAMRIG.pos.clone(),fov:CAMRIG.fov,pitch:CAMRIG.pitch,t:0,dur:next.blendIn}; }
+  if(activeZone&&next!==activeZone){ blend={fromZone:activeZone,t:0,dur:next.blendIn}; }
   activeZone=next; let want;
   if(blend){ blend.t+=dt; const u=easeInOutCubic(clampn(blend.t/blend.dur,0,1));
+    // Blend between the two zones' LIVE rigs (both track the player) so the camera keeps
+    // FOLLOWING through a zone change. Using a frozen snapshot for the eye froze it: the
+    // look-target followed (A.tgt) but the eye stuck in place, and if the blend re-triggered
+    // (boundary churn) it re-snapshotted the frozen eye → camera locked, player walked
+    // off-screen → blank screen on the plaza→pet-shop road. (Bug Christopher reported.)
     const A=rigFor(blend.fromZone,s), B=rigFor(activeZone,s);
-    want={pos:blend.pos.clone().lerp(B.pos,u),tgt:A.tgt.clone().lerp(B.tgt,u),fov:lerp(blend.fov,B.fov,u),pitch:lerp(blend.pitch,B.pitch,u)};
+    want={pos:A.pos.clone().lerp(B.pos,u),tgt:A.tgt.clone().lerp(B.tgt,u),fov:lerp(A.fov,B.fov,u),pitch:lerp(A.pitch,B.pitch,u)};
     if(blend.t>=blend.dur)blend=null;
   } else want=rigFor(activeZone,s);
   const k=expK(dt,activeZone.follow);
