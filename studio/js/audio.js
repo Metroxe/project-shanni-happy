@@ -16,7 +16,8 @@
 const CFG = {
   sfx: { hop: 0.34, land: 0.42, step: 0.09, stepSoft: 0.08, move: 0.3, talk: 0.42, select: 0.42,
          squeak: 0.34, quest: 0.42, questStep: 0.44, questDone: 0.5, book: 0.4, bookClose: 0.36, flip: 0.3,
-         fs: 0.4, lift: 0.18, door: 0.4, chirp: 0.26, bubble: 0.12, knock: 0.46, scurry: 0.3 },
+         fs: 0.4, lift: 0.18, door: 0.4, chirp: 0.26, bubble: 0.12, knock: 0.46, scurry: 0.3,
+         plip: 0.16, clink: 0.16, dusk: 0.4, dawn: 0.4, locked: 0.32 },
   blip: 0.17,
   water: 0.14,   // ambient fountain trickle ceiling (faded in by player proximity — a spatial world sound)
 };
@@ -46,6 +47,7 @@ let ctx = null, bus = null, comp = null, sfxGain = null, musicGain = null;
 let musicSrc = null, musicURL = null, musicPlayingURL = null;
 const musicBufs = {}, musicLoads = {};            // url -> AudioBuffer / pending load
 let musicStarted = false, lastMusicVol = 0.42;   // remembers level across an off→on toggle
+let lastSfxVol = 1.0;                             // ditto for effects (off→on restores this)
 
 // THREE independent levels, each on its own localStorage key so they survive
 // reloads separately (none of these live in the save blob):
@@ -61,6 +63,7 @@ let muted    = (store && store.getItem('shen.muted')) === '1';
 let sfxVol   = readNum('shen.sfxvol', 1.0);     // effects at full by default
 let musicVol = readNum('shen.musicvol', 0.42);  // music gently under the SFX
 if (musicVol > 0) lastMusicVol = musicVol;
+if (sfxVol > 0) lastSfxVol = sfxVol;
 
 function applyGain() { if (bus) bus.gain.value = muted ? 0 : volume * GAIN_CEIL; }
 function applySfx()  { if (sfxGain) sfxGain.gain.value = sfxVol; }
@@ -285,6 +288,47 @@ const SFX = {
       if (i % 2 === 0) note({ type: 'triangle', f: semi(22 + rand(-2, 4)), t0, dur: 0.04, gain: v * 0.25 });
     }
   },
+  // a single water-droplet "plip" — a soft high plink that drops in pitch, the fountain's
+  // occasional spatial accent over its continuous water babble. Brighter + thinner than the
+  // tank `bubble` (a fountain is not an aquarium); a little random pitch so a run never
+  // machine-guns. Spatial: fired by the scene's `ambients` loop, proximity-gated (mul).
+  plip(v) {
+    const f = 700 + rand(-110, 200);
+    note({ type: 'sine', f: f * 1.7, f2: f * 0.7, dur: 0.13, gain: v * 0.9, atk: 0.003 });
+    if (Math.random() < 0.5) note({ type: 'sine', f: f * 2.4, f2: f * 1.2, t0: 0.02, dur: 0.08, gain: v * 0.4 });
+  },
+  // a soft metallic weight "tink" — the ambient settle of dumbbells/plates in a working gym.
+  // Gentle + a little random pitch so it never rings the same twice. Spatial: fired by the
+  // gym's `ambients` loop near the free-weight area, gated by player proximity (mul passed in).
+  clink(v) {
+    const f = 620 + rand(-50, 90);
+    note({ type: 'triangle', f, dur: 0.09, gain: v * 0.7, atk: 0.002 });
+    note({ type: 'sine', f: f * 1.5, t0: 0.02, dur: 0.07, gain: v * 0.4, atk: 0.002 });
+    noise({ dur: 0.05, gain: v * 0.22, freq: 3000, q: 1.2, type: 'bandpass' });
+  },
+  // DAY→NIGHT transition: the sun sinks — a soft airy descending hush + a low warm
+  // settling chord. Non-spatial (a whole-world state change), played at the curtain.
+  dusk(v) {
+    noise({ dur: 0.9, gain: v * 0.20, freq: 1400, q: 0.5, type: 'bandpass' });    // airy hush
+    note({ type: 'sine', f: semi(7), f2: semi(-5), dur: 0.9, gain: v * 0.45, atk: 0.05 });  // descending glide
+    [-5, -1, 2].forEach((s, i) => note({ type: 'sine', f: semi(s - 5), t0: 0.45 + i * 0.04, dur: 1.1, gain: v * 0.28, atk: 0.08 }));  // low settle
+  },
+  // NIGHT→DAY transition: the sun rises — a soft airy rising shimmer + a gentle bright
+  // bell bloom. Mirror of `dusk`, warmer/brighter. Non-spatial; played at the curtain.
+  dawn(v) {
+    noise({ dur: 0.8, gain: v * 0.18, freq: 1800, q: 0.5, type: 'bandpass' });
+    note({ type: 'sine', f: semi(-5), f2: semi(9), dur: 0.8, gain: v * 0.4, atk: 0.05 });    // rising glide
+    [7, 11, 14].forEach((s, i) => note({ type: 'triangle', f: semi(s + 7), t0: 0.4 + i * 0.07, dur: 0.6, gain: v * 0.3, atk: 0.01 }));  // bright bloom
+  },
+  // a closed/locked door — a soft muted double "thunk", gentle "shut for the night",
+  // no harshness. Non-spatial (player-driven at the door). Fired when an interaction
+  // is denied because a shop is closed.
+  locked(v) {
+    note({ type: 'sine', f: semi(-9), dur: 0.12, gain: v * 0.6, atk: 0.004 });
+    noise({ dur: 0.06, gain: v * 0.3, freq: 380, q: 0.7 });
+    note({ type: 'sine', f: semi(-12), t0: 0.11, dur: 0.12, gain: v * 0.45, atk: 0.004 });
+    noise({ t0: 0.11, dur: 0.06, gain: v * 0.24, freq: 320, q: 0.7 });
+  },
 };
 
 // ---- dialogue "wah" voice ----
@@ -334,11 +378,16 @@ export const Sound = {
 
   // "effects" — SFX + dialogue-voice sub-bus level, independent of music
   get sfxVolume() { return sfxVol; },
+  get sfxOn() { return sfxVol > 0; },            // derived: "on" == audible (RuneScape-style toggle)
   setSfxVolume(v) {
     sfxVol = clamp01(v);
+    if (sfxVol > 0) lastSfxVol = sfxVol;
     ensure(); applySfx(); persistSfx();
     return sfxVol;
   },
+  // convenience on/off that remembers the last audible level (mirrors music)
+  toggleSfx() { return this.setSfxVolume(sfxVol > 0 ? 0 : (lastSfxVol || 1.0)); },
+  setSfxOn(on) { return this.setSfxVolume(on ? (sfxVol > 0 ? sfxVol : (lastSfxVol || 1.0)) : 0); },
 
   sfx(name, mul = 1) {
     if (muted || !ensure()) return;

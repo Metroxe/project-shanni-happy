@@ -20,21 +20,66 @@
     -webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}
   /* dvh keeps the canvas matched to the *visible* viewport as the mobile URL bar
      shows/hides (100vh would over-extend under it); vh is the desktop fallback. */
-  #c{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100dvh}
+  /* touch-action:none here too — it does NOT inherit from body, so without it the
+     full-screen canvas defaults to `auto` and the browser pinch-/double-tap-zooms. */
+  #c{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100dvh;touch-action:none}
   /* loading-zone door fade: a soft cream wipe over the scene swap (opacity driven in JS) */
-  #fade{position:fixed;inset:0;z-index:35;background:#e9f1ea;opacity:0;pointer-events:none}
+  #fade{position:fixed;inset:0;z-index:35;background:#e9f1ea;opacity:0;pointer-events:none;touch-action:none}
+  /* day<->night transition curtain: a screen-wide sky band with a sun + moon that arc
+     across it (positions driven in JS), concealing the world-state swap behind it. */
+  #daynight{position:fixed;inset:0;z-index:38;opacity:0;pointer-events:none;touch-action:none;
+    overflow:hidden;background:linear-gradient(180deg,#cfe0f2 0%,#ffd9b0 100%)}
+  #dnSky{position:absolute;inset:0;transition:none}
+  #dnSun,#dnMoon{position:absolute;left:50%;width:34vmin;height:34vmin;margin-left:-17vmin;
+    border-radius:50%;will-change:top,opacity}
+  #dnSun{background:radial-gradient(circle,#fffbec 0%,#fff3d6 18%,rgba(255,222,170,.5) 42%,rgba(255,206,150,0) 72%)}
+  #dnMoon{background:radial-gradient(circle,#f7f9ff 0%,#e9eeff 22%,rgba(205,214,255,.45) 46%,rgba(205,214,255,0) 74%)}
+  #dnLabel{position:absolute;left:0;right:0;bottom:13%;text-align:center;color:#fff;
+    font-size:clamp(20px,4.5vmin,40px);font-weight:600;letter-spacing:.04em;opacity:.92;
+    text-shadow:0 2px 14px rgba(40,40,70,.5)}
   .panel{position:fixed;background:rgba(255,255,255,.74);border:1px solid #d6c9b2;
     border-radius:11px;padding:6px 11px;color:#5a564e;font-size:14px}
-  /* tiny time-of-day clock (top-left; the flowers HUD that used to sit here is gone) */
-  #clock{left:calc(14px + env(safe-area-inset-left));top:calc(12px + env(safe-area-inset-top));
-    display:flex;align-items:center;gap:5px;padding:4px 9px 4px 5px}
-  #clockFace{display:block}
-  #clockGlyph{font-size:12px;line-height:1}
-  #clockTime{color:#7a756c;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:.3px}
-  #clock.night{background:rgba(58,63,100,.78);border-color:#4a4f7e}
-  #clock.night #clockTime{color:#e7e6f2}
-  #hint{right:calc(14px + env(safe-area-inset-right));top:calc(12px + env(safe-area-inset-top));
-    color:#7a756c;font-size:12px;background:rgba(255,255,255,.6)}
+  /* Stylized Pikmin-style day/night bar (top center): ONE continuous cycle, left=day-start →
+     right=night-end. Background is a GRADUAL sky gradient (dawn → bright day → golden → dusk →
+     starry night, no hard line). Soft clouds on the day half, twinkling stars on the night half;
+     a big rayed SUN marker rides across + morphs into a moon. Tick = a subtle "night begins"
+     identifier (positioned in initDayBar). Shown on desktop + mobile. */
+  #daybar{position:fixed;left:50%;top:calc(10px + env(safe-area-inset-top));transform:translateX(-50%);
+    width:clamp(260px,58vw,440px);z-index:20;pointer-events:none}
+  #daybarTrack{position:relative;height:16px;border-radius:9px;overflow:hidden;
+    background:linear-gradient(90deg,#cfe6f4 0%,#dceefb 13%,#eaf4f6 29%,#fdeecb 45%,#ffd79a 57%,
+      #f0a890 67%,#b87fa6 76%,#6a5f96 86%,#3a3f6b 94%,#2a2d52 100%);
+    box-shadow:inset 0 1px 2px rgba(90,80,60,.16),inset 0 -2px 5px rgba(40,40,70,.2),0 2px 8px rgba(90,80,60,.2);
+    border:1px solid rgba(255,255,255,.5)}
+  #dbClouds,#dbStars{position:absolute;inset:0;pointer-events:none}
+  .dbCloud{position:absolute;border-radius:50%;
+    background:radial-gradient(circle,rgba(255,255,255,.95) 0%,rgba(255,255,255,.72) 52%,rgba(255,255,255,0) 76%)}
+  .dbStar{position:absolute;width:2px;height:2px;border-radius:50%;background:#fff;
+    box-shadow:0 0 3px 1px rgba(255,255,255,.7);animation:dbtwinkle 2.6s ease-in-out infinite}
+  @keyframes dbtwinkle{0%,100%{opacity:.35}50%{opacity:1}}
+  /* subtle "night begins" identifier — a faint dashed hairline (NOT a hard colour edge) + moon */
+  #daybarTick{position:absolute;top:-2px;bottom:-2px;width:0;transform:translateX(-50%);
+    border-left:1.5px dashed rgba(255,252,240,.5)}
+  #daybarTick::after{content:'☾';position:absolute;left:50%;top:-15px;transform:translateX(-50%);
+    font-size:10px;color:rgba(255,250,235,.85);text-shadow:0 1px 3px rgba(40,40,70,.5)}
+  #daybarMarker{position:absolute;top:50%;left:0;width:34px;height:34px;transform:translate(-50%,-50%);
+    filter:drop-shadow(0 1px 4px rgba(60,50,40,.5))}
+  #dbSun,#dbMoon{position:absolute}
+  #dbSun{inset:0;animation:dbspin 26s linear infinite}
+  #dbMoon{inset:8px;border-radius:50%;opacity:0;
+    background:radial-gradient(circle at 64% 38%,#fbfcff 0%,#e6ecff 48%,#cdd8f5 100%);
+    box-shadow:0 0 7px 2px rgba(206,216,255,.55)}
+  @keyframes dbspin{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion:reduce){.dbStar{animation:none;opacity:.85}#dbSun{animation:none}}
+  /* current time, centered just beneath the bar (NOT sparse hour ticks). Absolute so it
+     doesn't change #daybar's height — the marker's vertical centering depends on that. */
+  #daybarTime{position:absolute;top:calc(100% + 4px);left:50%;transform:translateX(-50%);
+    font-size:12px;font-weight:600;letter-spacing:.4px;font-variant-numeric:tabular-nums;
+    color:#fff7ea;background:rgba(34,36,58,.4);padding:2px 9px;border-radius:8px;
+    white-space:nowrap;text-shadow:0 1px 2px rgba(20,20,40,.5);pointer-events:none}
+  /* desktop plays on the keyboard, so the on-screen touch chrome is hidden there (mobile-only).
+     body.desktop is set by JS when the primary input is a fine pointer (not touch). */
+  body.desktop #dpad,body.desktop #acts,body.desktop #bMenu,body.desktop #bFull{display:none!important}
   #bMenu{position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(44px + env(safe-area-inset-top));
     font-size:16px;padding:4px 11px;line-height:1.2;z-index:21}
   /* fullscreen toggle: sits just left of the journal button, mobile-only (JS shows
@@ -60,11 +105,15 @@
     transition:background .15s,color .15s,transform .15s;-webkit-tap-highlight-color:transparent}
   .jtab:hover{color:#7a6f5c}
   .jtab.active{background:#fffdf8;color:#c27d8b;transform:translateX(-5px);z-index:3}
+  /* keyboard cursor: a rose focus ring on whichever menu item the keyboard has selected */
+  .ksel{box-shadow:0 0 0 2px #e6b9c6,0 3px 10px rgba(183,107,125,.18)!important;border-radius:11px}
+  .srow.ksel,.qhead.ksel{background:#faecf0!important}                /* soft fill so the cursor is unmistakable on borderless rows */
+  .jtab.ksel{box-shadow:0 0 0 2px #e6b9c6,-3px 3px 8px rgba(90,80,60,.12)!important;z-index:4}
   /* book body + page */
   #bookBody{position:relative;flex:1;background:#fffdf8;border:1px solid #d6c9b2;border-radius:6px 16px 16px 6px;
     box-shadow:0 14px 40px rgba(90,80,60,.30);overflow:hidden;
     background-image:linear-gradient(90deg,#efe6d4 0,#f7efe0 13px,#fffdf8 30px)}
-  #pages{position:absolute;inset:0;padding:22px 24px 20px 42px;box-sizing:border-box;overflow-y:auto;
+  #pages{position:absolute;inset:0;padding:22px 24px 20px 42px;box-sizing:border-box;overflow-y:auto;touch-action:pan-y;
     transform-origin:left center;transform-style:preserve-3d;backface-visibility:hidden;
     transition:transform .2s ease,opacity .2s ease}
   #pages.flipping{transform:rotateY(-88deg);opacity:.25}
@@ -105,6 +154,14 @@
   .srow{display:flex;align-items:center;gap:11px;margin:13px 0;font-size:14px}
   .srow>span:first-child{width:52px;color:#7a756c}
   .sval{width:40px;text-align:right;color:#b76b7d;font-variant-numeric:tabular-nums}
+  /* RuneScape-style per-channel on/off pill — click to toggle, slider still works */
+  .tog{flex:none;width:38px;padding:4px 0;font:inherit;font-size:12px;font-weight:700;text-align:center;
+    border-radius:9px;border:1px solid #cfe0cd;background:#eaf3e7;color:#7aa37e;cursor:pointer;
+    user-select:none;transition:.12s;letter-spacing:.3px}
+  .tog:active{transform:scale(.94)}
+  .tog.off{border-color:#e6c3c3;background:#f7e6e6;color:#c08a8a}
+  .srow.muted .sval{color:#c2b9ac}
+  .srow.muted input[type=range]{opacity:.5}
   #journal input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:6px;border-radius:4px;
     background:#ece2d0;outline:none;cursor:pointer}
   #journal input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;
@@ -117,6 +174,17 @@
   .mrow #muteState{font-weight:700;color:#7aa37e}
   .mrow.off{opacity:.75}
   .mrow.off #muteState{color:#c08a8a}
+  /* graphics options — segmented chips, same rose-highlight language as choices */
+  .gfxh{margin:20px 2px 6px;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:#a99f8c;
+    border-top:1px solid #ece2d0;padding-top:15px}
+  .gfxrow{display:flex;align-items:center;gap:10px;margin:11px 0;font-size:14px}
+  .gfxrow>span:first-child{width:70px;color:#7a756c;flex:none}
+  .gopts{display:flex;gap:5px;flex:1;flex-wrap:wrap}
+  .gopt{border:1px solid #e0d4bf;border-radius:9px;padding:5px 11px;font:inherit;font-size:12.5px;
+    background:rgba(255,255,255,.6);color:#6a655c;cursor:pointer;transition:.12s}
+  .gopt:hover{color:#7a6f5c}
+  .gopt.sel{background:#f6e7ea;border-color:#e6b9c6;color:#b76b7d;box-shadow:inset 0 0 0 1px #e6b9c6;font-weight:600}
+  .gfxhint{margin:9px 2px 0;font-size:11px;color:#a99f8c;line-height:1.6}
   .jhint{margin:16px 2px 4px;font-size:11.5px;color:#8a8579;text-align:center;line-height:1.7}
   .menuBtns{display:flex;gap:10px;margin-top:16px}
   .menuBtns .btn{flex:1;padding:11px 0;font-size:14px}
@@ -167,7 +235,7 @@
   /* cutscene mode: the engine owns input + camera, so hide every gameplay control and
      let the scene play. The dialogue box stays (scripted lines) but lifts above the bars. */
   body.cutscene #dpad, body.cutscene #acts, body.cutscene #bMenu, body.cutscene #bFull,
-  body.cutscene #clock, body.cutscene #hint { display:none !important; }
+  body.cutscene #daynight, body.cutscene #daybar { display:none !important; }
   body.cutscene #talkPrompt { opacity:0 !important; }
   /* cinematic letterbox bars slide in/out at the top + bottom during a cutscene */
   .cinebar{position:fixed;left:0;right:0;height:8vh;max-height:70px;background:#2b2620;z-index:30;
@@ -208,28 +276,83 @@
   @keyframes twinkle{0%,34%{opacity:0;transform:scale(.4)}
     50%{opacity:.95;transform:scale(1)}66%,100%{opacity:0;transform:scale(.4)}}
   @keyframes dots{0%{content:''}25%{content:'.'}50%{content:'..'}75%{content:'...'}}
-  /* title / continue screen */
+  /* ---------- main menu (title screen) ---------- */
   #title{position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;
-    background:radial-gradient(120% 120% at 50% 30%,rgba(233,241,234,.55),rgba(233,241,234,.9));
-    opacity:1;transition:opacity .5s}
+    padding:24px;box-sizing:border-box;overflow:hidden;
+    background:radial-gradient(125% 120% at 50% 22%,#f5f0e7 0%,#ece3d4 55%,#e2d7c5 100%);
+    opacity:1;transition:opacity .55s}
   #title.off{opacity:0;pointer-events:none}
-  #title .card{display:flex;flex-direction:column;align-items:center;gap:4px;
-    background:rgba(255,253,248,.96);border:1px solid #d6c9b2;border-radius:22px;
-    padding:30px 40px 26px;box-shadow:0 10px 36px rgba(90,80,60,.18);text-align:center;
-    min-width:min(330px,calc(100vw - 48px))}
-  #title .mark{font-size:40px;color:#c27d8b;line-height:1}
-  #title h1{margin:6px 0 0;font-size:26px;font-weight:700;color:#5a564e;letter-spacing:.4px}
-  #title .sub{margin:2px 0 18px;font-size:13px;color:#9a948a}
+  /* slow drifting paper petals behind the card (calm; reduced-motion safe) */
+  #title .petals{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+  #title .petals i{position:absolute;color:#e6b9c6;opacity:.5;font-style:normal;
+    font-size:18px;will-change:transform;animation:tdrift linear infinite}
+  #title .petals i:nth-child(1){left:11%;font-size:15px;color:#cfe0cf;animation-duration:19s;animation-delay:-3s}
+  #title .petals i:nth-child(2){left:28%;font-size:22px;animation-duration:24s;animation-delay:-11s}
+  #title .petals i:nth-child(3){left:67%;font-size:16px;color:#d9c3e0;animation-duration:21s;animation-delay:-6s}
+  #title .petals i:nth-child(4){left:84%;font-size:20px;color:#cfe0cf;animation-duration:27s;animation-delay:-15s}
+  #title .petals i:nth-child(5){left:49%;font-size:14px;animation-duration:23s;animation-delay:-9s}
+  @keyframes tdrift{0%{transform:translateY(112vh) rotate(0)}100%{transform:translateY(-16vh) rotate(220deg)}}
+  /* layered die-cut card: a back paper sheet offset behind the front card */
+  #title .stack{position:relative}
+  #title .stack::before{content:'';position:absolute;inset:0;border-radius:26px;
+    background:#f3ead9;border:1px solid #d9ccb5;transform:rotate(-2.2deg) translate(-7px,9px);
+    box-shadow:0 10px 30px rgba(90,80,60,.13)}
+  #title .card{position:relative;display:flex;flex-direction:column;align-items:center;
+    background:#fffdf8;border:1px solid #d6c9b2;border-radius:24px;
+    padding:18px 30px 22px;box-shadow:0 16px 44px rgba(90,80,60,.22);text-align:center;
+    width:min(360px,calc(100vw - 56px))}
+  /* the papercraft diorama window: pastel sky + layered hills + Shen standing */
+  #title .diorama{position:relative;width:100%;height:150px;border-radius:18px;overflow:hidden;
+    background:linear-gradient(#dfeaf0 0%,#e8eee6 52%,#eef0e4 100%);
+    box-shadow:inset 0 2px 9px rgba(120,110,90,.10);margin-bottom:6px}
+  #title .sun{position:absolute;top:16px;right:22px;width:30px;height:30px;border-radius:50%;
+    background:#f7e6b8;box-shadow:0 0 0 7px rgba(247,230,184,.32)}
+  #title .hill{position:absolute;border-radius:50%}
+  #title .hill.h1{left:-20%;width:92%;height:90px;bottom:-40px;background:#d6e6d2}
+  #title .hill.h2{right:-18%;width:86%;height:80px;bottom:-46px;background:#c7ddc4}
+  #title .hill.h3{left:22%;width:72%;height:64px;bottom:-34px;background:#f0d6dd}
+  #title .shenwrap{position:absolute;left:50%;bottom:9px;transform:translateX(-50%);
+    display:flex;flex-direction:column;align-items:center}
+  #title .shen{height:106px;width:auto;display:block;
+    filter:drop-shadow(0 5px 5px rgba(90,70,60,.16));
+    transform-origin:50% 100%;animation:tbob 3.4s ease-in-out infinite}
+  #title .sh{width:56px;height:11px;border-radius:50%;background:rgba(90,70,55,.20);
+    filter:blur(2px);margin-top:-6px;animation:tsh 3.4s ease-in-out infinite}
+  @keyframes tbob{0%,100%{transform:translateY(0) scaleY(1)}50%{transform:translateY(-4px) scaleY(1.015)}}
+  @keyframes tsh{0%,100%{transform:scale(1);opacity:.5}50%{transform:scale(.86);opacity:.36}}
+  #title h1{margin:6px 0 0;font-size:30px;font-weight:800;color:#5a564e;letter-spacing:.6px}
+  #title .sub{margin:3px 0 16px;font-size:12.5px;color:#a59c8c;letter-spacing:.4px}
   #title .menu{display:flex;flex-direction:column;gap:9px;width:100%}
   .tbtn{font:inherit;font-size:16px;border-radius:13px;border:1px solid #d6c9b2;
     background:rgba(255,255,255,.85);color:#5a564e;padding:12px 22px;cursor:pointer;
-    user-select:none;touch-action:none;transition:.12s}
+    user-select:none;touch-action:none;transition:.12s;
+    display:flex;align-items:center;justify-content:center;gap:9px}
+  .tbtn .g{font-size:15px;opacity:.6;width:1.1em;text-align:center}
+  .tbtn:hover{border-color:#c9b79b}
   .tbtn:active{transform:scale(.97)}
   .tbtn.primary{background:#f6e7ea;border-color:#e6b9c6;color:#b76b7d;font-weight:600}
-  .tbtn.sel{box-shadow:0 0 0 2px #e6b9c6,0 4px 12px rgba(183,107,125,.18)}
+  .tbtn.primary .g{opacity:.8}
+  .tbtn.sel{box-shadow:0 0 0 2px #e6b9c6,0 4px 12px rgba(183,107,125,.18);border-color:#e6b9c6}
   .tbtn.danger{background:#f7e3e3;border-color:#e6b9b9;color:#b76b6b}
   .tbtn[hidden]{display:none}
-  #buildTag{margin-top:14px;font-size:11px;color:#bcb4a6;letter-spacing:.3px}
+  #buildTag{margin-top:13px;font-size:11px;color:#bcb4a6;letter-spacing:.3px}
+  @media (prefers-reduced-motion:reduce){
+    #title .petals{display:none}
+    #title .shen,#title .sh{animation:none}
+  }
+  /* short landscape (phone sideways): shrink the diorama so the menu always fits */
+  @media (max-height:540px){
+    #title .card{padding:12px 26px 16px}
+    #title .diorama{height:104px;margin-bottom:4px}
+    #title .shen{height:74px}
+    #title .sh{width:42px}
+    #title h1{font-size:24px}
+    #title .sub{margin-bottom:10px}
+    #title .tbtn{padding:9px 18px;font-size:15px}
+  }
+  /* main menu is up: hide the in-game HUD chrome for a clean title screen */
+  body.pregame #daybar,body.pregame #bMenu,body.pregame #bFull,
+  body.pregame #dpad,body.pregame #acts,body.pregame #dlg,body.pregame #talkPrompt{display:none!important}
   /* rotate-to-landscape overlay: only shown (via body.portrait-lock, set by JS on
      touch devices held in portrait) over the whole screen; auto-hides on rotate. */
   #rotate{position:fixed;inset:0;z-index:120;display:none;flex-direction:column;
@@ -252,7 +375,7 @@
      the rotate prompt takes over instead). The route to a chromeless iOS game. */
   #a2hs{position:fixed;inset:0;z-index:130;display:none;flex-direction:column;
     align-items:center;justify-content:safe center;gap:13px;padding:26px;box-sizing:border-box;
-    overflow-y:auto;text-align:center;background:radial-gradient(120% 120% at 50% 38%,#eef4ee,#e4ece4)}
+    overflow-y:auto;touch-action:pan-y;text-align:center;background:radial-gradient(120% 120% at 50% 38%,#eef4ee,#e4ece4)}
   body.ios-web #a2hs{display:flex}
   #a2hs .ic{width:90px;height:90px;border-radius:21px;box-shadow:0 8px 22px rgba(90,80,60,.18)}
   #a2hs h2{margin:2px 0 0;font-size:21px;font-weight:700;color:#c27d8b;letter-spacing:.3px}
@@ -267,10 +390,8 @@
     text-decoration:underline;cursor:pointer;font:inherit;-webkit-tap-highlight-color:transparent}
   #a2hs .step span{text-align:left}
   #a2hs .hint2{margin:3px 0 0;font-size:11.5px;color:#b3aa9a;line-height:1.65;max-width:300px}
-  /* touch devices: the on-screen controls replace the keyboard, so drop the
-     desktop key hint, and keep the dialogue box clear of the d-pad while talking. */
+  /* touch devices: keep the dialogue box clear of the d-pad while talking. */
   @media (pointer:coarse){
-    #hint{display:none}
     body.talking #dpad{display:none}
   }
   /* short landscape (phones held sideways): trim the dialogue width so it never
@@ -284,7 +405,19 @@
   "three":"https://unpkg.com/three@0.160.0/build/three.module.js",
   "three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"
 }}</script>
-</head><body>
+<!-- Kill browser pinch-zoom on mobile. iOS Safari ignores viewport user-scalable=no and
+     fires its own pinch `gesture*` events on the document regardless of touch-action, so
+     swallow them here. Double-tap zoom + the rest is handled by touch-action (none on the
+     game surfaces, pan-y on the two scrollable panels). Loaded early (head, plain script)
+     so it catches gestures even during the module's load. NOTE: we do NOT preventDefault
+     touchend for double-tap — that would also cancel rapid gameplay taps (double-hop,
+     fast dialogue-advance); touch-action covers double-tap zoom without that cost. -->
+<script>
+['gesturestart','gesturechange','gestureend'].forEach(function(t){
+  document.addEventListener(t,function(e){e.preventDefault();},{passive:false});
+});
+</script>
+</head><body class="pregame">
 <div id="loader">
   <div id="loadStage">
     <div class="spark s1"></div><div class="spark s2"></div><div class="spark s3"></div>
@@ -297,16 +430,25 @@
 <div id="fade"></div>
 <div class="cinebar top"></div><div class="cinebar bot"></div>
 
-<div class="panel" id="clock" title="time of day">
-  <svg id="clockFace" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-    <circle cx="12" cy="12" r="10.5" fill="#fff8ec" stroke="#d9b9c6" stroke-width="1.4"/>
-    <circle cx="12" cy="3.4" r="0.9" fill="#cdb9a4"/><circle cx="12" cy="20.6" r="0.9" fill="#cdb9a4"/>
-    <circle cx="3.4" cy="12" r="0.9" fill="#cdb9a4"/><circle cx="20.6" cy="12" r="0.9" fill="#cdb9a4"/>
-    <line id="clockHr" x1="12" y1="12" x2="12" y2="7.2" stroke="#8a7f6e" stroke-width="1.6" stroke-linecap="round"/>
-    <line id="clockMin" x1="12" y1="12" x2="12" y2="4.6" stroke="#b76b7d" stroke-width="1.3" stroke-linecap="round"/>
-    <circle cx="12" cy="12" r="1.1" fill="#8a7f6e"/>
-  </svg><span id="clockGlyph">☀</span><b id="clockTime">6:24</b></div>
-<div class="panel" id="hint">arrows / WASD move · space hop · E talk · Esc journal</div>
+<div id="daynight"><div id="dnSky"></div><div id="dnSun"></div><div id="dnMoon"></div><div id="dnLabel"></div></div>
+<div id="daybar" aria-label="day/night cycle">
+  <div id="daybarTrack"><div id="dbClouds"></div><div id="dbStars"></div></div>
+  <div id="daybarTick"></div>
+  <div id="daybarMarker">
+    <svg id="dbSun" viewBox="0 0 40 40" aria-hidden="true">
+      <g stroke="#ffba3e" stroke-width="3" stroke-linecap="round">
+        <line x1="20" y1="3.5" x2="20" y2="9"/><line x1="36.5" y1="20" x2="31" y2="20"/>
+        <line x1="20" y1="36.5" x2="20" y2="31"/><line x1="3.5" y1="20" x2="9" y2="20"/>
+        <line x1="31.7" y1="8.3" x2="27.8" y2="12.2"/><line x1="31.7" y1="31.7" x2="27.8" y2="27.8"/>
+        <line x1="8.3" y1="31.7" x2="12.2" y2="27.8"/><line x1="8.3" y1="8.3" x2="12.2" y2="12.2"/>
+      </g>
+      <circle cx="20" cy="20" r="8.6" fill="#ffd95e" stroke="#ffeaa3" stroke-width="1.2"/>
+      <circle cx="16.8" cy="16.8" r="2.8" fill="#fff5cf"/>
+    </svg>
+    <div id="dbMoon"></div>
+  </div>
+  <div id="daybarTime"></div>
+</div>
 <button class="btn" id="bMenu" aria-label="journal" title="journal (Esc)">📖</button>
 <button class="btn" id="bFull" aria-label="fullscreen" title="fullscreen">
   <svg class="fs-in" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3H3v6"/><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M15 21h6v-6"/></svg>
@@ -330,15 +472,23 @@
 </div>
 <div id="talkPrompt"></div>
 <div id="title">
-  <div class="card">
-    <div class="mark">✿</div>
-    <h1>Shen</h1>
-    <div class="sub">a little papercraft game</div>
-    <div class="menu">
-      <button class="tbtn" id="btnContinue" hidden>Continue</button>
-      <button class="tbtn" id="btnNew">New Game</button>
+  <div class="petals" aria-hidden="true"><i>✿</i><i>❀</i><i>✿</i><i>❀</i><i>✿</i></div>
+  <div class="stack">
+    <div class="card">
+      <div class="diorama" aria-hidden="true">
+        <div class="sun"></div>
+        <div class="hill h1"></div><div class="hill h2"></div><div class="hill h3"></div>
+        <div class="shenwrap"><img class="shen" src="out/shen-paper.png" alt=""><div class="sh"></div></div>
+      </div>
+      <h1>Shen</h1>
+      <div class="sub">a little papercraft stroll</div>
+      <div class="menu">
+        <button class="tbtn" id="btnContinue" hidden><span class="g">⟳</span>Continue</button>
+        <button class="tbtn" id="btnNew"><span class="g">✿</span>New Game</button>
+        <button class="tbtn" id="btnSettings"><span class="g">⚙</span>Settings</button>
+      </div>
+      <div id="buildTag"></div>
     </div>
-    <div id="buildTag"></div>
   </div>
 </div>
 <div id="journal">
@@ -356,10 +506,23 @@
         </section>
         <section class="jpage" id="page-settings" hidden>
           <div class="jh">Settings</div>
-          <div class="srow"><span>volume</span><input type="range" id="vol" min="0" max="100" value="70"><span id="volVal" class="sval">70%</span></div>
-          <div class="srow"><span>effects</span><input type="range" id="sfxvol" min="0" max="100" value="100"><span id="sfxVal" class="sval">100%</span></div>
-          <div class="srow"><span>music</span><input type="range" id="musicvol" min="0" max="100" value="42"><span id="musicVal" class="sval">42%</span></div>
-          <button class="mrow" id="muteRow"><span>sound</span><span id="muteState">on</span></button>
+          <div class="srow" id="rowVol"><span>volume</span><input type="range" id="vol" min="0" max="100" value="70"><span id="volVal" class="sval">70%</span><button class="tog" id="volTog" title="Mute everything">on</button></div>
+          <div class="srow" id="rowSfx"><span>effects</span><input type="range" id="sfxvol" min="0" max="100" value="100"><span id="sfxVal" class="sval">100%</span><button class="tog" id="sfxTog" title="Turn sound effects on/off">on</button></div>
+          <div class="srow" id="rowMusic"><span>music</span><input type="range" id="musicvol" min="0" max="100" value="42"><span id="musicVal" class="sval">42%</span><button class="tog" id="musicTog" title="Turn music on/off">on</button></div>
+          <div class="gfxh">Graphics</div>
+          <div class="gfxrow"><span>shadows</span><div class="gopts" data-gfx="shadows">
+            <button class="gopt" data-val="off">Off</button>
+            <button class="gopt" data-val="low">Low</button>
+            <button class="gopt" data-val="high">High</button></div></div>
+          <div class="gfxrow"><span>finish</span><div class="gopts" data-gfx="fx">
+            <button class="gopt" data-val="off">Off</button>
+            <button class="gopt" data-val="minimal">Minimal</button>
+            <button class="gopt" data-val="diorama">Diorama</button>
+            <button class="gopt" data-val="full">Full</button></div></div>
+          <div class="gfxrow"><span>resolution</span><div class="gopts" data-gfx="res">
+            <button class="gopt" data-val="fast">Fast</button>
+            <button class="gopt" data-val="crisp">Crisp</button></div></div>
+          <div class="gfxhint">Lower these if the game runs hot. Shadows + resolution are the heaviest.</div>
           <div class="jhint">arrows / WASD move · space hop<br>E talk · Esc journal · M mute</div>
           <div class="menuBtns">
             <button class="btn" id="restartBtn">restart ✿</button>
@@ -403,19 +566,27 @@
 // any studio/js/*.js so a reload actually loads the new code. (Deploys get fresh URLs
 // per commit, so this is purely a local-preview convenience.)
 import * as THREE from 'three';
-import { WORLD, initState, step, setBounds, setColliders } from './js/sim.js?v=6';
-import { Dialogue } from './js/dialogue.js?v=6';
-import * as Save from './js/save.js?v=6';
-import { Sound } from './js/audio.js?v=6';
-import { Quests } from './js/quests.js?v=6';
-import { Sky } from './js/sky.js?v=6';
-import { FX } from './js/fx.js?v=6';
-import { Cutscene } from './js/cutscene.js?v=6';
+import { WORLD, initState, step, setBounds, setColliders } from './js/sim.js?v=9';
+import { Dialogue } from './js/dialogue.js?v=9';
+import * as Save from './js/save.js?v=9';
+import { Sound } from './js/audio.js?v=9';
+import { Quests } from './js/quests.js?v=9';
+import { Sky } from './js/sky.js?v=9';
+import { FX } from './js/fx.js?v=9';
+import { installPCSS } from './js/pcss.js?v=9';
+import { Cutscene } from './js/cutscene.js?v=9';
 
+// PCSS = contact-hardening SOFT shadows: crisp where an object meets the ground, bleeding softer
+// the farther it gets (the sun read as an AREA light, not a point). Patches the global shadow
+// shader chunk, so it MUST run before any material compiles (i.e. before build()). Degrades to
+// plain PCF if the patch can't apply. See js/pcss.js.
+const PCSS_ON=installPCSS();
 const canvas=document.getElementById('c');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.outputColorSpace=THREE.SRGBColorSpace;
-renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+// Type stays PCF: PCSS (injected into getShadow) short-circuits the filter, so this just needs a
+// type whose define compiles. Set once here so it never triggers a runtime shader recompile.
+renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFShadowMap;
 const scene=new THREE.Scene();
 const cam=new THREE.PerspectiveCamera(40,1,0.1,300);
 
@@ -453,9 +624,27 @@ function softCanvasTex(draw){const s=128,c=document.createElement('canvas');c.wi
   draw(c.getContext('2d'),s);return new THREE.CanvasTexture(c);}
 
 // shadow + cloud + hill canvas textures
-const shadowTex=softCanvasTex((x,s)=>{const g=x.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
-  g.addColorStop(0,'rgba(60,52,40,.5)');g.addColorStop(.6,'rgba(60,52,40,.2)');g.addColorStop(1,'rgba(60,52,40,0)');
-  x.fillStyle=g;x.fillRect(0,0,s,s);});
+// Contact shadow (for the flat BILLBOARD cutouts — Shen / NPCs / pickups, which can't cast a
+// real shadow) = a soft oval with a DEFINED dark core that fades SMOOTHLY to fully transparent
+// at the rim. The fade-to-0 rim is load-bearing, NOT just taste: this oval is a single FLAT
+// horizontal quad sitting at the player's foot height, but the ground under her is not always
+// flat. On the stepped stairs a HARD-edged disc (a solid core + thin blurred rim) gets sliced
+// by the step edges — occluded by the higher tread behind her, floating over the lower tread in
+// front — so its body bands across the steps and its wide left/right extremities poke out beside
+// her hips (the "fold / weird shadow" artifact). An alpha that reaches 0 at the rim can't show a
+// hard clip: wherever the ground steps, the oval just dissolves. Keep a solid-ish core so it
+// still reads as a grounded contact shadow (not a vague smudge), then ramp to nothing.
+// GUARDED by studio/qa/checks/contact-shadow-soft.mjs (window.__contactShadowProfile).
+const shadowTex=(()=>{const s=256,c=document.createElement('canvas');c.width=c.height=s;
+  const x=c.getContext('2d');
+  const g=x.createRadialGradient(s/2,s/2,0,s/2,s/2,s*0.5);
+  g.addColorStop(0.00,'rgba(58,50,40,.50)');        // defined dark core (grounded, not muddy)
+  g.addColorStop(0.42,'rgba(58,50,40,.40)');        // small plateau keeps it bodied
+  g.addColorStop(0.72,'rgba(58,50,40,.15)');        // ramp down…
+  g.addColorStop(1.00,'rgba(58,50,40,0)');          // …to fully transparent at the rim (no hard edge to clip)
+  x.fillStyle=g;x.fillRect(0,0,s,s);
+  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;
+  t.minFilter=THREE.LinearMipmapLinearFilter;t.magFilter=THREE.LinearFilter;return t;})();
 function blobTex(col){return softCanvasTex((x,s)=>{x.fillStyle=col;
   [[.5,.55,.34],[.32,.6,.24],[.68,.6,.24],[.42,.42,.2],[.6,.42,.2]].forEach(([a,b,r])=>{
     x.beginPath();x.ellipse(a*s,b*s,r*s,r*s*.8,0,0,7);x.fill();});});}
@@ -471,7 +660,7 @@ let started=false, BUILD='dev';
 // (S.collectibles only ever holds the ACTIVE scene's pickups), and it is the single
 // source of truth the save + quest engine read. kindMap maps every id→kind across
 // all scenes. portals/ambients are the active scene's; nearPortal drives the prompt.
-const SCENE_URLS={ town:'specs/world.json', petshop:'specs/petshop.json' };
+const SCENE_URLS={ town:'specs/world.json', petshop:'specs/petshop.json', gym:'specs/gym.json' };
 let SPECS={}, curScene='town', sceneRoot=null, groundPlane=null;
 let collected=new Set(), kindMap={};
 let portals=[], ambients=[], nearPortal=null, portalCooldown=0;
@@ -490,12 +679,17 @@ let csShen=null, csAdrian=null;
 const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
 const smooth=t=>t<=0?0:t>=1?1:t*t*(3-2*t);
 const ease=(a,b,t)=>a+(b-a)*smooth(t);
+const lerpN=(a,b,t)=>a+(b-a)*t;                       // plain linear interpolation
+// blend two #rrggbb colours → 'rgb(r,g,b)' (t=0→a, 1→b). For the day/night curtain band.
+const mixHex=(a,b,t)=>{const pa=parseInt(a.slice(1),16),pb=parseInt(b.slice(1),16);
+  const r=Math.round(lerpN((pa>>16)&255,(pb>>16)&255,t)), g=Math.round(lerpN((pa>>8)&255,(pb>>8)&255,t)),
+        bl=Math.round(lerpN(pa&255,pb&255,t)); return 'rgb('+r+','+g+','+bl+')';};
 // framerate-independent exponential smoothing toward a target (tau in seconds).
 const damp=(cur,tgt,tau,dt)=>tgt+(cur-tgt)*Math.exp(-dt/Math.max(tau,1e-4));
 // smoothed display pose: tweens between animation states so rapid direction
 // flips / start-stop / mode changes ease instead of snapping. Height stays
 // crisp (jumps feel responsive); lean & squash ease a touch more.
-const D={yW:0,sx:1,sy:1,rot:0}; let Dinit=false;
+const D={yW:0,sx:1,sy:1,rot:0}; let Dinit=false; let Dgy=null;  // Dgy: eased render-height so stepped stairs glide (never sinks below the true surface)
 function pose(s){
   if(s.mode==='air'){const sy=1+clamp(s.vy*0.022,-0.12,0.2);return{yW:s.y,sx:1/Math.sqrt(Math.max(sy,.4)),sy,rot:0};}
   if(s.mode==='walk'){const h=Math.abs(Math.sin(s.walkPhase));const sy=1+h*0.07-(1-h)*0.06;
@@ -551,7 +745,7 @@ function M(geo,col,flat,edge){ paperUV(geo,DENSITY); const m=new THREE.Mesh(geo,
   m.castShadow=true;m.receiveShadow=true;
   if(edge===true)m.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo,38),EDGEMAT));
   return m;}
-let SCENE,LEVEL={H:0},STAIRS=null,SCENE_COLLIDERS=[],BUILDING_MESHES=[],billboards=[],fountains=[];
+let SCENE,LEVEL={H:0},STAIRS=null,SCENE_COLLIDERS=[],BUILDING_MESHES=[],billboards=[],fountains=[],propAnims=[];
 // Two-terrace city: a raised upper level (plaza + street + shops) at LEVEL.H, a
 // sunken park at y=0, joined by a descending stair notch in the central corridor.
 function groundHeight(x,z){
@@ -559,8 +753,12 @@ function groundHeight(x,z){
   if(!ST) return 0;
   if(z<=ST.zTop) return H;                 // upper terrace (plaza/road/shops)
   if(z>=ST.zBot) return 0;                 // park
-  if(x>=ST.x0&&x<=ST.x1){                   // on the descending stairs → smooth ramp
-    const t=(z-ST.zTop)/(ST.zBot-ST.zTop); return H*(1-smooth(t)); }
+  if(x>=ST.x0&&x<=ST.x1){                   // on the descending stairs → stand ON the treads
+    // A smooth ramp here put her feet BELOW the stepped tread tops in the lower half, so the
+    // step she'd just left clipped across her legs. Snap to the SAME tread tops buildStairs
+    // draws (step i top = H - i*dy) so her feet always rest on a visible surface, never sunk.
+    const n=ST.steps, dz=(ST.zBot-ST.zTop)/n, dy=H/n;
+    const i=clampn(Math.floor((z-ST.zTop)/dz),0,n-1); return H-i*dy; }
   return H;                                 // plateau front edge beside the stairs (cliff top)
 }
 function zoneAxis(z){const a=z.axisDeg*Math.PI/180;return {fx:Math.sin(a),fz:-Math.cos(a)};}
@@ -749,7 +947,10 @@ function buildBuildings(cols){
 const FACE_ROT={'+z':0,'-z':Math.PI,'+x':Math.PI/2,'-x':-Math.PI/2};
 const FACE_N={'+z':[0,1],'-z':[0,-1],'+x':[1,0],'-x':[-1,0]};
 function makeFacade(bd,base,top,dir){
-  const f=bd.facade, h=top-base, faceLen=(dir==='-x'||dir==='+x')?bd.d:bd.w, g=new THREE.Group();
+  // One building can host DIFFERENT storefronts on different faces (e.g. Pet Shop on the
+  // west, GYM on the south) — facade.faces[dir] overrides the base facade for that face
+  // (its own sign/signBg/awning/window/door + a `storefront` big-window treatment).
+  const f=Object.assign({}, bd.facade, (bd.facade.faces&&bd.facade.faces[dir])||{}), h=top-base, faceLen=(dir==='-x'||dir==='+x')?bd.d:bd.w, g=new THREE.Group();
   const wall='#'+(f.wall||'e7d3cc'), trim='#'+(f.trim||'f4efe6'), win='#'+(f.window||'cfe0e6'),
         sbg='#'+(f.signBg||'c98f86'), awn='#'+(f.awning||'d99fa9'), door='#'+(f.door||f.signBg||'c2a07a');
   // place point + normal of the face, and whether the ground in front is at door level. A
@@ -774,15 +975,21 @@ function makeFacade(bd,base,top,dir){
   // row so the player standing right against a tall slab doesn't face a big blank lower wall
   // (the plaza-north "blank wall + lone door" finding). The lower row skips the centre (door) bay.
   const bays=Math.max(2, f.bays || Math.min(7,Math.max(3,Math.round(faceLen/5)))), cellW=faceLen/bays, midBay=Math.floor(bays/2);
-  const rows = h>=9 ? [{y:h*0.62,skipMid:false},{y:h*0.34,skipMid:true}] : [{y:h*0.54,skipMid:false}];
-  const winH=Math.min(h*0.20,2.3);
+  // a building hosting a real portal/storefront door sets facade.noDoor so it doesn't draw a
+  // redundant fake door (and the lower row keeps its mid window instead of reserving the slot).
+  const drawDoor = !drop && !f.noDoor;
+  // a `storefront` face gets BIG street-level display windows on its lower row (a gym/shop
+  // frontage you can see in through), the door flanked by glass; upper row stays small panes.
+  const big=!!f.storefront, winH=Math.min(h*0.20,2.3);
+  const rows = h>=9 ? [{y:h*0.62,skipMid:false,big:false},{y:big?h*0.30:h*0.34,skipMid:drawDoor,big}] : [{y:h*0.54,skipMid:false,big}];
   for(const row of rows){ for(let i=0;i<bays;i++){ if(row.skipMid&&i===midBay)continue;
-    const cx=-faceLen/2+cellW*(i+0.5), fw=Math.min(cellW*0.6,2.2);
-    const frame=M(new THREE.BoxGeometry(fw,winH,0.06),trim,false,false); frame.position.set(cx,row.y,0.09); g.add(frame);
-    const pane=M(new THREE.BoxGeometry(fw*0.78,winH*0.8,0.06),win,false,false); pane.position.set(cx,row.y,0.13); g.add(pane); } }
+    const cx=-faceLen/2+cellW*(i+0.5);
+    const wH=row.big?Math.min(h*0.34,3.5):winH, fw=row.big?Math.min(cellW*0.86,4.9):Math.min(cellW*0.6,2.2);
+    const frame=M(new THREE.BoxGeometry(fw,wH,0.06),trim,false,false); frame.position.set(cx,row.y,0.09); g.add(frame);
+    const pane=M(new THREE.BoxGeometry(fw*(row.big?0.88:0.78),wH*(row.big?0.88:0.8),0.06),win,false,false); pane.position.set(cx,row.y,0.13); g.add(pane); } }
   // door on the middle bay, GROUNDED (bottom tucked just below base, not floating) + a knob.
-  // Skipped on a drop face (no walkable ground in front).
-  if(!drop){
+  // Skipped on a drop face (no walkable ground in front) or a noDoor facade (real portal door).
+  if(drawDoor){
     const dC=-faceLen/2+cellW*(midBay+0.5), dW=Math.min(cellW*0.5,1.6), dH=Math.min(h*0.34,2.6);
     const dr=M(new THREE.BoxGeometry(dW,dH,0.08),door,false,false); dr.position.set(dC,dH/2-0.1,0.10); g.add(dr);
     const knob=M(new THREE.BoxGeometry(0.08,0.08,0.06),trim,false,false); knob.position.set(dC+dW*0.32,dH*0.45,0.16); g.add(knob);
@@ -817,16 +1024,69 @@ function makeBench(p){ const g=new THREE.Group(), s=p.scale||1, col='#'+(p.color
   [[-0.7,-0.18],[0.7,-0.18],[-0.7,0.18],[0.7,0.18]].forEach(([lx,lz])=>{const leg=M(new THREE.BoxGeometry(0.1*s,0.45*s,0.1*s),col,false,false);
     leg.position.set(lx*s,0.22*s,lz*s); g.add(leg);});
   return {group:g,h:1.0*s,rad:0.95*s}; }
-function makeFountain(p){ const g=new THREE.Group(), s=p.scale||1, stone='#'+(p.color||'ded8cc');
-  const basin=M(new THREE.CylinderGeometry(1.85*s,2.05*s,0.6*s,28),stone,false,false); basin.position.y=0.3*s; g.add(basin);
-  const w1=new THREE.Mesh(new THREE.CircleGeometry(1.6*s,28),new THREE.MeshStandardMaterial({color:hex('bcd9e6'),roughness:0.5,transparent:true,opacity:0.85}));
-  w1.rotation.x=-Math.PI/2; w1.position.y=0.57*s; g.add(w1);
-  const ped=M(new THREE.CylinderGeometry(0.4*s,0.52*s,0.95*s,16),stone,false,false); ped.position.y=0.95*s; g.add(ped);
-  const bowl=M(new THREE.CylinderGeometry(0.92*s,0.6*s,0.35*s,20),stone,false,false); bowl.position.y=1.5*s; g.add(bowl);
-  const w2=new THREE.Mesh(new THREE.CircleGeometry(0.8*s,20),new THREE.MeshStandardMaterial({color:hex('cfe6ef'),roughness:0.5,transparent:true,opacity:0.85}));
-  w2.rotation.x=-Math.PI/2; w2.position.y=1.69*s; g.add(w2);
-  const top=M(new THREE.CylinderGeometry(0.1*s,0.15*s,0.5*s,12),stone,false,false); top.position.y=1.92*s; g.add(top);
-  return {group:g,h:2.1*s,rad:2.0*s,shadowR:2.1*s}; }
+// translucent water material (pale paper-blue). depthWrite off so the many thin water
+// layers blend over each other instead of z-fighting; never casts a shadow.
+function waterMat(col,op){ const c=hex(col); return new THREE.MeshStandardMaterial({color:c,emissive:c,
+  emissiveIntensity:0.32, roughness:0.28, metalness:0, transparent:true, opacity:op,
+  depthWrite:false, side:THREE.DoubleSide}); }
+// A generous town-square fountain that ACTUALLY moves water: a stone basin POOL with a
+// real translucent surface + expanding ripple rings, a two-tier stone centre, a pulsing
+// central JET, a ring of arcing droplet "spurts" that fall into the pool, and overflow
+// trickles from the upper bowl. All motion is paper cutouts physically moving (droplets
+// arc + fall, ripples spread, jet breathes) — never a tween between drawings. Returns an
+// update(t) closure so draw() animates it each frame; sound is the spatial water ambient
+// (setWaterLevel) plus an occasional `plip` droplet (world.json `ambients`).
+function makeFountain(p){ const g=new THREE.Group(), s=p.scale||1, stone='#'+(p.color||'e4ddd0');
+  const poolR=3.0, wy=0.56, W1='a8d3e3', W2='c6e4ee';           // pool radius + water-line + two water tints
+  // --- the little pool (plinth + basin drum; the drum's top cap is the stone rim) ---
+  const foot=M(new THREE.CylinderGeometry(poolR+0.5,poolR+0.72,0.3,44),stone,false,false); foot.position.y=0.15; g.add(foot);
+  const drum=M(new THREE.CylinderGeometry(poolR+0.3,poolR+0.5,0.62,44),stone,false,false); drum.position.y=0.46; g.add(drum);
+  const pool=new THREE.Mesh(new THREE.CircleGeometry(poolR+0.04,48),waterMat(W1,0.8));
+  pool.rotation.x=-Math.PI/2; pool.position.y=wy; pool.castShadow=false; g.add(pool);
+  // expanding ripple rings on the pool surface (scale out + fade, staggered)
+  const ripples=[]; for(let i=0;i<3;i++){ const rg=new THREE.Mesh(new THREE.RingGeometry(0.86,1.0,44),waterMat(W2,0));
+    rg.rotation.x=-Math.PI/2; rg.position.y=wy+0.015; rg.castShadow=false; rg.renderOrder=2; g.add(rg); ripples.push(rg); }
+  // --- two-tier stone centre ---
+  const ped=M(new THREE.CylinderGeometry(0.62,0.82,1.25,24),stone,false,false); ped.position.y=0.9; g.add(ped);
+  const bowl=M(new THREE.CylinderGeometry(1.3,0.74,0.36,28),stone,false,false); bowl.position.y=1.66; g.add(bowl);
+  const bowlW=new THREE.Mesh(new THREE.CircleGeometry(1.12,28),waterMat(W1,0.84));
+  bowlW.rotation.x=-Math.PI/2; bowlW.position.y=1.85; bowlW.castShadow=false; g.add(bowlW);
+  const stem=M(new THREE.CylinderGeometry(0.19,0.27,0.62,18),stone,false,false); stem.position.y=2.12; g.add(stem);
+  const noz=M(new THREE.CylinderGeometry(0.1,0.17,0.22,14),stone,false,false); noz.position.y=2.5; g.add(noz);
+  // --- central jet: a bright translucent water spout rising from the nozzle ---
+  const jetMat=new THREE.MeshStandardMaterial({color:hex(W2),emissive:hex(W2),emissiveIntensity:0.5,
+    roughness:0.2,metalness:0,transparent:true,opacity:0.62,depthWrite:false,side:THREE.DoubleSide});
+  const nozY=2.55, jetH=1.55;
+  const jet=new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.3,jetH,16),jetMat);
+  jet.castShadow=false; jet.renderOrder=3; g.add(jet);
+  // --- droplets: one shared geo + material, scale-faded at the ends so recycling never pops ---
+  const dGeo=new THREE.IcosahedronGeometry(0.095,0), dMat=waterMat(W2,0.95);
+  const arcs=[], N=9, reach=poolR*0.82;                         // arcing "spurts" out of the crown into the pool
+  for(let i=0;i<N;i++){ const th=i/N*Math.PI*2;
+    for(let k=0;k<3;k++){ const m=new THREE.Mesh(dGeo,dMat); m.castShadow=false; m.renderOrder=4; g.add(m); arcs.push({m,th,ph:k/3}); } }
+  const crown=[]; for(let i=0;i<6;i++){ const m=new THREE.Mesh(dGeo,dMat); m.castShadow=false; m.renderOrder=4; g.add(m); crown.push({m,th:i*1.05,ph:i/6}); }
+  // overflow: droplets spilling off the upper-bowl lip straight down into the pool
+  const falls=[], FN=6;
+  for(let i=0;i<FN;i++){ const th=(i+0.5)/FN*Math.PI*2;
+    for(let k=0;k<2;k++){ const m=new THREE.Mesh(dGeo,dMat); m.castShadow=false; m.renderOrder=4; g.add(m); falls.push({m,th,ph:k/2}); } }
+  const update=t=>{
+    const jp=0.85+0.15*Math.sin(t*3.0);                         // jet breathes in height
+    jet.scale.set(1,jp,1); jet.position.y=nozY+jetH*0.5*jp; jetMat.opacity=0.55+0.12*Math.sin(t*5.1+1);
+    for(let i=0;i<ripples.length;i++){ const pr=(t*0.45+i/ripples.length)%1, rs=0.22+pr*(poolR-0.22);
+      ripples[i].scale.set(rs,rs,1); ripples[i].material.opacity=0.42*(1-pr); }
+    const top=nozY+jetH;
+    for(const a of arcs){ const pr=(t*0.62+a.ph)%1, r=0.32+pr*reach, hump=Math.sin(Math.PI*pr);
+      a.m.position.set(Math.cos(a.th)*r, nozY+(wy-nozY)*pr+1.05*hump, Math.sin(a.th)*r);
+      a.m.scale.setScalar(0.12+1.0*hump); }
+    for(const c of crown){ const pr=(t*0.95+c.ph)%1, r=0.06+pr*0.5, hump=Math.sin(Math.PI*pr);
+      c.m.position.set(Math.cos(c.th)*r, top+0.55*hump-(top-wy)*pr, Math.sin(c.th)*r);
+      c.m.scale.setScalar(0.12+0.95*hump); }
+    for(const f of falls){ const pr=(t*0.8+f.ph)%1, hump=Math.sin(Math.PI*pr);  // bowl lip → pool
+      f.m.position.set(Math.cos(f.th)*(1.12+pr*0.06), 1.72+(wy-1.72)*pr, Math.sin(f.th)*(1.12+pr*0.06));
+      f.m.scale.setScalar(0.1+0.7*hump); }
+  };
+  g.scale.setScalar(s);                                        // base geometry is full-size; scale tweaks it in spec
+  return {group:g,h:(nozY+jetH)*s,rad:(poolR+0.6)*s,shadowR:(poolR+0.6)*s,update}; }
 // playground: slide tower + canopy + slide w/ side rails + climbing arches. Solid
 // parts get their OWN colliders (cols[]) so you can't clip through the slide.
 function makePlayground(p){ const g=new THREE.Group(), s=p.scale||1;
@@ -861,10 +1121,13 @@ function buildProps(cols){
   for(const p of (SCENE.props||[])){ const mk=PROP[p.type]; if(!mk)continue;
     const r=mk(p), gy=groundHeight(p.x,p.z), rot=p.rot||0, ca=Math.cos(rot), sa=Math.sin(rot);
     r.group.position.set(p.x,gy,p.z); if(rot)r.group.rotation.y=rot; sceneRoot.add(r.group);
-    contactShadow(p.x,p.z,r.shadowR||r.rad||0.7,gy);
+    // NO contact oval here: these are 3D modelled props whose meshes cast a REAL shadow (M()
+    // sets castShadow). Adding an oval too gave the "double shadow" (one under + one cast). The
+    // real cast shadow is the only one — soft VSM grounds them. (Billboards still get an oval.)
     if(p.solid){ if(r.cols){ for(const c of r.cols) cols.push({x:p.x+c.dx*ca-c.dz*sa, z:p.z+c.dx*sa+c.dz*ca, r:c.r}); }
                  else cols.push({x:p.x,z:p.z,r:r.rad||0.7}); }
-    if(p.type==='fountain')fountains.push({x:p.x,z:p.z,y:gy,h:r.h}); }
+    if(p.type==='fountain')fountains.push({x:p.x,z:p.z,y:gy,h:r.h});
+    if(r.update)propAnims.push(r.update); }
 }
 // backdrop city: filler buildings beyond the playable bounds so no sightline ever
 // hits the void. No colliders, no shadows; fog fades the far rings. Deterministic.
@@ -1067,8 +1330,70 @@ function iHangplant(p){ const g=new THREE.Group(), drop=p.drop||1.1, R=SCENE.roo
 function iMat(p){ const g=new THREE.Group(), w=p.w||2, d=p.d||1.1;
   const m=M(new THREE.BoxGeometry(w,0.05,d),'#'+(p.color||'b6a2ca'),true,false); m.castShadow=false; m.receiveShadow=true; g.add(m);
   return {group:g,h:0.1,rad:Math.max(w,d)/2,shadowR:0,noShadow:true}; }
+// ---- gym fixtures (treadmill, weight bench, squat rack, dumbbell rack, water cooler) ----
+// Same papercraft vocabulary as the shop (boxes/cylinders + paper material, no cream edges).
+// Each returns a `footprint:{w,d}` so buildInteriorProps lays a TIGHT box-collider ring
+// matching the piece (a single circle would bulge an invisible wall across the floor).
+// A cardio treadmill: a low deck topped by a prominent DARK full-length running belt
+// (the key "treadmill" read), side rails, a raised front motor cowl, and a tall upright
+// console (big angled screen + handlebar). Default faces +z (console toward the camera).
+function iTreadmill(p){ const g=new THREE.Group();
+  const frame='#'+(p.frame||'c2c5c9'), belt='#'+(p.belt||'6f6a62'), screen='#'+(p.console||'9fc4d4'), grip='#'+(p.grip||'cfcabd');
+  const deck=M(new THREE.BoxGeometry(0.86,0.14,2.0),frame,false,false); deck.position.set(0,0.1,-0.2); g.add(deck);
+  const belt0=M(new THREE.BoxGeometry(0.58,0.06,1.78),belt,false,false); belt0.position.set(0,0.2,-0.28); belt0.castShadow=false; g.add(belt0);
+  for(const sx of [-0.39,0.39]){ const rail=M(new THREE.BoxGeometry(0.1,0.12,1.86),frame,false,false); rail.position.set(sx,0.22,-0.24); g.add(rail); }
+  const cowl=M(new THREE.BoxGeometry(0.78,0.34,0.48),frame,false,false); cowl.position.set(0,0.27,0.72); g.add(cowl);  // raised front (belt rolls under it)
+  for(const sx of [-0.3,0.3]){ const post=M(new THREE.CylinderGeometry(0.05,0.055,1.05,8),frame,false,false); post.position.set(sx,0.8,0.78); g.add(post); }
+  const con=M(new THREE.BoxGeometry(0.7,0.46,0.09),frame,false,false); con.position.set(0,1.34,0.73); con.rotation.x=0.3; g.add(con);
+  const scr=M(new THREE.BoxGeometry(0.54,0.32,0.05),screen,false,false); scr.position.set(0,1.36,0.775); scr.rotation.x=0.3; g.add(scr);
+  const bar=M(new THREE.CylinderGeometry(0.04,0.04,0.74,8),grip,false,false); bar.rotation.z=Math.PI/2; bar.position.set(0,1.06,0.92); g.add(bar);
+  for(const sx of [-0.34,0.34]){ const gh=M(new THREE.CylinderGeometry(0.04,0.04,0.42,8),grip,false,false); gh.rotation.x=0.55; gh.position.set(sx,0.94,0.69); g.add(gh); }
+  return {group:g,h:1.6,rad:1.05,shadowR:1.05,footprint:{w:0.9,d:2.1}}; }
+// A flat weight bench: a padded top on a low frame with end legs. Footprint runs along x.
+function iGymbench(p){ const g=new THREE.Group();
+  const frame='#'+(p.frame||'b3aa9d'), pad='#'+(p.pad||'cf9f93');
+  const seat=M(new THREE.BoxGeometry(1.7,0.16,0.5),pad,false,false); seat.position.y=0.52; g.add(seat);
+  const rail=M(new THREE.BoxGeometry(1.5,0.1,0.12),frame,false,false); rail.position.set(0,0.4,0); g.add(rail);
+  for(const sx of [-0.72,0.72]){ const a=M(new THREE.BoxGeometry(0.12,0.42,0.46),frame,false,false); a.position.set(sx,0.21,0); g.add(a); }
+  return {group:g,h:0.7,rad:1.0,shadowR:0.95,footprint:{w:1.8,d:0.55}}; }
+// A squat rack: two tall uprights on feet, a barbell racked across with end plates, plus a
+// pair of forward safety arms. Default faces +z. Footprint drives the collider.
+function iSquatRack(p){ const g=new THREE.Group();
+  const frame='#'+(p.frame||'aeb2b6'), bar='#'+(p.bar||'cfcabd'), plate='#'+(p.plate||'8d8a86');
+  for(const sx of [-0.85,0.85]){
+    const foot=M(new THREE.BoxGeometry(0.3,0.14,1.2),frame,false,false); foot.position.set(sx,0.07,0); g.add(foot);
+    const up=M(new THREE.BoxGeometry(0.16,2.4,0.16),frame,false,false); up.position.set(sx,1.2,-0.25); g.add(up);
+    const hook=M(new THREE.BoxGeometry(0.11,0.13,0.28),frame,false,false); hook.position.set(sx,1.62,-0.1); g.add(hook);
+    const arm=M(new THREE.BoxGeometry(0.1,0.1,0.85),frame,false,false); arm.position.set(sx,1.0,0.22); g.add(arm); }
+  const top=M(new THREE.BoxGeometry(1.86,0.14,0.16),frame,false,false); top.position.set(0,2.34,-0.25); g.add(top);  // top crossbar → reads as a rack frame, not two posts
+  const bb=M(new THREE.CylinderGeometry(0.05,0.05,2.3,10),bar,false,false); bb.rotation.z=Math.PI/2; bb.position.set(0,1.68,-0.25); g.add(bb);
+  for(const sx of [-1.0,1.0]){ const pl=M(new THREE.CylinderGeometry(0.27,0.27,0.1,16),plate,false,false); pl.rotation.z=Math.PI/2; pl.position.set(sx,1.68,-0.25); g.add(pl); }
+  return {group:g,h:2.5,rad:1.2,shadowR:1.2,footprint:{w:2.0,d:1.3}}; }
+// A dumbbell rack: an A-frame with two tilted tiers, each holding a row of paired dumbbells
+// (handle + two end weights in soft accent colours). Default faces +z. Footprint along x.
+function iDumbbellrack(p){ const g=new THREE.Group();
+  const frame='#'+(p.frame||'b39c84'), board='#'+(p.board||'cdb89a');
+  for(const sx of [-1.05,1.05]){ const side=M(new THREE.BoxGeometry(0.12,1.0,0.55),frame,false,false); side.position.set(sx,0.5,0); g.add(side); }
+  const accents=['cf9f93','9cc8dd','f2c75a','b6a2ca','9bb0a6'];
+  const tiers=[{y:0.92,z:-0.06},{y:0.5,z:0.12}];
+  tiers.forEach((tr,ti)=>{ const bd=M(new THREE.BoxGeometry(2.1,0.1,0.5),board,false,false); bd.position.set(0,tr.y,tr.z); bd.rotation.x=0.18; g.add(bd);
+    for(let i=0;i<4;i++){ const dx=-0.78+i*0.52, c='#'+accents[(ti*4+i)%accents.length];
+      const h=M(new THREE.CylinderGeometry(0.035,0.035,0.34,8),frame,false,false); h.rotation.z=Math.PI/2; h.position.set(dx,tr.y+0.12,tr.z+0.06); g.add(h);
+      for(const ex of [-0.16,0.16]){ const w=M(new THREE.CylinderGeometry(0.1,0.1,0.1,12),c,false,false); w.rotation.z=Math.PI/2; w.position.set(dx+ex,tr.y+0.12,tr.z+0.06); g.add(w); } } });
+  return {group:g,h:1.1,rad:1.2,shadowR:1.1,footprint:{w:2.3,d:0.62}}; }
+// A water cooler: a slim body + a translucent blue bottle on top + a little spout.
+function iCooler(p){ const g=new THREE.Group();
+  const body='#'+(p.body||'dfe3e6');
+  const b=M(new THREE.BoxGeometry(0.42,0.92,0.42),body,false,false); b.position.y=0.46; g.add(b);
+  const neck=M(new THREE.CylinderGeometry(0.12,0.16,0.14,12),body,false,false); neck.position.y=0.99; g.add(neck);
+  const bottle=new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.17,0.5,16),
+    new THREE.MeshStandardMaterial({color:hex(p.bottle||'9cc8dd'),emissive:hex(p.bottle||'9cc8dd'),emissiveIntensity:0.25,roughness:0.3,transparent:true,opacity:0.7}));
+  bottle.position.y=1.32; g.add(bottle);
+  const spout=M(new THREE.BoxGeometry(0.12,0.1,0.1),'#b5b1a8',false,false); spout.position.set(0,0.66,0.24); g.add(spout);
+  return {group:g,h:1.6,rad:0.34,shadowR:0.42,cooler:true}; }
 const IPROP={rug:iRug,counter:iCounter,register:iRegister,critterbox:iCritterbox,shelf:iShelf,tank:iTank,
-  sign:iSign,birdcage:iBirdcage,plant:iPlant,hangplant:iHangplant,mat:iMat};
+  sign:iSign,birdcage:iBirdcage,plant:iPlant,hangplant:iHangplant,mat:iMat,
+  treadmill:iTreadmill,gymbench:iGymbench,squatrack:iSquatRack,dumbbells:iDumbbellrack,cooler:iCooler};
 const ifish=[];                      // {m,ph,ax,base} drifting fish for the draw loop
 function buildInteriorProps(cols){
   ifish.length=0;
@@ -1089,6 +1414,11 @@ function buildInteriorProps(cols){
     // a huge "invisible wall" into the room (it blocked the path to the counter). Use a
     // tight box-perimeter ring matching its actual footprint (swap w/d when rotated 90°).
     else if(p.type==='shelf'){ pushBoxColliders(cols,p.x,p.z, rot?p.d:p.w, rot?p.w:p.d); }
+    // gym gear (treadmill/bench/squat rack/dumbbell rack) is long+thin too → a tight box ring
+    // matching its footprint (w/d swapped when rotated 90°), never one fat circle that walls
+    // off the floor. Cooler is small/round → one snug circle.
+    else if(r.footprint){ const sw=Math.abs(Math.sin(rot))>0.5; pushBoxColliders(cols,p.x,p.z, sw?r.footprint.d:r.footprint.w, sw?r.footprint.w:r.footprint.d); }
+    else if(r.cooler){ cols.push({x:p.x,z:p.z,r:0.42}); }
     else if(p.type==='birdcage'||p.type==='plant'){ cols.push({x:p.x,z:p.z,r:(r.rad||0.6)*0.9}); }
     // a tank is NOT a fountain — its sound is soft proximity-gated bubbles from the scene's
     // `ambients` loop, never the loud fountain water rush. Here we only register its drifting fish.
@@ -1277,6 +1607,19 @@ window.__overlaps=()=>{ const B=SCENE.buildings||[], ST=SCENE.stairs, out=[];
     const ix=Math.min(a.x1,b.x1)-Math.max(a.x0,b.x0), iz=Math.min(a.z1,b.z1)-Math.max(a.z0,b.z0);
     if(ix>0.02&&iz>0.02)out.push({a:a.name,b:b.name,overlapX:+ix.toFixed(2),overlapZ:+iz.toFixed(2)}); }
   return out; };
+// STAIR GROUNDING AUDIT — the player's feet (groundHeight) must rest ON the stepped tread
+// tops the stairs DRAW, never below them. A smooth ramp through the steps put her feet under
+// the tread tops in the lower half, so the step she'd just left clipped across her legs. This
+// derives the expected tread top per step from the STAIRS spec (independently of how
+// groundHeight is implemented) and flags any sample SUNK below it (clip) — a ramp regression
+// fails this, the stepped grounding passes. []=she stands on every tread.
+window.__stairGrounding=()=>{ const ST=SCENE.stairs; if(!ST)return null;
+  const H=(SCENE.level&&SCENE.level.H)||0, n=ST.steps, dz=(ST.zBot-ST.zTop)/n, dy=H/n, EPS=0.05, out=[];
+  for(let zi=0; zi<=n*4; zi++){ const z=ST.zTop+(zi/(n*4))*(ST.zBot-ST.zTop)*0.999;
+    const i=Math.min(n-1,Math.max(0,Math.floor((z-ST.zTop)/dz))), treadTop=H-i*dy;
+    for(const x of [ST.x0+0.4,(ST.x0+ST.x1)/2,ST.x1-0.4]){ const gh=groundHeight(x,z);
+      if(gh<treadTop-EPS)out.push({x:+x.toFixed(1),z:+z.toFixed(2),gh:+gh.toFixed(2),treadTop:+treadTop.toFixed(2),sunk:+(treadTop-gh).toFixed(2)}); } }
+  return out; };
 // 3D INTERPENETRATION (CLIP) AUDIT — for interior fixtures (walls/door/counter/shelf/
 // tanks/cages/plants/lamps/sign), tagged with userData.fx. Two fixtures that overlap in
 // ALL THREE axes by > eps are passing THROUGH each other: a shelf board clipping a tank,
@@ -1337,6 +1680,26 @@ window.__sceneBackgrounds=()=>{ const out=[];
     if(!bg){ white=true; } else { const c=new THREE.Color(bg[0]==='#'?bg:'#'+bg); white=(c.r>0.93&&c.g>0.93&&c.b>0.93); }
     out.push({scene:id, isWhiteOrUnset:white}); }
   return out; };
+// QA probe for the shadow-quality check (studio/qa/checks/shadow-quality.mjs): the sun's CAST
+// shadow sharpness IS texel density = shadowMap size ÷ frustum width. Surface it (+ the renderer
+// state + the graphics knobs) so a future change can't silently re-muddy the shadows the player
+// flagged, and the graphics-menu wiring stays regression-guarded.
+window.__shadowInfo=()=>{ const d=Sky&&Sky.dir, sm=renderer.shadowMap;
+  const cast=!!(d&&d.castShadow), half=cast?Math.abs(d.shadow.camera.right):0, map=cast?d.shadow.mapSize.width:0;
+  return { enabled:!!sm.enabled, type:sm.type, pcss:!!PCSS_ON,
+    soft:(!!PCSS_ON||sm.type===THREE.PCFSoftShadowMap||sm.type===THREE.VSMShadowMap), castShadow:cast,
+    mapSize:map, frustumHalf:half, blurRadius:cast?d.shadow.radius:0,
+    texelsPerUnit: half?+(map/(2*half)).toFixed(1):0,
+    level:(Sky&&Sky._shadowLevel)||null, gfx:(window.__gfx&&window.__gfx())||null }; };
+// QA probe for studio/qa/checks/contact-shadow-soft.mjs: sample the billboard CONTACT-shadow
+// oval's alpha from its core out to its rim. The rim MUST reach ~0 — a hard-edged disc bands /
+// pokes out beside the player on stepped/uneven ground (the stair "fold" artifact). Reads the
+// live shadow material's canvas so a regression to a solid oval is caught deterministically.
+window.__contactShadowProfile=()=>{ const img=shadow&&shadow.material&&shadow.material.map&&shadow.material.map.image;
+  if(!img) return null; const S=img.width, cv=document.createElement('canvas'); cv.width=cv.height=S;
+  const cx=cv.getContext('2d'); cx.drawImage(img,0,0);
+  const aAt=fr=>cx.getImageData(Math.round(S/2),Math.round(S/2*(1-fr)),1,1).data[3]/255;   // up the vertical radius
+  return { center:+aAt(0).toFixed(3), mid:+aAt(0.42).toFixed(3), edge:+aAt(0.78).toFixed(3), rim:+aAt(0.96).toFixed(3) }; };
 // each tagged interior fixture's world-AABB centre + size, so the QA harness can frame a
 // per-object close-up of EVERY fixture (the "look at every single thing" pass, interiors).
 window.__fixtures=()=>{ const out=[]; if(sceneRoot) sceneRoot.traverse(o=>{ if(o.userData&&o.userData.fx){
@@ -1453,6 +1816,41 @@ window.__camAbyss=(opts)=>{ opts=opts||{}; const ceiling=opts.ceiling==null?0.55
   return { leaks:leaks.slice(0,20), leakCount:leaks.length, cells:cells.length, ceiling, worst }; };
 
 
+// ---------- graphics quality (Settings → renderer / Sky / FX) ----------
+// Three independent knobs, each on its OWN localStorage key (same pattern as the volume
+// mix), so weaker machines can scale the heavy bits without touching the base look:
+//   shadows  — the sun's soft CAST shadow quality (Sky.setShadowQuality: off / low / high —
+//              both tiers are soft-edged VSM; the tier trades map resolution + GPU cost)
+//   fx       — the post-processing finishing lens (FX preset: off / minimal / diorama / full)
+//   res      — render pixel ratio (fast = 1×, crisp = device ratio capped at 2×)
+// Contact-shadow ovals + the flat papercraft base render are ALWAYS on (unaffected). The
+// renderer's shadowMap.enabled/type never change here (no shader recompile) — 'off' just
+// stops the sun light casting. Defaults preserve today's look + the soft shadows.
+const Gfx=(()=>{
+  const store=(()=>{try{return window.localStorage;}catch(e){return null;}})();
+  const SHADOWS=['off','low','high'], FXP=['off','minimal','diorama','full'], RES=['fast','crisp'];
+  const read=(k,def,allow)=>{ try{const v=store&&store.getItem(k); return allow.includes(v)?v:def;}catch(e){return def;} };
+  // mobile/touch gets a lighter shadow default (the 4096 map is heavy on phones); the player
+  // can still bump it to High. Desktop (incl. headless QA) defaults to high.
+  const coarse=(()=>{try{return matchMedia('(pointer:coarse)').matches||Math.min(innerWidth,innerHeight)<540;}catch(e){return false;}})();
+  let shadows=read('shen.gfx.shadows',coarse?'low':'high',SHADOWS);
+  let fx=read('shen.gfx.fx','off',FXP);
+  let res=read('shen.gfx.res','crisp',RES);
+  const applyShadows=()=>Sky.setShadowQuality(shadows);
+  const applyFx=()=>{ if(window.__fx)window.__fx(fx); else { FX.setPreset(fx); resize(); } };
+  const applyRes=()=>{ renderer.setPixelRatio(res==='fast'?1:Math.min(devicePixelRatio,2)); resize(); };
+  function applyAll(){ applyShadows(); applyFx(); applyRes(); }
+  function set(kind,val){
+    if(kind==='shadows'&&SHADOWS.includes(val)){ shadows=val; try{store&&store.setItem('shen.gfx.shadows',val);}catch(e){} applyShadows(); }
+    else if(kind==='fx'&&FXP.includes(val)){ fx=val; try{store&&store.setItem('shen.gfx.fx',val);}catch(e){} applyFx(); }
+    else if(kind==='res'&&RES.includes(val)){ res=val; try{store&&store.setItem('shen.gfx.res',val);}catch(e){} applyRes(); }
+    return {shadows,fx,res};
+  }
+  return { applyAll, set, get state(){return {shadows,fx,res};} };
+})();
+// QA + console hook: __gfx() reads, __gfx(kind,val) sets one knob.
+window.__gfx=(kind,val)=> kind===undefined?Gfx.state:Gfx.set(kind,val);
+
 async function build(){
   // Load EVERY scene spec up-front (cheap JSON): transitions are then instant, and
   // the save layer can validate ids / clamp positions against any scene.
@@ -1469,6 +1867,7 @@ async function build(){
   // optional post-processing finishing pass. window.__fx(name) switches live.
   FX.init({renderer,scene,camera:cam,skyColor:'cfe0f2',groundColor:world.ground});
   window.__fx=(name)=>{const p=FX.setPreset(name);resize();return p;};
+  Gfx.applyAll();   // apply the saved graphics quality (shadows / finish lens / resolution)
   // load the ONE shared crisp paper tile set BEFORE any scene geometry is built (textures
   // populate async; the Texture objects exist synchronously so the scene builders — buildCity,
   // makeFacade, paperMat — can reference them via PAPER now). PERSISTENT across scene switches.
@@ -1492,7 +1891,8 @@ async function build(){
     persist(); };
 
   // shadow + shen + burst (PERSISTENT — they travel between scenes, never torn down)
-  shadow=new THREE.Mesh(new THREE.PlaneGeometry(SHEN_W*1.5,SHEN_W*1.5),
+  // flatter-than-wide oval: a standing figure casts a horizontal pool, not a circle.
+  shadow=new THREE.Mesh(new THREE.PlaneGeometry(SHEN_W*1.7,SHEN_W*1.18),
     new THREE.MeshBasicMaterial({map:shadowTex,transparent:true,depthWrite:false}));
   shadow.rotation.x=-Math.PI/2; shadow.position.y=GROUND_EPS; shadow.renderOrder=1; scene.add(shadow);
   shen=new THREE.Group(); scene.add(shen);
@@ -1549,6 +1949,10 @@ async function buildScene(spec, spawn){
   const cols=[];
   if(spec.interior){ Sky.setInterior(true, spec.sky||{}); buildInterior(cols); }
   else { Sky.setInterior(false); buildCity(cols); }
+  // fit the FIXED sun-shadow frustum to THIS scene's reachable extent so its texels land where
+  // the player can be (clean soft shadow) without a moving frustum (which made shadows flicker).
+  { const b=spec.bounds||{xmin:-40,xmax:40,zmin:-40,zmax:40};
+    Sky.setShadowBounds((b.xmin+b.xmax)/2,(b.zmin+b.zmax)/2, Math.max(b.xmax-b.xmin,b.zmax-b.zmin)/2+4); }
   buildPortalDoors(cols);
   SCENE_COLLIDERS=cols; setColliders(cols);
   await buildCollectibles();
@@ -1559,21 +1963,38 @@ async function buildScene(spec, spawn){
   for(const c of S.collectibles) c.got=collected.has(c.id);   // reflect global progress in this scene's pickups
   activeZone=null; blend=null; _warp(S.x,S.z);
   nearNpc=null; nearPortal=null; talkCooldown=0.2; portalCooldown=0.6;
-  // per-scene music: the overworld track is exclusive to the overworld; an interior gets
-  // its own (or a contextually-shared) track. Switching to a NEW track crossfades; the
-  // SAME track keeps looping seamlessly. Only once play has begun (audio unlocked) — and
-  // only auto-switch if music is already playing (so dev stays silent until asked).
-  if(started) Sound.startMusic(spec.music||'out/music/calm.ogg', Sound.musicPlaying||BUILD!=='dev');
+  // per-scene music + day/night state: applyWorldState picks the effective track (night vs
+  // day for the overworld; interiors are time-agnostic) and reflects NPC presence for the
+  // current state. Switching to a NEW track crossfades; the SAME track loops seamlessly.
+  // Only once play has begun (audio unlocked) — auto-switch only if music is already playing.
+  applyWorldState();
 }
 // Tear down the active scene: drop sceneRoot (and everything under it) + reset every
 // per-scene array. Persistent objects (ground/shen/shadow/burst/sky) are untouched.
 // (Geometries/materials aren't disposed: paper textures are shared+cached across
 // scenes, so disposing would corrupt the cache; the per-swap leak is small + bounded.)
+// A cutscene is bound to its scene. If the scene is torn down while one is still active
+// — only reachable via a debug teleport / future edge, NEVER in real play (a cutscene
+// completes before you can leave) — VOID it: reset the engine + staging and unlock input,
+// WITHOUT firing its consequences (no quest start, no seen-flag, no kept table). Only
+// endCutscene (natural completion) lands consequences. Keeps the invariant that
+// Cutscene.active is never true outside its own live scene (else its `!Cutscene.active`
+// gates — e.g. the ambient-sound loop — would wrongly stay suppressed in the next scene).
+function abortCutscene(){
+  if(!Cutscene.active && !pendingCutscene) return;
+  Cutscene.cancel();
+  for(const h of csHamsters){ if(h.m && sceneRoot) sceneRoot.remove(h.m); } csHamsters.length=0;
+  if(_csAdrianNpc){ _csAdrianNpc.emote=null; _csAdrianNpc=null; }
+  csTable=null; csTableBox=null; csShen=null; csShenMood='idle'; csAdrianMood='idle';
+  document.body.classList.remove('cutscene'); pendingCutscene=null;
+  S.mode='idle'; talkCooldown=0.4; portalCooldown=0.6;
+}
 function clearScene(){
+  abortCutscene();   // a scene swap voids any cutscene still bound to the outgoing scene
   if(sceneRoot){ scene.remove(sceneRoot); }
   sceneRoot=new THREE.Group(); scene.add(sceneRoot);
   npcs.length=0; pickups.length=0; billboards.length=0; propsMesh.length=0;
-  BUILDING_MESHES.length=0; fountains.length=0; ifish.length=0; SCENE_COLLIDERS=[];
+  BUILDING_MESHES.length=0; fountains.length=0; propAnims.length=0; ifish.length=0; SCENE_COLLIDERS=[];
   nearNpc=null; nearPortal=null; Sound.setWaterLevel(0);
 }
 // A scene's collectibles minus any GATED OFF by game state. The town hamsters only
@@ -1607,7 +2028,7 @@ async function buildNpcs(){
     const sh=new THREE.Mesh(new THREE.PlaneGeometry(nw*1.4,nw*1.4),
       new THREE.MeshBasicMaterial({map:shadowTex,transparent:true,depthWrite:false}));
     sh.rotation.x=-Math.PI/2; sh.position.set(nd.x,ny+GROUND_EPS,nd.z); sh.renderOrder=1; sceneRoot.add(sh);
-    npcs.push({data:nd,group:g,mesh:m,h:nd.h,ny,phase:Math.random()*6.28,greet:0,
+    npcs.push({data:nd,group:g,mesh:m,shadow:sh,h:nd.h,ny,phase:Math.random()*6.28,greet:0,
       poses,rep:nd.rep||null,repIdx:0,repT:0});
   }
 }
@@ -1615,7 +2036,7 @@ async function swapScene(targetId, spawn){ clearScene(); curScene=targetId; awai
 
 // ---- door transition: walk in → cover (cream fade) → swap scene → step out ----
 function startPortal(p){
-  if(trans||portalCooldown>0||!started||!p||Dialogue.active) return;
+  if(trans||dnTrans||portalCooldown>0||!started||!p||Dialogue.active||!isOpen(p)) return;   // closed shops don't open at night
   Sound.resume(); Sound.sfx('door');
   held.up=held.down=held.left=held.right=false; nearNpc=null; nearPortal=null;
   document.getElementById('talkPrompt').classList.remove('on');
@@ -1657,19 +2078,160 @@ function updateTransition(dt){
   }
 }
 
-// tiny time-of-day clock — analog hands + digital read-out; refreshed only when the
-// in-game minute changes (cheap), and tinted to night when the sun is down.
-let _clkMin=-1; const _clk={};
-function updateClock(){
-  if(!Sky.ready)return;
-  const c=Sky.clock(), key=c.h24*60+c.m; if(key===_clkMin)return; _clkMin=key;  // refresh on any minute change (incl. hour rollover)
-  if(!_clk.box){_clk.box=document.getElementById('clock');_clk.hr=document.getElementById('clockHr');
-    _clk.min=document.getElementById('clockMin');_clk.t=document.getElementById('clockTime');_clk.g=document.getElementById('clockGlyph');}
-  _clk.hr.setAttribute('transform','rotate('+c.hourDeg.toFixed(1)+' 12 12)');
-  _clk.min.setAttribute('transform','rotate('+c.minDeg.toFixed(1)+' 12 12)');
-  _clk.t.textContent=c.hhmm; _clk.g.textContent=c.isDay?'☀':'☾';
-  _clk.box.classList.toggle('night',!c.isDay);
+// ===================== Day / Night world states =====================
+// A discrete gameplay state (DAY / NIGHT) derived from the wall clock, layered on the
+// cosmetic Sky cycle. NIGHT = 21:00..07:00. ⚠️ This is NOT Sky.clock().isDay (06:00..18:00)
+// — a separate concept (shops open/closed, people on the street), so it is defined apart.
+// At a boundary a screen-wide curtain (sun-down/moon-up) conceals the world-state swap.
+// Full design: studio/DAY_NIGHT.md.
+const DN_DUR=1.9;                       // curtain length (s)
+let dnTrans=null;                       // active curtain {to,t,swapped} or null
+const DN={ state:'DAY', prev:null };    // prev=null until the first eligible frame (no curtain on boot/load)
+const dnEl=()=>document.getElementById('daynight');
+
+function isNight(){ const h=Sky.clock().h24; return h>=21 || h<7; }
+function worldState(){ return isNight()?'NIGHT':'DAY'; }
+// open schedule: "day" | "night" | [openHr,closeHr] (24h ints, wrap-aware) | absent → always open
+function schedOpen(h){
+  if(h==null) return true;
+  if(h==='day') return !isNight();
+  if(h==='night') return isNight();
+  if(Array.isArray(h)){ const hr=Sky.clock().h24, a=h[0], b=h[1];
+    return a<=b ? (hr>=a&&hr<b) : (hr>=a||hr<b); }
+  return true;
 }
+const isOpen  =p=>schedOpen(p&&p.hours);     // is this portal/door open right now?
+const isActive=n=>schedOpen(n&&n.active);    // is this NPC present right now?
+// overworld track depends on state; interiors are time-agnostic (no nightMusic field)
+function effectiveTrack(spec){ const s=spec||{}; return (isNight()&&s.nightMusic)?s.nightMusic:(s.music||'out/music/calm.ogg'); }
+
+// closing-shop helpers: a shop "closes at night" iff the TOWN portal that leads into it is
+// schedule-gated (single source of truth — the same `hours` that locks its door).
+function townPortalFor(scene){ return ((SPECS.town&&SPECS.town.portals)||[]).find(p=>p.to===scene)||null; }
+function insideClosingShop(){ if(curScene==='town')return null; const tp=townPortalFor(curScene); return (tp&&tp.hours!=null)?tp:null; }
+// if we're inside a shop that's CLOSED right now, the town spawn id that drops us at its door
+// (the interior's own exit-to-town portal spawn → in front of the storefront).
+function closingExitSpawn(){ const tp=insideClosingShop(); if(!tp||isOpen(tp))return null;
+  const exit=(SCENE.portals||[]).find(p=>p.to==='town'); return (exit&&exit.spawn)||tp.spawn||null; }
+
+// reflect the current state in the live scene WITHOUT a curtain (scene build / snap / load):
+// NPC presence + the right music track. Door gating is checked live at interaction time.
+function applyWorldState(){
+  DN.state=worldState();
+  for(const o of npcs){ const on=isActive(o.data); if(o.group)o.group.visible=on; if(o.shadow)o.shadow.visible=on; }
+  if(started) Sound.startMusic(effectiveTrack(SCENE), Sound.musicPlaying||BUILD!=='dev');
+}
+
+// detect a boundary crossing each free frame → start the curtain on a real-time cross.
+function maybeBeginDayNight(){
+  const st=worldState();
+  if(DN.prev===null){ DN.prev=DN.state=st; return; }     // first eligible frame: adopt, no curtain
+  if(st!==DN.prev) beginDayNight(st);
+}
+function beginDayNight(to){
+  DN.prev=to;                                            // mark immediately so it can't re-fire
+  dnTrans={ to, t:0, swapped:false };
+  held.up=held.down=held.left=held.right=false; nearNpc=null; nearPortal=null;
+  document.getElementById('talkPrompt').classList.remove('on');
+  Sound.resume(); Sound.sfx(to==='NIGHT'?'dusk':'dawn');
+  const lbl=document.getElementById('dnLabel'); if(lbl)lbl.textContent=(to==='NIGHT'?'Night falls':'A new day');
+  updateDayNight(0);                                     // paint frame 0
+}
+// drive the curtain: fade a sky band up, arc the sun down + moon up (or the reverse), apply
+// the state swap at full cover (hidden), fade back out. Deterministic on dt (preview rAF
+// is suspended → never trust requestAnimationFrame here).
+function updateDayNight(dt){
+  if(!dnTrans) return;
+  if(!dnTrans.holding) dnTrans.t+=dt;            // freeze the timeline while an async eject swap runs
+  const g=clamp(dnTrans.t/DN_DUR,0,1), ov=dnEl();
+  let op; if(g<0.30)op=g/0.30; else if(g>0.64)op=1-(g-0.64)/0.36; else op=1;   // cover→hold→reveal
+  if(ov)ov.style.opacity=String(clamp(op,0,1));
+  const toNight=dnTrans.to==='NIGHT', a=smooth(clamp((g-0.06)/0.88,0,1));      // 0..1 arc progress
+  const sky=document.getElementById('dnSky');
+  if(sky){ const k=toNight?a:1-a;                     // 0=day band, 1=night band
+    sky.style.background='linear-gradient(180deg,'+mixHex('#cfe0f2','#222a52',k)+' 0%,'+mixHex('#ffd9b0','#3a3f64',k)+' 100%)'; }
+  const sun=document.getElementById('dnSun'), moon=document.getElementById('dnMoon');
+  const sunTop = toNight?lerpN(12,96,a):lerpN(96,12,a);   // top in vh (12=high, 96=below horizon)
+  const moonTop= toNight?lerpN(96,12,a):lerpN(12,96,a);
+  if(sun){ sun.style.top=sunTop+'vh';  sun.style.opacity=String(clamp((70-sunTop)/40,0,1)); }
+  if(moon){ moon.style.top=moonTop+'vh'; moon.style.opacity=String(clamp((70-moonTop)/40,0,1)); }
+  // at full cover: apply the night/day state, AND if night just closed the shop we're inside,
+  // eject us to town in front of its door (async scene swap; hold the cover until it lands).
+  if(!dnTrans.swapped && g>=0.42){
+    dnTrans.swapped=true;
+    const sp = toNight ? closingExitSpawn() : null;
+    if(sp){ dnTrans.holding=true; dnTrans.closedFrom=curScene;
+      swapScene('town', spawnOf(SPECS.town, sp))
+        .then(()=>{ applyWorldState(); dnTrans.holding=false; })
+        .catch(e=>{ console.error('night eject failed',e); applyWorldState(); dnTrans.holding=false; });
+    } else applyWorldState();
+  }
+  if(g>=1 && !dnTrans.holding){
+    if(ov)ov.style.opacity='0';
+    if(dnTrans.closedFrom){                       // tell the player why they're outside now
+      const tp=townPortalFor(dnTrans.closedFrom);
+      toast((tp&&tp.closedMsg) || ('The '+((tp&&tp.label)||'shop').replace(/^the /,'')+' is closed for the night.'));
+      portalCooldown=0.6; persist();
+    }
+    dnTrans=null;
+  }
+}
+// show a "closed" message when the player tries a shut door at night (no scene change)
+function showClosed(p){
+  toast((p&&p.closedMsg) || ((p&&p.label?('The '+p.label.replace(/^the /,'')):'It')+' is closed for the night.'));
+  Sound.sfx('locked');
+}
+
+// ===== Pikmin-style day/night BAR (replaces the analog clock) =====
+// One continuous cycle, NOT a 12h face: the left end is day-start (07:00), the right end is
+// night-end (07:00 next). A sun marker rides left→right and MORPHS into a moon past the
+// transition tick (21:00, the day→night switch). The marker glides every frame; the
+// pre-close heads-up stays minute-gated. Gradient + tick positions also set in initDayBar so
+// they follow the constants below (no drift if the boundaries ever move).
+let _clkMin=-1, _warnedClose=false; const _bar={};
+const DB_DAYSTART=(7-6)/24;      // 07:00 in Sky.phase units (phase 0 = 06:00 sunrise)
+const DB_T=((21-7)/24);          // 21:00 transition as a fraction of the 24h bar (0.5833)
+function initDayBar(){
+  _bar.track=document.getElementById('daybarTrack'); _bar.tick=document.getElementById('daybarTick');
+  _bar.marker=document.getElementById('daybarMarker'); _bar.sun=document.getElementById('dbSun'); _bar.moon=document.getElementById('dbMoon');
+  _bar.time=document.getElementById('daybarTime');
+  if(_bar.tick) _bar.tick.style.left=(DB_T*100).toFixed(2)+'%';   // background gradient is gradual (CSS); tick is the only marker
+  // soft clouds on the day half — [left%, top px, w px, h px, opacity] (fixed → stable for QA)
+  const cc=document.getElementById('dbClouds');
+  if(cc && !cc.childElementCount) for(const c of [[9,3,17,8,.9],[19,8,12,6,.7],[33,2,21,9,.85],[45,7,12,6,.6]]){
+    const d=document.createElement('div'); d.className='dbCloud';
+    d.style.cssText='left:'+c[0]+'%;top:'+c[1]+'px;width:'+c[2]+'px;height:'+c[3]+'px;opacity:'+c[4]; cc.appendChild(d); }
+  // twinkling stars on the night half — [left%, top px]
+  const sc=document.getElementById('dbStars');
+  if(sc && !sc.childElementCount){ const st=[[64,4],[69,10],[74,3],[79,8],[84,2],[88,11],[92,5],[67,13],[90,14],[96,8]];
+    for(let i=0;i<st.length;i++){ const s=document.createElement('div'); s.className='dbStar';
+      s.style.cssText='left:'+st[i][0]+'%;top:'+st[i][1]+'px;animation-delay:'+(i*0.31).toFixed(2)+'s'; sc.appendChild(s); } }
+}
+function updateDayBar(){
+  if(!Sky.ready)return;
+  if(!_bar.marker){ initDayBar(); if(!_bar.marker)return; }
+  const prog=(((Sky.phase-DB_DAYSTART)%1)+1)%1;       // 0 at day-start → 1 at night-end
+  _bar.marker.style.left=(prog*100).toFixed(2)+'%';
+  // gradual sun→moon morph across dusk into night (sun again at the dawn wrap)
+  const moonAmt=clamp((prog-(DB_T-0.04))/0.09,0,1);
+  if(_bar.sun) _bar.sun.style.opacity=String(1-moonAmt);
+  if(_bar.moon) _bar.moon.style.opacity=String(moonAmt);
+  // ---- minute-gated: time read-out + pre-close heads-up ----
+  const c=Sky.clock(), key=c.h24*60+c.m; if(key===_clkMin)return; _clkMin=key;
+  if(_bar.time) _bar.time.textContent=c.hhmm+' '+c.ampm;     // current time beneath the bar
+  if(started && !_warnedClose && c.h24===20 && c.m>=45){
+    _warnedClose=true; const tp=insideClosingShop();
+    toast(tp ? ('The '+((tp.label||'shop').replace(/^the /,''))+' closes at 9 p.m. — head out soon!')
+             : 'The shops close at 9 p.m.');
+    Sound.sfx('talk');
+  }
+  if(c.h24>=7 && c.h24<20) _warnedClose=false;        // re-arm for the next evening
+}
+// QA/debug: current bar state
+window.__dayBar=()=>{ const prog=(((Sky.phase-DB_DAYSTART)%1)+1)%1;
+  return { prog:+prog.toFixed(4), T:+DB_T.toFixed(4), night:prog>=DB_T,
+    markerLeft:_bar.marker?_bar.marker.style.left:null, time:_bar.time?_bar.time.textContent:null,
+    sunOp:_bar.sun?+_bar.sun.style.opacity:null, moonOp:_bar.moon?+_bar.moon.style.opacity:null }; };
 
 // ============================ cutscenes (scripted) ============================
 // A cutscene is a beat timeline played by js/cutscene.js. game.html supplies the
@@ -2044,7 +2606,11 @@ function draw(dt){
   D.sy =damp(D.sy, q.sy, 0.05, dt);
   D.rot=damp(D.rot,q.rot,0.09, dt);   // lean: eased most → direction flips swing
   const gy=groundHeight(S.x,S.z);
-  shen.position.set(S.x,gy+GROUND_EPS,S.z); faceYaw(shen);
+  // Ground is stepped on the stairs; ease the RENDER height down so a fast descent glides
+  // instead of hard-snapping each riser, but clamp to >= the true surface so a step can never
+  // poke up through her (no sink/clip). On flat ground gy is constant → this is a no-op.
+  if(Dgy==null)Dgy=gy; Dgy=Math.max(damp(Dgy,gy,0.05,dt),gy);
+  shen.position.set(S.x,Dgy+GROUND_EPS,S.z); faceYaw(shen);
   // cutscene emotion overlay: personality stays in MOTION (squash/lean/hop), layered
   // on top of the normal pose — never a tween between drawings. csShen is non-null only
   // during a cutscene; moodOffset is the held mood, applyImpulse a decaying one-shot jolt.
@@ -2077,6 +2643,7 @@ function draw(dt){
     const sc=0.6+p*2.4;burst.scale.set(sc,sc,1);burst.material.opacity=(1-p)*0.8;if(p>=1)burstT=-1;}
   // NPCs: gentle paper breathing + greet hop
   npcs.forEach(o=>{
+    if(o.group && !o.group.visible) return;      // off-duty NPC (night/day schedule) — don't animate
     const t=S.animClock+o.phase;
     // discrete pose swap (Paper-Mario style: a hard image flip, no tween). The
     // breathing/greet transforms below keep running on whichever image is shown.
@@ -2103,6 +2670,9 @@ function draw(dt){
   // sub-bus, so the effects + master sliders already scale it (see audio.js setWaterLevel).
   if(fountains.length){let wl=0;for(const f of fountains){const g=proxGain(f.x,f.z);if(g>wl)wl=g;}Sound.setWaterLevel(wl);}
 
+  // animated props (fountain water: jets, ripples, arcing droplets) — purely visual, runs
+  // every frame regardless of distance (cheap); the sound is proximity-gated separately.
+  for(const u of propAnims) u(S.animClock);
   // interior life: tiny fish drift inside the tanks (purely visual)
   for(const f of ifish){ f.m.position.x=f.ax+0.45*Math.sin(S.animClock*0.7+f.ph);
     f.m.position.y=f.base+0.06*Math.sin(S.animClock*1.3+f.ph*1.7);
@@ -2118,16 +2688,17 @@ function draw(dt){
 
   // a cutscene locks out the talk/door prompts entirely (input is the engine's; no walking)
   if(Cutscene.active){ document.getElementById('talkPrompt').classList.remove('on');
-    document.body.classList.toggle('talking',Dialogue.active); csRecord(); updateClock(); FX.render(); return; }
-  // proximity → nearest talkable NPC + floating prompt
+    document.body.classList.toggle('talking',Dialogue.active); csRecord(); updateDayBar(); FX.render(); return; }
+  // proximity → nearest talkable NPC + floating prompt (off-duty NPCs are not talkable)
   nearNpc=null;
-  if(!Dialogue.active && talkCooldown<=0){let best=1e9;
-    npcs.forEach(o=>{const dx=o.data.x-S.x,dz=o.data.z-S.z,d=dx*dx+dz*dz;
+  if(!Dialogue.active && talkCooldown<=0 && !dnTrans){let best=1e9;
+    npcs.forEach(o=>{ if(o.group && !o.group.visible) return;
+      const dx=o.data.x-S.x,dz=o.data.z-S.z,d=dx*dx+dz*dz;
       if(d<TALK_R*TALK_R&&d<best){best=d;nearNpc=o;}});}
   // proximity → nearest loading-zone door (only when not beside an NPC, so a door
   // and a person never fight for the same key). Skipped during a transition/cooldown.
   nearPortal=null;
-  if(!Dialogue.active && !nearNpc && portalCooldown<=0 && !trans){ let best=1e9;
+  if(!Dialogue.active && !nearNpc && portalCooldown<=0 && !trans && !dnTrans){ let best=1e9;
     for(const p of portals){ const dx=p.x-S.x,dz=p.z-S.z,d=dx*dx+dz*dz,r=(p.r||1.7);
       if(d<r*r&&d<best){best=d;nearPortal=p;} } }
   const tp=document.getElementById('talkPrompt');
@@ -2138,24 +2709,24 @@ function draw(dt){
     tp.textContent='💬 Talk to '+nearNpc.data.name;
     tp.classList.add('on');
   } else if(nearPortal){cam.updateMatrixWorld();
-    const dr=nearPortal.door||nearPortal;
+    const dr=nearPortal.door||nearPortal, lab=nearPortal.label||'the door';
     _tv.set(dr.x,(dr.h||3)*0.7,dr.z).project(cam);
     tp.style.left=((_tv.x*0.5+0.5)*innerWidth)+'px';
     tp.style.top=((-_tv.y*0.5+0.5)*innerHeight)+'px';
-    tp.textContent='🚪 Enter '+(nearPortal.label||'the door');
+    tp.textContent= isOpen(nearPortal) ? ('🚪 Enter '+lab) : ('🔒 '+lab+' — closed');
     tp.classList.add('on');
   } else tp.classList.remove('on');
   // the action button only appears when there's something to do — talk to a person,
   // advance a line, or step through a door — and relabels itself accordingly.
   const talkable=!!nearNpc||Dialogue.active||!!nearPortal, bTalk=document.getElementById('bTalk');
   bTalk.hidden=!talkable; bTalk.classList.toggle('near',talkable);
-  const bLbl=Dialogue.active?'next ▾':(nearPortal&&!nearNpc?'enter 🚪':'talk 💬');
+  const bLbl=Dialogue.active?'next ▾':(nearPortal&&!nearNpc?(isOpen(nearPortal)?'enter 🚪':'closed 🔒'):'talk 💬');
   if(bTalk.textContent!==bLbl)bTalk.textContent=bLbl;
   // on touch, hide the d-pad mid-conversation (movement is gated; choices are tapped
   // directly + Talk advances) so it never overlaps the dialogue box on small screens
   document.body.classList.toggle('talking',Dialogue.active);
 
-  updateClock();
+  updateDayBar();
   FX.render();
 }
 
@@ -2183,7 +2754,7 @@ addEventListener('keydown',e=>{const k=e.key.toLowerCase();
     return;}
   if(k==='escape'&&!e.repeat){e.preventDefault();toggleJournal();return;}
   if(k==='m'&&!e.repeat){Sound.toggle();syncMenu();return;}
-  if(journalOpen())return;                   // open journal eats other keys
+  if(journalOpen()){menuNav.key(e);return;}  // open journal: keys drive the menu cursor
   if(Dialogue.active){                       // talking: advance / pick — but movement keys fall through so you can walk away
     if(k===' '||k==='enter'||k==='e'){Dialogue.advance();e.preventDefault();return;}
     if(Dialogue.choiceMode){                 // an open choice menu owns up/down; left/right still walk you out
@@ -2194,7 +2765,7 @@ addEventListener('keydown',e=>{const k=e.key.toLowerCase();
   }
   if(k==='arrowup'||k==='w')held.up=true; else if(k==='arrowdown'||k==='s')held.down=true;
   else if(k==='arrowleft'||k==='a')held.left=true; else if(k==='arrowright'||k==='d')held.right=true;
-  else if((k===' ')&&!e.repeat)edgeJump=true;
+  else if((k===' ')&&!e.repeat){if(nearNpc||nearPortal)edgeTalk=true;else edgeJump=true;}   // space = action: talk/enter when beside someone or a door, hop otherwise
   else if((k==='e'||k==='enter')&&!e.repeat)edgeTalk=true;
   if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k))e.preventDefault();});
 addEventListener('keyup',e=>{const k=e.key.toLowerCase();
@@ -2206,7 +2777,9 @@ addEventListener('pointerdown',()=>Sound.resume(),{passive:true});
 // ---------- journal (book: Quests + Settings tabs, page-flip) ----------
 const journal=document.getElementById('journal'), pagesEl=document.getElementById('pages');
 const vol=document.getElementById('vol'), sfxvol=document.getElementById('sfxvol'),
-  musicvol=document.getElementById('musicvol'), muteRow=document.getElementById('muteRow');
+  musicvol=document.getElementById('musicvol');
+const volTog=document.getElementById('volTog'), sfxTog=document.getElementById('sfxTog'),
+  musicTog=document.getElementById('musicTog');
 const journalOpen=()=>journal.classList.contains('on');
 let curTab='quests', listDirty=true;
 
@@ -2214,12 +2787,20 @@ let curTab='quests', listDirty=true;
 function paintSlider(el){const v=+el.value; el.style.background=`linear-gradient(90deg,#e6b9c6 ${v}%,#ece2d0 ${v}%)`;}
 function setSlider(el,valId,frac){const v=Math.round(frac*100);
   el.value=v; document.getElementById(valId).textContent=v+'%'; paintSlider(el);}
+function setTog(btn,row,on){btn.textContent=on?'on':'off'; btn.classList.toggle('off',!on);
+  document.getElementById(row).classList.toggle('muted',!on);}
 function syncMenu(){
   setSlider(vol,'volVal',Sound.volume);
   setSlider(sfxvol,'sfxVal',Sound.sfxVolume);
   setSlider(musicvol,'musicVal',Sound.musicVolume);
-  document.getElementById('muteState').textContent=Sound.muted?'off':'on';
-  muteRow.classList.toggle('off',Sound.muted);}
+  setTog(volTog,'rowVol',!Sound.muted);      // master: the mute flag (slider keeps its value)
+  setTog(sfxTog,'rowSfx',Sound.sfxOn);       // effects: on == audible (level > 0)
+  setTog(musicTog,'rowMusic',Sound.musicOn);}// music:   on == audible (level > 0)
+
+// --- graphics chips: light the active option in each group from Gfx state ---
+function syncGfx(){ const st=Gfx.state;
+  document.querySelectorAll('.gopts[data-gfx]').forEach(g=>{ const cur=st[g.dataset.gfx];
+    g.querySelectorAll('.gopt').forEach(b=>b.classList.toggle('sel',b.dataset.val===cur)); }); }
 
 // --- quest page rendering (from Quests.list()) ---
 function mk(tag,cls,txt){const e=document.createElement(tag); if(cls)e.className=cls; if(txt!=null)e.textContent=txt; return e;}
@@ -2264,7 +2845,8 @@ function showPage(name){
   document.getElementById('page-quests').hidden=name!=='quests';
   document.getElementById('page-settings').hidden=name!=='settings';
   if(name==='quests'&&listDirty){renderQuests(); listDirty=false;}
-  if(name==='settings')syncMenu();
+  if(name==='settings'){syncMenu();syncGfx();}
+  refreshMenu();                                                 // rebuild the keyboard cursor for this page
 }
 function switchTab(name){
   if(name===curTab)return; curTab=name; setActiveTab(name); Sound.sfx('flip');
@@ -2274,19 +2856,110 @@ function switchTab(name){
 document.querySelectorAll('.jtab').forEach(t=>t.addEventListener('click',e=>{e.preventDefault();Sound.resume();switchTab(t.dataset.tab);}));
 
 function openJournal(tab){Sound.resume(); playing=false; held.up=held.down=held.left=held.right=false;
+  // pre-game (opened from the main menu) it's a settings peek, not a pause: there's
+  // nothing to restart and "resume" would imply a game in progress → relabel + hide.
+  const rb=document.getElementById('restartBtn'), rs=document.getElementById('resumeBtn');
+  if(rb)rb.style.display=started?'':'none';
+  if(rs)rs.textContent=started?'resume':'back';
   const name=tab||curTab||'quests'; curTab=name; setActiveTab(name);
-  pagesEl.classList.remove('flipping'); listDirty=true; showPage(name);
+  pagesEl.classList.remove('flipping'); listDirty=true; menuNav.sel=0; showPage(name);
   document.getElementById('bMenu').classList.remove('badge');
-  journal.classList.add('on'); Sound.sfx('book');}
+  journal.classList.add('on'); menuNav.sel=0; menuNav.rebuild(); Sound.sfx('book');}  // build the keyboard cursor once the journal is actually open
 function closeJournal(){journal.classList.remove('on'); edgeJump=edgeTalk=false; last=null; playing=true; Sound.sfx('bookClose');}
 function toggleJournal(){if(Cutscene.active)return; Sound.resume(); journalOpen()?closeJournal():openJournal();}
+
+// --- keyboard cursor for the journal (so the whole game is playable without a mouse) ---
+// One roving selection over a flat vertical list: the two binder tabs, then the active
+// page's controls. Up/Down move the cursor, Space/Enter activate, Left/Right nudge a
+// slider. Mouse still works independently; this just mirrors it for the keyboard.
+function stepSlider(el,delta){const v=Math.max(0,Math.min(100,(+el.value||0)+delta));
+  if(v===(+el.value||0))return; el.value=v; el.dispatchEvent(new Event('input',{bubbles:true})); Sound.sfx('move');}
+const menuNav={
+  items:[], sel:0,
+  rebuild(){
+    if(!journalOpen()){this.items=[]; this.render(); return;}
+    const items=[];
+    document.querySelectorAll('.jtab').forEach(t=>items.push({el:t, activate:()=>switchTab(t.dataset.tab)}));
+    if(curTab==='quests'){
+      document.querySelectorAll('#questList .qhead').forEach(h=>items.push({el:h, activate:()=>h.click()}));
+    } else {
+      [['vol','volTog'],['sfxvol','sfxTog'],['musicvol','musicTog']].forEach(([sid,tid])=>{
+        const sl=document.getElementById(sid), tog=document.getElementById(tid), row=sl.closest('.srow');
+        items.push({el:row, left:()=>stepSlider(sl,-5), right:()=>stepSlider(sl,5), activate:()=>tog.click()});
+      });
+      // graphics chips: Left/Right cycle the option (like the sliders), Space activates the next
+      document.querySelectorAll('.gopts[data-gfx]').forEach(g=>{
+        const kind=g.dataset.gfx, row=g.closest('.gfxrow'), opts=[...g.querySelectorAll('.gopt')].map(b=>b.dataset.val);
+        const cyc=d=>{let i=opts.indexOf(Gfx.state[kind]); i=(i+d+opts.length)%opts.length;
+          Gfx.set(kind,opts[i]); syncGfx(); Sound.sfx('select');};
+        items.push({el:row, left:()=>cyc(-1), right:()=>cyc(1), activate:()=>cyc(1)});
+      });
+      const rb=document.getElementById('restartBtn'), rs=document.getElementById('resumeBtn');
+      if(rb&&rb.style.display!=='none')items.push({el:rb, activate:()=>rb.click()});
+      if(rs)items.push({el:rs, activate:()=>rs.click()});
+    }
+    this.items=items;
+    if(this.sel>=items.length)this.sel=Math.max(0,items.length-1);
+    this.render();
+  },
+  render(){journal.querySelectorAll('.ksel').forEach(e=>e.classList.remove('ksel'));
+    const it=this.items[this.sel]; if(it&&it.el)it.el.classList.add('ksel');},
+  move(d){if(!this.items.length)return; this.sel=(this.sel+d+this.items.length)%this.items.length;
+    Sound.sfx('move'); this.render(); const el=this.items[this.sel].el; if(el&&el.scrollIntoView)el.scrollIntoView({block:'nearest'});},
+  horizontal(d){const it=this.items[this.sel]; if(!it)return; if(d<0&&it.left)it.left(); else if(d>0&&it.right)it.right();},
+  activate(){const it=this.items[this.sel]; if(it&&it.activate){Sound.resume(); it.activate();}},
+  key(e){const k=e.key.toLowerCase();
+    if(k==='arrowup'||k==='w'){this.move(-1);e.preventDefault();}
+    else if(k==='arrowdown'||k==='s'){this.move(1);e.preventDefault();}
+    else if(k==='arrowleft'||k==='a'){this.horizontal(-1);e.preventDefault();}
+    else if(k==='arrowright'||k==='d'){this.horizontal(1);e.preventDefault();}
+    else if(k===' '||k==='enter'){this.activate();e.preventDefault();}},
+};
+// keep the cursor in sync whenever the page/quest list rebuilds while open
+const refreshMenu=()=>{if(journalOpen())menuNav.rebuild();};
+
+// QA self-test (deterministic): prove the whole game is keyboard-operable — the journal
+// opens from a key, the menu cursor moves + activates on Space, sliders nudge on Left/Right,
+// and the dialogue choice API is present. Drives the REAL keydown listeners via synthetic
+// events so the wiring (not just the helpers) is exercised. Returns {fails:[]} and restores
+// state. Used by studio/qa/checks/keyboard-nav.mjs.
+const key=(name)=>window.dispatchEvent(new KeyboardEvent('keydown',{key:name,bubbles:true,cancelable:true}));
+window.__kbNav=function(){
+  const fails=[], wasOpen=journalOpen(), wasMuted=Sound.muted, wasTab=curTab, volEl=document.getElementById('vol');
+  const wasVol=+volEl.value;
+  try{
+    if(!wasOpen)key('Escape');                                   // open via the real keybind
+    if(!journalOpen()){fails.push('Escape did not open the journal'); openJournal();}
+    if(menuNav.items.length<2)fails.push('menu cursor has no items to navigate');
+    const s0=menuNav.sel; key('ArrowDown');                      // synthetic key must move the cursor
+    if(menuNav.items.length>1&&menuNav.sel===s0)fails.push('ArrowDown did not move the menu cursor');
+    // settings page (set directly — skip the 200ms cosmetic flip)
+    curTab='settings'; setActiveTab('settings'); showPage('settings');
+    const vi=menuNav.items.findIndex(it=>it.el&&it.el.id==='rowVol');
+    if(vi<0)fails.push('volume row not reachable by keyboard');
+    else{
+      menuNav.sel=vi; const before=+volEl.value; menuNav.horizontal(-1);
+      if(+volEl.value===before)fails.push('Left arrow did not adjust the volume slider');
+      const m0=Sound.muted; menuNav.activate();                 // Space toggles the channel pill
+      if(Sound.muted===m0)fails.push('Space did not toggle the volume channel');
+    }
+    if(menuNav.items.findIndex(it=>it.el&&it.el.id==='resumeBtn')<0)fails.push('resume/back button not reachable by keyboard');
+    if(typeof Dialogue.move!=='function')fails.push('Dialogue choice navigation (Dialogue.move) missing');
+  }catch(e){fails.push('probe threw: '+(e&&e.message||e));}
+  // restore everything the probe touched
+  if(Sound.muted!==wasMuted)Sound.toggle();
+  volEl.value=wasVol; volEl.dispatchEvent(new Event('input',{bubbles:true}));
+  curTab=wasTab; setActiveTab(wasTab);
+  if(wasOpen)showPage(wasTab); else closeJournal();
+  return {fails};
+};
 
 // --- quest toast (milestones + hamster count) ---
 let toastT=null;
 function toast(msg){const t=document.getElementById('qtoast'); t.textContent=msg; t.classList.add('on');
   if(toastT)clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('on'),2200);}
 function questEvent(msg,sfx){toast(msg); Sound.sfx(sfx); listDirty=true;
-  if(journalOpen())renderQuests(); else document.getElementById('bMenu').classList.add('badge');}
+  if(journalOpen()){renderQuests(); refreshMenu();} else document.getElementById('bMenu').classList.add('badge');}
 
 // pick a state-aware dialogue entry node for an NPC tied to a quest
 function entryNode(npc){
@@ -2305,7 +2978,14 @@ vol.addEventListener('change',()=>Sound.sfx('select'));      // preview overall 
 sfxvol.addEventListener('input',()=>{Sound.resume();Sound.setSfxVolume(+sfxvol.value/100);syncMenu();});
 sfxvol.addEventListener('change',()=>Sound.sfx('select'));   // preview the SFX level on release
 musicvol.addEventListener('input',()=>{Sound.resume();Sound.setMusicVolume(+musicvol.value/100);syncMenu();});
-muteRow.addEventListener('click',e=>{e.preventDefault();Sound.resume();Sound.toggle();syncMenu();});
+// per-channel on/off pills (RuneScape-style): click to silence/restore a channel; the slider still works.
+volTog.addEventListener('click',e=>{e.preventDefault();Sound.resume();Sound.toggle();syncMenu();});
+sfxTog.addEventListener('click',e=>{e.preventDefault();Sound.resume();Sound.toggleSfx();syncMenu();if(Sound.sfxOn)Sound.sfx('select');});
+musicTog.addEventListener('click',e=>{e.preventDefault();Sound.resume();Sound.toggleMusic();syncMenu();});
+// graphics option chips: set the knob, persist+apply, re-light the row, click sound
+document.querySelectorAll('.gopts[data-gfx]').forEach(g=>g.addEventListener('click',e=>{
+  const b=e.target.closest('.gopt'); if(!b)return; e.preventDefault(); Sound.resume();
+  Gfx.set(g.dataset.gfx,b.dataset.val); syncGfx(); Sound.sfx('select'); }));
 document.getElementById('resumeBtn').addEventListener('click',e=>{e.preventDefault();closeJournal();});
 document.getElementById('restartBtn').addEventListener('click',e=>{e.preventDefault();Save.wipe();
   const swap=curScene!=='town', F=fadeEl();
@@ -2362,14 +3042,17 @@ const FIXED=1/60; let playing=true,timer=null,last=null,acc=0;
 function frame(){const now=performance.now();if(last===null)last=now;
   let e=(now-last)/1000;last=now; if(e>0.5)e=0.5;
   if(trans){ edgeTalk=edgeJump=false; updateTransition(e); draw(e); return; }   // a door transition owns the loop
+  if(dnTrans){ edgeTalk=edgeJump=false; updateDayNight(e); draw(e); return; }   // a day/night curtain owns the loop
   if(pendingCutscene && started && !Cutscene.active) startPendingCutscene();    // a first-visit cutscene was armed
-  if(Cutscene.active){ edgeTalk=edgeJump=false; S.animClock+=e; Cutscene.step(e); draw(e); return; }  // a cutscene owns the loop
+  if(Cutscene.active){ edgeTalk=edgeJump=false; S.animClock+=e; Cutscene.step(e); draw(e); return; }  // a cutscene owns the loop (day/night can't begin mid-cutscene)
+  if(started&&playing&&!Dialogue.active){ maybeBeginDayNight();                 // 21:00/07:00 crossing → curtain
+    if(dnTrans){ draw(e); return; } }
   if(started&&edgeTalk){edgeTalk=false;
     if(playing&&!Dialogue.active){
       if(nearNpc){const npc=nearNpc.data; nearNpc.greet=0.5; Sound.sfx('talk'); aiTarget=aiMove=null;   // drop any auto-nav push so walk-away-ends-dialogue can't self-cancel the greeting
         Dialogue.start(npc, entryNode(npc));   // entry node BEFORE noting
         if(npc.name)Quests.note({type:'talk',npc:npc.name});}
-      else if(nearPortal){ startPortal(nearPortal); }   // step through the door
+      else if(nearPortal){ if(isOpen(nearPortal)) startPortal(nearPortal); else showClosed(nearPortal); }   // door (or a "closed" beat at night)
     }}
   if(playing){acc+=e;let n=0;while(acc>=FIXED&&n<40){S=step(S,resolveInput(),FIXED);audioStep(S);acc-=FIXED;n++;}}
   draw(e);}
@@ -2381,27 +3064,38 @@ window.__startAuto=startAuto;
 const titleEl=document.getElementById('title');
 const btnContinue=document.getElementById('btnContinue');
 const btnNew=document.getElementById('btnNew');
+const btnSettings=document.getElementById('btnSettings');
 let titleBtns=[], titleSel=0, confirmNew=false, hasSaved=false;
 function setupTitle(saveExists){
   hasSaved=saveExists;
   document.getElementById('buildTag').textContent='build '+BUILD;
   if(saveExists){btnContinue.hidden=false;btnContinue.classList.add('primary');btnNew.classList.remove('primary');}
   else{btnContinue.hidden=true;btnNew.classList.add('primary');}
-  titleBtns=saveExists?[btnContinue,btnNew]:[btnNew];
+  // Settings is always available; Continue only when a save exists.
+  titleBtns=saveExists?[btnContinue,btnNew,btnSettings]:[btnNew,btnSettings];
   titleSel=0; renderTitleSel();
-  btnContinue.onclick=()=>beginGame(false);
-  btnNew.onclick=()=>onNew();
+  btnContinue.onclick=()=>{Sound.resume();Sound.sfx('select');beginGame(false);};
+  btnNew.onclick=()=>{Sound.resume();onNew();};
+  btnSettings.onclick=()=>{Sound.resume();Sound.sfx('select');openSettingsFromMenu();};
+  // mouse parity with the keyboard cursor: hovering a button selects it (soft tick)
+  titleBtns.forEach((b,i)=>b.onpointerenter=()=>{ if(titleSel!==i){titleSel=i;renderTitleSel();Sound.sfx('move');} });
 }
 function renderTitleSel(){titleBtns.forEach((b,i)=>b.classList.toggle('sel',i===titleSel));}
-function titleMove(d){if(!titleBtns.length)return;titleSel=(titleSel+d+titleBtns.length)%titleBtns.length;renderTitleSel();}
-function titleConfirm(){const b=titleBtns[titleSel]; if(b===btnContinue)beginGame(false); else onNew();}
+function titleMove(d){if(!titleBtns.length)return;titleSel=(titleSel+d+titleBtns.length)%titleBtns.length;renderTitleSel();Sound.sfx('move');}
+function titleConfirm(){const b=titleBtns[titleSel];
+  if(b===btnContinue){Sound.sfx('select');beginGame(false);}
+  else if(b===btnSettings){Sound.sfx('select');openSettingsFromMenu();}
+  else onNew();}
 function onNew(){
   if(hasSaved&&!confirmNew){               // one guard click before erasing real progress
     confirmNew=true; btnNew.textContent='Erase save?'; btnNew.classList.add('danger');
-    titleSel=titleBtns.indexOf(btnNew); renderTitleSel(); return;
+    titleSel=titleBtns.indexOf(btnNew); renderTitleSel(); Sound.sfx('move'); return;
   }
-  beginGame(true);
+  Sound.sfx('select'); beginGame(true);
 }
+// Settings from the menu: open the journal on its Settings tab (sliders, mute). The
+// journal is pre-game-aware (see openJournal); closing it returns here to the menu.
+function openSettingsFromMenu(){ openJournal('settings'); }
 // New Game / restart reset: wipe the global collected set + quests and return to
 // town. If the preview/journal was inside another scene, rebuild town (under a fade).
 async function resetToTown(){
@@ -2416,15 +3110,22 @@ function beginGame(fresh){
   // Auto-loop the ambient track only on a real deploy (build.json present → BUILD
   // is a git sha). In a local dev worktree (no build.json → BUILD==='dev') it's
   // armed but silent; the music slider still starts it if you want it.
-  Sound.startMusic((SCENE&&SCENE.music)||'out/music/calm.ogg', BUILD!=='dev');   // the boot scene's track
+  Sound.startMusic(effectiveTrack(SCENE), BUILD!=='dev');   // the boot scene's track (night vs day for overworld)
   started=true; titleEl.classList.add('off');
+  document.body.classList.remove('pregame');   // reveal the in-game HUD
+  if(journalOpen())closeJournal();             // a Settings peek may still be open
   if(fresh){ Save.wipe(); const swap=curScene!=='town', F=fadeEl();   // New Game resets quests + scene too
     (async()=>{ if(swap&&F)F.style.opacity='1'; await resetToTown(); if(swap&&F)F.style.opacity='0'; listDirty=true; persist(); })();
   } else { persist(); maybeArmCutscene(); }  // Continue: a save sitting in an unseen first-visit scene plays its cutscene
 }
 addEventListener('keydown',e=>{
   if(started)return;                        // only steer the menu before play
+  Sound.resume();                           // first keypress is the audio gesture
   const k=e.key.toLowerCase();
+  if(journalOpen()){                         // Settings opened from the menu → drive the menu cursor
+    if(k==='escape'){e.preventDefault();closeJournal();return;}        // back to menu
+    menuNav.key(e); return;
+  }
   if(k==='arrowup'||k==='w'){titleMove(-1);e.preventDefault();}
   else if(k==='arrowdown'||k==='s'){titleMove(1);e.preventDefault();}
   else if(k===' '||k==='enter'){titleConfirm();e.preventDefault();}
@@ -2445,6 +3146,16 @@ addEventListener('resize',resize);
 // the fullscreen button on these; a narrow desktop window is left alone.
 const isTouch=()=> (matchMedia('(pointer:coarse)').matches || matchMedia('(hover:none)').matches
   || 'ontouchstart' in window);
+// desktop = a fine pointer with hover (not a touch device): the keyboard plays the game, so
+// the on-screen touch chrome (d-pad / action / journal / fullscreen) is hidden via body.desktop.
+// Reactive so devtools device-emulation / plugging in a mouse updates it live.
+function applyInputMode(){ document.body.classList.toggle('desktop', !isTouch()); }
+applyInputMode();
+try{ matchMedia('(pointer:coarse)').addEventListener('change',applyInputMode);
+     matchMedia('(hover:none)').addEventListener('change',applyInputMode); }catch(e){}
+// preview/QA: force the on-screen chrome to mobile or desktop (or 'auto' to re-detect)
+window.__forceInputMode=(mode)=>{ if(mode==='auto'){ applyInputMode(); return 'auto'; }
+  document.body.classList.toggle('desktop', mode!=='touch'); return mode; };
 const UA=navigator.userAgent||'';
 // iPadOS 13+ reports as "MacIntel" with a touch screen, so sniff that too.
 const isIPad=()=> /ipad/i.test(UA) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
@@ -2550,9 +3261,28 @@ window.game={
   // sky / day-night debug surface
   time:(p)=>p===undefined?Sky.getTime():Sky.setTime(+p),        // 0=sunrise .25=noon .5=sunset .75=midnight
   dayLength:(s)=>s===undefined?Sky.dayLength:Sky.setDayLength(+s),
+  forceTime:(h)=>window.__forceTime(h),                         // jump to wall-clock hour h, snap state (no curtain)
+  dn:()=>window.__dnState(),                                    // day/night gameplay state snapshot
 };
 window.sky=Sky;
 window.audio=Sound;
+// ---- day/night debug + QA hooks ----
+window.__worldState=()=>worldState();
+window.__dnState=()=>({ state:worldState(), night:isNight(), h24:Sky.clock().h24,
+  track:effectiveTrack(SCENE),
+  portals:portals.map(p=>({id:p.id, open:isOpen(p), hours:(p.hours??null)})),
+  npcs:npcs.map(o=>({name:o.data.name, active:isActive(o.data), visible:!!(o.group&&o.group.visible)})),
+  curtain:dnTrans?dnTrans.to:null });
+// jump the clock to wall-clock hour h (0..24), SNAP the world state (no curtain) — for QA
+window.__forceTime=(h)=>{ const p=((((+h)-6)/24)%1+1)%1; Sky.setTime(p); _clkMin=-1;
+  DN.prev=DN.state=worldState(); applyWorldState(); updateDayBar();
+  return { h24:Sky.clock().h24, state:worldState() }; };
+// force the transition curtain — for QA of the animation/swap. Syncs the clock to a
+// representative hour for the target FIRST, so after it completes worldState()===target
+// (no ping-pong re-fire; faithful to a real crossing).
+window.__triggerDayNight=(to)=>{ to=(to==='DAY')?'DAY':'NIGHT'; const t=(to==='DAY')?12:23;
+  Sky.setTime((((t-6)/24)%1+1)%1); _clkMin=-1; DN.prev=DN.state=(to==='NIGHT'?'DAY':'NIGHT');
+  beginDayNight(to); return dnTrans?dnTrans.to:null; };
 build().catch(e=>{window.__err=String(e&&e.stack||e);console.error(e);
   const ld=document.getElementById('loader'); if(ld){ld.classList.add('err');
     const t=document.getElementById('loadText'); if(t)t.textContent='couldn’t load ✗';}});

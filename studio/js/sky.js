@@ -124,6 +124,8 @@ export const Sky = {
   ready:false, phase:0, dayLength:1440, group:null, dome:null, sun:null, moon:null,
   stars:null, clouds:[], dir:null, hemi:null, _scene:null, _broke:false, _arc:null,
   interior:false, _interiorBg:new THREE.Color('#e7d9c2'),
+  // cast-shadow quality (graphics menu drives it; see setShadowQuality / setShadowBounds)
+  _shadowLevel:'high', _shadowHalf:55, _fixedTgt:new THREE.Vector3(0,0,-19),
   _pal:{top:new THREE.Color(),hor:new THREE.Color(),dir:new THREE.Color(),
         hs:new THREE.Color(),hg:new THREE.Color(),ct:new THREE.Color(),hi:2,co:1,st:0},
   _tmpDir:new THREE.Vector3(), _tmpDir2:new THREE.Vector3(), _tmpTgt:new THREE.Vector3(), _bg:new THREE.Color(),
@@ -192,11 +194,16 @@ export const Sky = {
       }
 
       // lights — directional (sun/moon) + hemisphere fill. Sky owns + drives them.
+      // Soft VSM shadows: setShadowQuality sets the map size + blur radius; setShadowBounds
+      // fits the FIXED (non-following → no flicker) frustum to the scene. VSM is forgiving on
+      // acne, so a tiny bias + modest normalBias avoids self-shadow + peter-panning.
       const dir=new THREE.DirectionalLight(0xfff4ea, 2.0);
-      dir.castShadow=true; dir.shadow.mapSize.set(2048,2048); dir.shadow.bias=-0.0004;
-      dir.shadow.normalBias=0.02;
-      const sc=dir.shadow.camera; sc.left=-60;sc.right=60;sc.top=60;sc.bottom=-60;sc.near=1;sc.far=240;
-      dir.target.position.set(0,0,-14); scene.add(dir.target); scene.add(dir); this.dir=dir;
+      // normalBias stays SMALL: a big one peter-pans the shadow off its caster (small props
+      // lose their shadow). These values keep PCF acne away without detaching contact shadows.
+      dir.castShadow=true; dir.shadow.bias=-0.0005; dir.shadow.normalBias=0.02;
+      dir.target.position.copy(this._fixedTgt); scene.add(dir.target); scene.add(dir); this.dir=dir;
+      this.setShadowBounds(this._fixedTgt.x, this._fixedTgt.z, this._shadowHalf);  // default frustum
+      this.setShadowQuality(this._shadowLevel);                                    // map size + blur
       const hemi=new THREE.HemisphereLight(0xffffff,0xd9dde6,2.0); scene.add(hemi); this.hemi=hemi;
 
       this.ready=true;
@@ -257,6 +264,48 @@ export const Sky = {
       this._apply(0);                                 // repaint the outdoor time of day
     }
     return this.interior;
+  },
+
+  // ---- cast-shadow quality (driven by the graphics menu) --------------------
+  // Softness comes from PCSS (js/pcss.js patches the shadow shader) — contact-hardening, the
+  // accurate look. `radius` here only matters if that patch ever fails (the plain-PCF fallback).
+  // The frustum is FIXED to the scene's extent (setShadowBounds), world-locked — NOT following
+  // the player. A moving frustum is what made the shadows crawl / flicker under the bushes; a
+  // fixed one can't shimmer (and PCSS's per-pixel sample pattern is uv-seeded → also stable).
+  // Quality only trades map RESOLUTION (cleaner vs lighter). 'off' stops the sun casting
+  // (billboard contact ovals still ground the characters). mapSize changes never recompile shaders.
+  SHADOW_Q:{ off:{cast:false}, low:{cast:true,map:2048,radius:3,blur:8},
+             high:{cast:true,map:4096,radius:4,blur:12} },
+  setShadowQuality(level){
+    if(!this.SHADOW_Q[level]) level='high';
+    this._shadowLevel=level; const q=this.SHADOW_Q[level];
+    if(!this.dir) return level;                         // re-applied at end of build()
+    this.dir.castShadow=!!q.cast;
+    if(q.cast){
+      this.dir.shadow.radius=q.radius;                  // PCF filter radius (soft edge)
+      this.dir.shadow.blurSamples=q.blur;               // (VSM-only; harmless under PCF)
+      if(this.dir.shadow.mapSize.width!==q.map){
+        this.dir.shadow.mapSize.set(q.map,q.map);
+        if(this.dir.shadow.map){ this.dir.shadow.map.dispose(); this.dir.shadow.map=null; } // rebuild at new res
+      }
+    }
+    return level;
+  },
+  // Fit the FIXED sun-shadow frustum to a scene's reachable extent + centre (called by
+  // buildScene per scene). Concentrating the map's texels on just what the player can reach
+  // keeps the soft shadow clean WITHOUT a moving frustum — so it never crawls/flickers.
+  setShadowBounds(cx, cz, half){
+    this._shadowHalf=half; this._fixedTgt.set(cx,0,cz);
+    if(!this.dir) return;
+    this.dir.target.position.set(cx,0,cz);
+    const sc=this.dir.shadow.camera;
+    sc.left=-half; sc.right=half; sc.top=half; sc.bottom=-half;
+    // Tight near/far around the light's actual distance keeps the packed-depth precision high so
+    // PCSS's blocker search resolves the occluder→receiver gap cleanly. The outdoor sun sits ~100
+    // units out (_apply); an interior's lamp is set ~20 out (setInterior). Bracket each.
+    if(this.interior){ sc.near=2; sc.far=48; }
+    else { sc.near=40; sc.far=100+half+25; }
+    sc.updateProjectionMatrix();
   },
 
   _apply(dt, cam){

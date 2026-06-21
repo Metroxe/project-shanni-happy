@@ -32,7 +32,11 @@ await withGamePage(async (page, ctx) => {
   const inTown=await page.evaluate(`game.scene().cur`);
   if(inTown!=='town') fails.push('did not exit to town (got '+inTown+')');
   const hams=await page.evaluate(`game.state().collectibles.map(c=>({x:c.x,z:c.z}))`);
-  for(const h of hams){ await page.evaluate(`(()=>{cameraQA.warp(${h.x},${h.z+2});game.goTo(${h.x},${h.z});})()`); await page.waitForTimeout(650); }
+  // walk to each hamster and POLL until it's picked up (deterministic — never a fixed-wait
+  // race; path length varies with the town layout, so a hard 650ms once dropped a pickup).
+  for(const h of hams){ await page.evaluate(`(()=>{cameraQA.warp(${h.x},${h.z+2});game.goTo(${h.x},${h.z});})()`);
+    for(let i=0;i<22;i++){ await page.waitForTimeout(120);
+      if(await page.evaluate(`game.state().collectibles.find(c=>c.x===${h.x}&&c.z===${h.z}).got`)) break; } }
   await page.waitForTimeout(300);
   const collected=await page.evaluate(`game.state().collectibles.filter(c=>c.got).length`);
   if(collected<5) fails.push('did not collect all 5 hamsters (got '+collected+')');
@@ -40,11 +44,15 @@ await withGamePage(async (page, ctx) => {
   const step=await page.evaluate(`(()=>{const q=game.quests().find(q=>q.id==='q_hamsters'); return q&&q.current?q.current.desc:JSON.stringify(q);})()`);
   log('current step after collecting:',step);
 
-  // 3) return to the shop and hand them in → quest complete
-  await page.evaluate(`(()=>{cameraQA.warp(-3,11.4);game.useDoor();})()`);
-  await page.waitForTimeout(1600);
+  // 3) return to the shop and hand them in → quest complete. Poll the door transition to FULLY
+  // finish before walking to Adrian (warping mid-transition gets overridden by the walk-out, so
+  // the player never reaches the counter), then poll until Adrian is in talk range.
+  await page.evaluate(`(()=>{cameraQA.warp(-16.5,-20);game.useDoor();})()`);
+  for(let i=0;i<40;i++){ await page.waitForTimeout(100);
+    if(await page.evaluate(`game.scene().cur==='petshop' && !game.scene().trans`)) break; }
   await page.evaluate(`(()=>{cameraQA.warp(1.6,-3.0);game.goTo(1.6,-6.6);})()`);
-  await page.waitForTimeout(1500);
+  for(let i=0;i<25;i++){ await page.waitForTimeout(140);
+    if(await page.evaluate(`game.dialogue().near==='Adrian'`)) break; }
   await chatToEnd();
   const done=await page.evaluate(`game.quests().some(q=>q.id==='q_hamsters'&&q.status==='done')`);
   if(!done) fails.push('quest did not complete after returning the hamsters to Adrian');

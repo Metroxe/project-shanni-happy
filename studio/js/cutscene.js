@@ -115,6 +115,17 @@ export const Cutscene = {
     if (cb) cb();
   },
 
+  // abort immediately — do NOT run the remaining beats and do NOT fire onEnd. The
+  // cutscene's scene was torn down, so it's void: none of its consequences should land
+  // (no quest start, no seen-flag, no kept prop). Distinct from skip(), which COMPLETES
+  // the timeline (firing every side effect + onEnd). The game-side staging is reset by
+  // the caller. In real play this never fires (a cutscene finishes before you can leave).
+  cancel() {
+    if (!this.active) return;
+    this.active = false; this._beats = null; this._i = -1; this._hold = false;
+    this.onEnd = null; this.cam = null; this.subject = null;
+  },
+
   // tiny status surface for the debug console + QA probes
   status() {
     return { active: this.active, label: this.label, beat: this._i,
