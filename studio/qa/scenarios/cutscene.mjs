@@ -48,9 +48,15 @@ await withGamePage(async (page, ctx) => {
   if (film.hamMinScale < 0.6)  fails.push(`[stepped] hamsters shrank while running (min scale ${film.hamMinScale})`);
   if (film.bystanderInCU > 3)  fails.push(`[stepped] the other character's head stacked into a solo close-up in ${film.bystanderInCU} frames (Adrian behind Shen / vice-versa)`);
   await page.evaluate(`window.__startAuto&&window.__startAuto()`);
-  // reset for PASS 2 (real-time gameplay-integration path): fresh game + clean SFX log
+  // reset for PASS 2 (real-time gameplay-integration path): fresh game + clean SFX log.
+  // game.start(true) kicks off an ASYNC reset-to-town transition; WAIT for it to fully settle
+  // (back in town, no transition in flight) before walking into the shop — otherwise the
+  // in-flight reset swap can abort the just-armed cutscene (which, marked seen-at-start, then
+  // never plays). A real player can't New-Game-then-instantly-enter; the test must wait.
   await page.evaluate(`(()=>{game.wipe();game.start(true);window.__sfxLog=[];})()`);
-  await sleep(300);
+  for (let i=0;i<120;i++){ await sleep(80);
+    const s=await page.evaluate('game.scene()'); if(s.cur==='town' && !s.trans) break; }
+  await sleep(200);
 
   const settle = async (want) => { for (let i=0;i<80;i++){ await sleep(50);
     if ((await page.evaluate('game.scene().nearPortal')) === want) return true; } return false; };
@@ -58,10 +64,14 @@ await withGamePage(async (page, ctx) => {
   const enterDoor = async (near) => { await settle(near); await page.evaluate('game.useDoor()'); };
   const awaitTransDone = async () => { for (let i=0;i<120;i++){ await sleep(80);
     const s=await page.evaluate('game.scene()'); if(!s.trans) return s; } return await page.evaluate('game.scene()'); };
+  // Read active + scene + seen + pending in ONE snapshot — split page.evaluate reads race a frame
+  // apart, and since the cutscene now marks itself SEEN the instant it goes active (seen-at-start),
+  // a stale active=false + a fresh seen=true would wrongly bail "already seen" mid-start. The atomic
+  // snapshot fixes it; also don't bail while a cutscene is still pending (about to start).
   const awaitCutscene = async () => { for (let i=0;i<160;i++){ await sleep(80);
-    if (await page.evaluate('game.cutscene().active')) return true;
-    const s=await page.evaluate('game.scene()'); const cs=await page.evaluate('game.cutscene()');
-    if (s.cur==='petshop' && !s.trans && cs.seen.includes('cs_petshop_intro')) return false; } return false; };
+    const st = await page.evaluate(`(()=>{const c=game.cutscene(),s=game.scene();return {active:c.active,pending:c.pending,seen:c.seen,cur:s.cur,trans:s.trans};})()`);
+    if (st.active) return true;
+    if (st.cur==='petshop' && !st.trans && !st.pending && st.seen.includes('cs_petshop_intro')) return false; } return false; };
 
   // pre-cutscene: town has NO hamsters yet (gated on the quest)
   const pre = await page.evaluate('window.__cutscene()');

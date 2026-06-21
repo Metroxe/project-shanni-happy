@@ -201,20 +201,32 @@ dialogue box is dismissed with **Next**, then the next set-piece runs. Exactly l
   table — Shen tipped it, it stays) is **converted to a permanent fixture** at the end (un-tag csProp,
   set `userData.fx`) AND **rebuilt on every later entry** by the scene builder gated on the cutscene
   being seen (petshop: `cutsceneTable` spec field → `buildInterior` builds the pre-tipped remnant when
-  `seenCutscenes` has it). Make it non-colliding decor so it never affects reachability/camera QA.
-  The scenario asserts the remnant is present after AND on re-entry, and `__clips()` stays empty.
+  `seenCutscenes` has it). A persistent remnant that occupies floor space is a **SOLID obstacle** — give
+  it a collider matching its (tipped) footprint (`addTippedTableCollider`: a `Box3` of the tipped group
+  → `pushBoxColliders`), added BOTH on conversion (`endCutscene` → `SCENE_COLLIDERS`) and on the
+  `buildInterior` rebuild (via `opts.cols`), so the player walks AROUND it, not through it. Size it so it
+  never walls off the room (`cameraQA.reach()` stays clean). `scenarios/cutscene-persistence.mjs` asserts
+  the remnant is present + SOLID + impassable after AND on re-entry, and `__clips()` stays empty.
 - **Sound:** a cutscene ships its SFX in the same change (every interaction is audible). Its focal,
   camera-driven SFX (`knock`, `scurry`, hamster `squeak`) play **full** — they are the thing the
   camera is showing, like a Paper-Mario hit, NOT an ambient world loop, so the "world sounds are
   spatial" rolloff does NOT apply. Music stays per-scene (the shop track plays under the pet-shop
   cutscene). New speakers get a `VOICES` timbre (added Adrian).
-- **Triggering + once-only:** a scene names its first-visit cutscene with a top-level `"cutscene"`
-  id in its spec. `maybeArmCutscene()` (called on a REAL entry — a finished door transition + boot
-  Continue, NOT the debug `game.enter` teleport) arms it when `!seenCutscenes.has(id)`; the frame
-  loop starts it. Seen ids persist in the save (`cutscenes` array — **additive, no `SAVE_VERSION`
-  bump**); a New Game clears them so it replays. A **quest-giving** cutscene also skips+marks-seen if
-  its quest is already underway (an old save that got the quest the previous way must NOT replay the
-  intro mid-quest).
+- **Triggering + once-only (a cutscene happens ONCE — mark it seen at START, not end):** a scene
+  names its first-visit cutscene with a top-level `"cutscene"` id in its spec. `maybeArmCutscene()`
+  (called on a REAL entry — a finished door transition + boot Continue, NOT the debug `game.enter`
+  teleport) arms it when `!seenCutscenes.has(id)`; the frame loop starts it. **Mark it SEEN + `persist()`
+  the MOMENT it begins** (in `startPendingCutscene`, before any line plays) — NOT only in `endCutscene`.
+  Why: the autosave (10s interval / `visibilitychange` / `pagehide`) fires *mid-cutscene*, so if seen is
+  marked only at the end, a reload / tab-close mid-cutscene writes `scene=<here>, cutscenes=[]`, and the
+  next Continue lands back in the scene with an empty seen-set and **re-arms it → it replays on every
+  entry** (the exact "plays every time" bug Christopher hit on the shipped build). Once it has BEGUN it's
+  done; the quest still starts at its beat on normal completion, and if interrupted Adrian re-offers it in
+  dialogue. Seen ids persist in the save (`cutscenes` array — **additive, no `SAVE_VERSION` bump**); a New
+  Game clears them so it replays. A **quest-giving** cutscene also skips+marks-seen if its quest is
+  already underway (an old save that got the quest the previous way must NOT replay the intro mid-quest).
+  Guarded by `scenarios/cutscene-persistence.mjs` (seen-at-start + autosave-then-reload-then-Continue = no
+  replay). **This is the default for ALL one-time cutscenes**, not just the pet-shop one.
 - **The pet-shop intro (`cs_petshop_intro`):** first time you enter the shop — Adrian greets, Shen
   ambles to a display table and **walks right into it**, knocking it over; **5 hamsters spill out and
   scurry around the whole shop** while she + Adrian react (Shen mortified, Adrian flustered), and on
@@ -565,6 +577,9 @@ audit alone for these.
 | **Cutscene sprite (hamster) SHRINKS the moment it animates** | `mesh.scale` was set to the sprite's own width/height (~0.4) as if a multiplier, but the geometry is already W×H → ~0.4×. FIX: `scale` is a MULTIPLIER ~1.0 (squash/stretch only). Guarded by `__csReport().hamMinScale` (must stay ≳0.6). |
 | **Actor walks THROUGH a solid cutscene prop (impossible move)** | the walk target was INSIDE the prop footprint (Shen ended up inside the table). FIX: stop at CONTACT (target outside the footprint); route the approach path around standing props (go into the open floor, THEN turn to the prop). Guarded by `__csReport().clip` (Shen's centre inside a still-standing `csTableBox` = 0). Review the whole tween, not keyframes. |
 | **A cutscene consequence (knocked-over table) VANISHES at the end** | `endCutscene` swept ALL csProp props including one that should persist. FIX: convert the consequence prop to a permanent fixture (un-tag csProp, set `userData.fx`) + rebuild it on later entries via the scene builder gated on `seenCutscenes` (spec `cutsceneTable` → `buildInterior`). Scenario asserts the remnant present after + on re-entry. |
+| **Player walks THROUGH the knocked-over table remnant** | the persistent remnant was built as non-colliding decor (no collider). FIX: a remnant that occupies floor space is a SOLID obstacle — give it a collider matching its (tipped) XZ footprint (`addTippedTableCollider`: `Box3.setFromObject` → `pushBoxColliders`), added on `endCutscene` conversion (→ `SCENE_COLLIDERS`) AND the `buildInterior` rebuild (via `opts.cols`); size it so it doesn't wall off the room. Guarded by `scenarios/cutscene-persistence.mjs` (colliders at the footprint + interior impassable + `reach()` clean). |
+| **A one-time cutscene REPLAYS on every entry** | seen was marked only at the END (`endCutscene`), but the autosave (10s interval / `visibilitychange` / `pagehide`) fires MID-cutscene → writes `scene=<here>, cutscenes=[]`; a reload / tab-close mid-cutscene then Continues back into the scene with an empty seen-set and re-arms it. FIX: mark SEEN + `persist()` the moment it STARTS (`startPendingCutscene`), before any line plays — once it has begun it's done. Default for ALL one-time cutscenes. Guarded by `scenarios/cutscene-persistence.mjs` (autosave-mid-cutscene → reload → Continue = no replay). |
+| **A QA scenario flakes reading game state (e.g. "cutscene did not start")** | the poll read coupled fields in SEPARATE `page.evaluate` calls that race a frame apart — `active` read stale-false one frame, then `seen` read fresh-true the next, so it wrongly bailed "already seen" right as the cutscene started (seen-at-start makes the two flip together). FIX: read all coupled fields in ONE atomic `page.evaluate` snapshot; never split an active/seen/scene read across awaits. Also: after `game.start(true)` (async reset-to-town) WAIT for `scene==='town' && !trans` before driving — don't race the in-flight reset. |
 
 Debug hooks (all on `window`): `cameraQA.{static,framing,clip,path,transition,reach,walk,warp}`,
 `__overlaps()` (town 2D footprints), `__clips()`/`__interiorOverlaps()` (interior 3D per-mesh),
