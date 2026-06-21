@@ -25,18 +25,61 @@
   #c{display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100dvh;touch-action:none}
   /* loading-zone door fade: a soft cream wipe over the scene swap (opacity driven in JS) */
   #fade{position:fixed;inset:0;z-index:35;background:#e9f1ea;opacity:0;pointer-events:none;touch-action:none}
+  /* day<->night transition curtain: a screen-wide sky band with a sun + moon that arc
+     across it (positions driven in JS), concealing the world-state swap behind it. */
+  #daynight{position:fixed;inset:0;z-index:38;opacity:0;pointer-events:none;touch-action:none;
+    overflow:hidden;background:linear-gradient(180deg,#cfe0f2 0%,#ffd9b0 100%)}
+  #dnSky{position:absolute;inset:0;transition:none}
+  #dnSun,#dnMoon{position:absolute;left:50%;width:34vmin;height:34vmin;margin-left:-17vmin;
+    border-radius:50%;will-change:top,opacity}
+  #dnSun{background:radial-gradient(circle,#fffbec 0%,#fff3d6 18%,rgba(255,222,170,.5) 42%,rgba(255,206,150,0) 72%)}
+  #dnMoon{background:radial-gradient(circle,#f7f9ff 0%,#e9eeff 22%,rgba(205,214,255,.45) 46%,rgba(205,214,255,0) 74%)}
+  #dnLabel{position:absolute;left:0;right:0;bottom:13%;text-align:center;color:#fff;
+    font-size:clamp(20px,4.5vmin,40px);font-weight:600;letter-spacing:.04em;opacity:.92;
+    text-shadow:0 2px 14px rgba(40,40,70,.5)}
   .panel{position:fixed;background:rgba(255,255,255,.74);border:1px solid #d6c9b2;
     border-radius:11px;padding:6px 11px;color:#5a564e;font-size:14px}
-  /* tiny time-of-day clock (top-left; the flowers HUD that used to sit here is gone) */
-  #clock{left:calc(14px + env(safe-area-inset-left));top:calc(12px + env(safe-area-inset-top));
-    display:flex;align-items:center;gap:5px;padding:4px 9px 4px 5px}
-  #clockFace{display:block}
-  #clockGlyph{font-size:12px;line-height:1}
-  #clockTime{color:#7a756c;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:.3px}
-  #clock.night{background:rgba(58,63,100,.78);border-color:#4a4f7e}
-  #clock.night #clockTime{color:#e7e6f2}
-  #hint{right:calc(14px + env(safe-area-inset-right));top:calc(12px + env(safe-area-inset-top));
-    color:#7a756c;font-size:12px;background:rgba(255,255,255,.6)}
+  /* Stylized Pikmin-style day/night bar (top center): ONE continuous cycle, left=day-start →
+     right=night-end. Background is a GRADUAL sky gradient (dawn → bright day → golden → dusk →
+     starry night, no hard line). Soft clouds on the day half, twinkling stars on the night half;
+     a big rayed SUN marker rides across + morphs into a moon. Tick = a subtle "night begins"
+     identifier (positioned in initDayBar). Shown on desktop + mobile. */
+  #daybar{position:fixed;left:50%;top:calc(10px + env(safe-area-inset-top));transform:translateX(-50%);
+    width:clamp(260px,58vw,440px);z-index:20;pointer-events:none}
+  #daybarTrack{position:relative;height:16px;border-radius:9px;overflow:hidden;
+    background:linear-gradient(90deg,#cfe6f4 0%,#dceefb 13%,#eaf4f6 29%,#fdeecb 45%,#ffd79a 57%,
+      #f0a890 67%,#b87fa6 76%,#6a5f96 86%,#3a3f6b 94%,#2a2d52 100%);
+    box-shadow:inset 0 1px 2px rgba(90,80,60,.16),inset 0 -2px 5px rgba(40,40,70,.2),0 2px 8px rgba(90,80,60,.2);
+    border:1px solid rgba(255,255,255,.5)}
+  #dbClouds,#dbStars{position:absolute;inset:0;pointer-events:none}
+  .dbCloud{position:absolute;border-radius:50%;
+    background:radial-gradient(circle,rgba(255,255,255,.95) 0%,rgba(255,255,255,.72) 52%,rgba(255,255,255,0) 76%)}
+  .dbStar{position:absolute;width:2px;height:2px;border-radius:50%;background:#fff;
+    box-shadow:0 0 3px 1px rgba(255,255,255,.7);animation:dbtwinkle 2.6s ease-in-out infinite}
+  @keyframes dbtwinkle{0%,100%{opacity:.35}50%{opacity:1}}
+  /* subtle "night begins" identifier — a faint dashed hairline (NOT a hard colour edge) + moon */
+  #daybarTick{position:absolute;top:-2px;bottom:-2px;width:0;transform:translateX(-50%);
+    border-left:1.5px dashed rgba(255,252,240,.5)}
+  #daybarTick::after{content:'☾';position:absolute;left:50%;top:-15px;transform:translateX(-50%);
+    font-size:10px;color:rgba(255,250,235,.85);text-shadow:0 1px 3px rgba(40,40,70,.5)}
+  #daybarMarker{position:absolute;top:50%;left:0;width:34px;height:34px;transform:translate(-50%,-50%);
+    filter:drop-shadow(0 1px 4px rgba(60,50,40,.5))}
+  #dbSun,#dbMoon{position:absolute}
+  #dbSun{inset:0;animation:dbspin 26s linear infinite}
+  #dbMoon{inset:8px;border-radius:50%;opacity:0;
+    background:radial-gradient(circle at 64% 38%,#fbfcff 0%,#e6ecff 48%,#cdd8f5 100%);
+    box-shadow:0 0 7px 2px rgba(206,216,255,.55)}
+  @keyframes dbspin{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion:reduce){.dbStar{animation:none;opacity:.85}#dbSun{animation:none}}
+  /* current time, centered just beneath the bar (NOT sparse hour ticks). Absolute so it
+     doesn't change #daybar's height — the marker's vertical centering depends on that. */
+  #daybarTime{position:absolute;top:calc(100% + 4px);left:50%;transform:translateX(-50%);
+    font-size:12px;font-weight:600;letter-spacing:.4px;font-variant-numeric:tabular-nums;
+    color:#fff7ea;background:rgba(34,36,58,.4);padding:2px 9px;border-radius:8px;
+    white-space:nowrap;text-shadow:0 1px 2px rgba(20,20,40,.5);pointer-events:none}
+  /* desktop plays on the keyboard, so the on-screen touch chrome is hidden there (mobile-only).
+     body.desktop is set by JS when the primary input is a fine pointer (not touch). */
+  body.desktop #dpad,body.desktop #acts,body.desktop #bMenu,body.desktop #bFull{display:none!important}
   #bMenu{position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(44px + env(safe-area-inset-top));
     font-size:16px;padding:4px 11px;line-height:1.2;z-index:21}
   /* fullscreen toggle: sits just left of the journal button, mobile-only (JS shows
@@ -296,7 +339,7 @@
     #title .tbtn{padding:9px 18px;font-size:15px}
   }
   /* main menu is up: hide the in-game HUD chrome for a clean title screen */
-  body.pregame #clock,body.pregame #hint,body.pregame #bMenu,body.pregame #bFull,
+  body.pregame #daybar,body.pregame #bMenu,body.pregame #bFull,
   body.pregame #dpad,body.pregame #acts,body.pregame #dlg,body.pregame #talkPrompt{display:none!important}
   /* rotate-to-landscape overlay: only shown (via body.portrait-lock, set by JS on
      touch devices held in portrait) over the whole screen; auto-hides on rotate. */
@@ -335,10 +378,8 @@
     text-decoration:underline;cursor:pointer;font:inherit;-webkit-tap-highlight-color:transparent}
   #a2hs .step span{text-align:left}
   #a2hs .hint2{margin:3px 0 0;font-size:11.5px;color:#b3aa9a;line-height:1.65;max-width:300px}
-  /* touch devices: the on-screen controls replace the keyboard, so drop the
-     desktop key hint, and keep the dialogue box clear of the d-pad while talking. */
+  /* touch devices: keep the dialogue box clear of the d-pad while talking. */
   @media (pointer:coarse){
-    #hint{display:none}
     body.talking #dpad{display:none}
   }
   /* short landscape (phones held sideways): trim the dialogue width so it never
@@ -375,16 +416,25 @@
 </div>
 <canvas id="c"></canvas>
 <div id="fade"></div>
-<div class="panel" id="clock" title="time of day">
-  <svg id="clockFace" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-    <circle cx="12" cy="12" r="10.5" fill="#fff8ec" stroke="#d9b9c6" stroke-width="1.4"/>
-    <circle cx="12" cy="3.4" r="0.9" fill="#cdb9a4"/><circle cx="12" cy="20.6" r="0.9" fill="#cdb9a4"/>
-    <circle cx="3.4" cy="12" r="0.9" fill="#cdb9a4"/><circle cx="20.6" cy="12" r="0.9" fill="#cdb9a4"/>
-    <line id="clockHr" x1="12" y1="12" x2="12" y2="7.2" stroke="#8a7f6e" stroke-width="1.6" stroke-linecap="round"/>
-    <line id="clockMin" x1="12" y1="12" x2="12" y2="4.6" stroke="#b76b7d" stroke-width="1.3" stroke-linecap="round"/>
-    <circle cx="12" cy="12" r="1.1" fill="#8a7f6e"/>
-  </svg><span id="clockGlyph">☀</span><b id="clockTime">6:24</b></div>
-<div class="panel" id="hint">arrows / WASD move · space hop · E talk · Esc journal</div>
+<div id="daynight"><div id="dnSky"></div><div id="dnSun"></div><div id="dnMoon"></div><div id="dnLabel"></div></div>
+<div id="daybar" aria-label="day/night cycle">
+  <div id="daybarTrack"><div id="dbClouds"></div><div id="dbStars"></div></div>
+  <div id="daybarTick"></div>
+  <div id="daybarMarker">
+    <svg id="dbSun" viewBox="0 0 40 40" aria-hidden="true">
+      <g stroke="#ffba3e" stroke-width="3" stroke-linecap="round">
+        <line x1="20" y1="3.5" x2="20" y2="9"/><line x1="36.5" y1="20" x2="31" y2="20"/>
+        <line x1="20" y1="36.5" x2="20" y2="31"/><line x1="3.5" y1="20" x2="9" y2="20"/>
+        <line x1="31.7" y1="8.3" x2="27.8" y2="12.2"/><line x1="31.7" y1="31.7" x2="27.8" y2="27.8"/>
+        <line x1="8.3" y1="31.7" x2="12.2" y2="27.8"/><line x1="8.3" y1="8.3" x2="12.2" y2="12.2"/>
+      </g>
+      <circle cx="20" cy="20" r="8.6" fill="#ffd95e" stroke="#ffeaa3" stroke-width="1.2"/>
+      <circle cx="16.8" cy="16.8" r="2.8" fill="#fff5cf"/>
+    </svg>
+    <div id="dbMoon"></div>
+  </div>
+  <div id="daybarTime"></div>
+</div>
 <button class="btn" id="bMenu" aria-label="journal" title="journal (Esc)">📖</button>
 <button class="btn" id="bFull" aria-label="fullscreen" title="fullscreen">
   <svg class="fs-in" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3H3v6"/><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M15 21h6v-6"/></svg>
@@ -505,7 +555,7 @@ import * as THREE from 'three';
 import { WORLD, initState, step, setBounds, setColliders } from './js/sim.js?v=4';
 import { Dialogue } from './js/dialogue.js?v=4';
 import * as Save from './js/save.js?v=4';
-import { Sound } from './js/audio.js?v=5';
+import { Sound } from './js/audio.js?v=6';
 import { Quests } from './js/quests.js?v=4';
 import { Sky } from './js/sky.js?v=8';
 import { FX } from './js/fx.js?v=4';
@@ -605,6 +655,11 @@ const fadeEl=()=>document.getElementById('fade');
 const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
 const smooth=t=>t<=0?0:t>=1?1:t*t*(3-2*t);
 const ease=(a,b,t)=>a+(b-a)*smooth(t);
+const lerpN=(a,b,t)=>a+(b-a)*t;                       // plain linear interpolation
+// blend two #rrggbb colours → 'rgb(r,g,b)' (t=0→a, 1→b). For the day/night curtain band.
+const mixHex=(a,b,t)=>{const pa=parseInt(a.slice(1),16),pb=parseInt(b.slice(1),16);
+  const r=Math.round(lerpN((pa>>16)&255,(pb>>16)&255,t)), g=Math.round(lerpN((pa>>8)&255,(pb>>8)&255,t)),
+        bl=Math.round(lerpN(pa&255,pb&255,t)); return 'rgb('+r+','+g+','+bl+')';};
 // framerate-independent exponential smoothing toward a target (tau in seconds).
 const damp=(cur,tgt,tau,dt)=>tgt+(cur-tgt)*Math.exp(-dt/Math.max(tau,1e-4));
 // smoothed display pose: tweens between animation states so rapid direction
@@ -1849,11 +1904,11 @@ async function buildScene(spec, spawn){
   for(const c of S.collectibles) c.got=collected.has(c.id);   // reflect global progress in this scene's pickups
   activeZone=null; blend=null; _warp(S.x,S.z);
   nearNpc=null; nearPortal=null; talkCooldown=0.2; portalCooldown=0.6;
-  // per-scene music: the overworld track is exclusive to the overworld; an interior gets
-  // its own (or a contextually-shared) track. Switching to a NEW track crossfades; the
-  // SAME track keeps looping seamlessly. Only once play has begun (audio unlocked) — and
-  // only auto-switch if music is already playing (so dev stays silent until asked).
-  if(started) Sound.startMusic(spec.music||'out/music/calm.ogg', Sound.musicPlaying||BUILD!=='dev');
+  // per-scene music + day/night state: applyWorldState picks the effective track (night vs
+  // day for the overworld; interiors are time-agnostic) and reflects NPC presence for the
+  // current state. Switching to a NEW track crossfades; the SAME track loops seamlessly.
+  // Only once play has begun (audio unlocked) — auto-switch only if music is already playing.
+  applyWorldState();
 }
 // Tear down the active scene: drop sceneRoot (and everything under it) + reset every
 // per-scene array. Persistent objects (ground/shen/shadow/burst/sky) are untouched.
@@ -1890,7 +1945,7 @@ async function buildNpcs(){
     const sh=new THREE.Mesh(new THREE.PlaneGeometry(nw*1.4,nw*1.4),
       new THREE.MeshBasicMaterial({map:shadowTex,transparent:true,depthWrite:false}));
     sh.rotation.x=-Math.PI/2; sh.position.set(nd.x,ny+GROUND_EPS,nd.z); sh.renderOrder=1; sceneRoot.add(sh);
-    npcs.push({data:nd,group:g,mesh:m,h:nd.h,ny,phase:Math.random()*6.28,greet:0,
+    npcs.push({data:nd,group:g,mesh:m,shadow:sh,h:nd.h,ny,phase:Math.random()*6.28,greet:0,
       poses,rep:nd.rep||null,repIdx:0,repT:0});
   }
 }
@@ -1898,7 +1953,7 @@ async function swapScene(targetId, spawn){ clearScene(); curScene=targetId; awai
 
 // ---- door transition: walk in → cover (cream fade) → swap scene → step out ----
 function startPortal(p){
-  if(trans||portalCooldown>0||!started||!p||Dialogue.active) return;
+  if(trans||dnTrans||portalCooldown>0||!started||!p||Dialogue.active||!isOpen(p)) return;   // closed shops don't open at night
   Sound.resume(); Sound.sfx('door');
   held.up=held.down=held.left=held.right=false; nearNpc=null; nearPortal=null;
   document.getElementById('talkPrompt').classList.remove('on');
@@ -1939,19 +1994,160 @@ function updateTransition(dt){
   }
 }
 
-// tiny time-of-day clock — analog hands + digital read-out; refreshed only when the
-// in-game minute changes (cheap), and tinted to night when the sun is down.
-let _clkMin=-1; const _clk={};
-function updateClock(){
-  if(!Sky.ready)return;
-  const c=Sky.clock(), key=c.h24*60+c.m; if(key===_clkMin)return; _clkMin=key;  // refresh on any minute change (incl. hour rollover)
-  if(!_clk.box){_clk.box=document.getElementById('clock');_clk.hr=document.getElementById('clockHr');
-    _clk.min=document.getElementById('clockMin');_clk.t=document.getElementById('clockTime');_clk.g=document.getElementById('clockGlyph');}
-  _clk.hr.setAttribute('transform','rotate('+c.hourDeg.toFixed(1)+' 12 12)');
-  _clk.min.setAttribute('transform','rotate('+c.minDeg.toFixed(1)+' 12 12)');
-  _clk.t.textContent=c.hhmm; _clk.g.textContent=c.isDay?'☀':'☾';
-  _clk.box.classList.toggle('night',!c.isDay);
+// ===================== Day / Night world states =====================
+// A discrete gameplay state (DAY / NIGHT) derived from the wall clock, layered on the
+// cosmetic Sky cycle. NIGHT = 21:00..07:00. ⚠️ This is NOT Sky.clock().isDay (06:00..18:00)
+// — a separate concept (shops open/closed, people on the street), so it is defined apart.
+// At a boundary a screen-wide curtain (sun-down/moon-up) conceals the world-state swap.
+// Full design: studio/DAY_NIGHT.md.
+const DN_DUR=1.9;                       // curtain length (s)
+let dnTrans=null;                       // active curtain {to,t,swapped} or null
+const DN={ state:'DAY', prev:null };    // prev=null until the first eligible frame (no curtain on boot/load)
+const dnEl=()=>document.getElementById('daynight');
+
+function isNight(){ const h=Sky.clock().h24; return h>=21 || h<7; }
+function worldState(){ return isNight()?'NIGHT':'DAY'; }
+// open schedule: "day" | "night" | [openHr,closeHr] (24h ints, wrap-aware) | absent → always open
+function schedOpen(h){
+  if(h==null) return true;
+  if(h==='day') return !isNight();
+  if(h==='night') return isNight();
+  if(Array.isArray(h)){ const hr=Sky.clock().h24, a=h[0], b=h[1];
+    return a<=b ? (hr>=a&&hr<b) : (hr>=a||hr<b); }
+  return true;
 }
+const isOpen  =p=>schedOpen(p&&p.hours);     // is this portal/door open right now?
+const isActive=n=>schedOpen(n&&n.active);    // is this NPC present right now?
+// overworld track depends on state; interiors are time-agnostic (no nightMusic field)
+function effectiveTrack(spec){ const s=spec||{}; return (isNight()&&s.nightMusic)?s.nightMusic:(s.music||'out/music/calm.ogg'); }
+
+// closing-shop helpers: a shop "closes at night" iff the TOWN portal that leads into it is
+// schedule-gated (single source of truth — the same `hours` that locks its door).
+function townPortalFor(scene){ return ((SPECS.town&&SPECS.town.portals)||[]).find(p=>p.to===scene)||null; }
+function insideClosingShop(){ if(curScene==='town')return null; const tp=townPortalFor(curScene); return (tp&&tp.hours!=null)?tp:null; }
+// if we're inside a shop that's CLOSED right now, the town spawn id that drops us at its door
+// (the interior's own exit-to-town portal spawn → in front of the storefront).
+function closingExitSpawn(){ const tp=insideClosingShop(); if(!tp||isOpen(tp))return null;
+  const exit=(SCENE.portals||[]).find(p=>p.to==='town'); return (exit&&exit.spawn)||tp.spawn||null; }
+
+// reflect the current state in the live scene WITHOUT a curtain (scene build / snap / load):
+// NPC presence + the right music track. Door gating is checked live at interaction time.
+function applyWorldState(){
+  DN.state=worldState();
+  for(const o of npcs){ const on=isActive(o.data); if(o.group)o.group.visible=on; if(o.shadow)o.shadow.visible=on; }
+  if(started) Sound.startMusic(effectiveTrack(SCENE), Sound.musicPlaying||BUILD!=='dev');
+}
+
+// detect a boundary crossing each free frame → start the curtain on a real-time cross.
+function maybeBeginDayNight(){
+  const st=worldState();
+  if(DN.prev===null){ DN.prev=DN.state=st; return; }     // first eligible frame: adopt, no curtain
+  if(st!==DN.prev) beginDayNight(st);
+}
+function beginDayNight(to){
+  DN.prev=to;                                            // mark immediately so it can't re-fire
+  dnTrans={ to, t:0, swapped:false };
+  held.up=held.down=held.left=held.right=false; nearNpc=null; nearPortal=null;
+  document.getElementById('talkPrompt').classList.remove('on');
+  Sound.resume(); Sound.sfx(to==='NIGHT'?'dusk':'dawn');
+  const lbl=document.getElementById('dnLabel'); if(lbl)lbl.textContent=(to==='NIGHT'?'Night falls':'A new day');
+  updateDayNight(0);                                     // paint frame 0
+}
+// drive the curtain: fade a sky band up, arc the sun down + moon up (or the reverse), apply
+// the state swap at full cover (hidden), fade back out. Deterministic on dt (preview rAF
+// is suspended → never trust requestAnimationFrame here).
+function updateDayNight(dt){
+  if(!dnTrans) return;
+  if(!dnTrans.holding) dnTrans.t+=dt;            // freeze the timeline while an async eject swap runs
+  const g=clamp(dnTrans.t/DN_DUR,0,1), ov=dnEl();
+  let op; if(g<0.30)op=g/0.30; else if(g>0.64)op=1-(g-0.64)/0.36; else op=1;   // cover→hold→reveal
+  if(ov)ov.style.opacity=String(clamp(op,0,1));
+  const toNight=dnTrans.to==='NIGHT', a=smooth(clamp((g-0.06)/0.88,0,1));      // 0..1 arc progress
+  const sky=document.getElementById('dnSky');
+  if(sky){ const k=toNight?a:1-a;                     // 0=day band, 1=night band
+    sky.style.background='linear-gradient(180deg,'+mixHex('#cfe0f2','#222a52',k)+' 0%,'+mixHex('#ffd9b0','#3a3f64',k)+' 100%)'; }
+  const sun=document.getElementById('dnSun'), moon=document.getElementById('dnMoon');
+  const sunTop = toNight?lerpN(12,96,a):lerpN(96,12,a);   // top in vh (12=high, 96=below horizon)
+  const moonTop= toNight?lerpN(96,12,a):lerpN(12,96,a);
+  if(sun){ sun.style.top=sunTop+'vh';  sun.style.opacity=String(clamp((70-sunTop)/40,0,1)); }
+  if(moon){ moon.style.top=moonTop+'vh'; moon.style.opacity=String(clamp((70-moonTop)/40,0,1)); }
+  // at full cover: apply the night/day state, AND if night just closed the shop we're inside,
+  // eject us to town in front of its door (async scene swap; hold the cover until it lands).
+  if(!dnTrans.swapped && g>=0.42){
+    dnTrans.swapped=true;
+    const sp = toNight ? closingExitSpawn() : null;
+    if(sp){ dnTrans.holding=true; dnTrans.closedFrom=curScene;
+      swapScene('town', spawnOf(SPECS.town, sp))
+        .then(()=>{ applyWorldState(); dnTrans.holding=false; })
+        .catch(e=>{ console.error('night eject failed',e); applyWorldState(); dnTrans.holding=false; });
+    } else applyWorldState();
+  }
+  if(g>=1 && !dnTrans.holding){
+    if(ov)ov.style.opacity='0';
+    if(dnTrans.closedFrom){                       // tell the player why they're outside now
+      const tp=townPortalFor(dnTrans.closedFrom);
+      toast((tp&&tp.closedMsg) || ('The '+((tp&&tp.label)||'shop').replace(/^the /,'')+' is closed for the night.'));
+      portalCooldown=0.6; persist();
+    }
+    dnTrans=null;
+  }
+}
+// show a "closed" message when the player tries a shut door at night (no scene change)
+function showClosed(p){
+  toast((p&&p.closedMsg) || ((p&&p.label?('The '+p.label.replace(/^the /,'')):'It')+' is closed for the night.'));
+  Sound.sfx('locked');
+}
+
+// ===== Pikmin-style day/night BAR (replaces the analog clock) =====
+// One continuous cycle, NOT a 12h face: the left end is day-start (07:00), the right end is
+// night-end (07:00 next). A sun marker rides left→right and MORPHS into a moon past the
+// transition tick (21:00, the day→night switch). The marker glides every frame; the
+// pre-close heads-up stays minute-gated. Gradient + tick positions also set in initDayBar so
+// they follow the constants below (no drift if the boundaries ever move).
+let _clkMin=-1, _warnedClose=false; const _bar={};
+const DB_DAYSTART=(7-6)/24;      // 07:00 in Sky.phase units (phase 0 = 06:00 sunrise)
+const DB_T=((21-7)/24);          // 21:00 transition as a fraction of the 24h bar (0.5833)
+function initDayBar(){
+  _bar.track=document.getElementById('daybarTrack'); _bar.tick=document.getElementById('daybarTick');
+  _bar.marker=document.getElementById('daybarMarker'); _bar.sun=document.getElementById('dbSun'); _bar.moon=document.getElementById('dbMoon');
+  _bar.time=document.getElementById('daybarTime');
+  if(_bar.tick) _bar.tick.style.left=(DB_T*100).toFixed(2)+'%';   // background gradient is gradual (CSS); tick is the only marker
+  // soft clouds on the day half — [left%, top px, w px, h px, opacity] (fixed → stable for QA)
+  const cc=document.getElementById('dbClouds');
+  if(cc && !cc.childElementCount) for(const c of [[9,3,17,8,.9],[19,8,12,6,.7],[33,2,21,9,.85],[45,7,12,6,.6]]){
+    const d=document.createElement('div'); d.className='dbCloud';
+    d.style.cssText='left:'+c[0]+'%;top:'+c[1]+'px;width:'+c[2]+'px;height:'+c[3]+'px;opacity:'+c[4]; cc.appendChild(d); }
+  // twinkling stars on the night half — [left%, top px]
+  const sc=document.getElementById('dbStars');
+  if(sc && !sc.childElementCount){ const st=[[64,4],[69,10],[74,3],[79,8],[84,2],[88,11],[92,5],[67,13],[90,14],[96,8]];
+    for(let i=0;i<st.length;i++){ const s=document.createElement('div'); s.className='dbStar';
+      s.style.cssText='left:'+st[i][0]+'%;top:'+st[i][1]+'px;animation-delay:'+(i*0.31).toFixed(2)+'s'; sc.appendChild(s); } }
+}
+function updateDayBar(){
+  if(!Sky.ready)return;
+  if(!_bar.marker){ initDayBar(); if(!_bar.marker)return; }
+  const prog=(((Sky.phase-DB_DAYSTART)%1)+1)%1;       // 0 at day-start → 1 at night-end
+  _bar.marker.style.left=(prog*100).toFixed(2)+'%';
+  // gradual sun→moon morph across dusk into night (sun again at the dawn wrap)
+  const moonAmt=clamp((prog-(DB_T-0.04))/0.09,0,1);
+  if(_bar.sun) _bar.sun.style.opacity=String(1-moonAmt);
+  if(_bar.moon) _bar.moon.style.opacity=String(moonAmt);
+  // ---- minute-gated: time read-out + pre-close heads-up ----
+  const c=Sky.clock(), key=c.h24*60+c.m; if(key===_clkMin)return; _clkMin=key;
+  if(_bar.time) _bar.time.textContent=c.hhmm+' '+c.ampm;     // current time beneath the bar
+  if(started && !_warnedClose && c.h24===20 && c.m>=45){
+    _warnedClose=true; const tp=insideClosingShop();
+    toast(tp ? ('The '+((tp.label||'shop').replace(/^the /,''))+' closes at 9 p.m. — head out soon!')
+             : 'The shops close at 9 p.m.');
+    Sound.sfx('talk');
+  }
+  if(c.h24>=7 && c.h24<20) _warnedClose=false;        // re-arm for the next evening
+}
+// QA/debug: current bar state
+window.__dayBar=()=>{ const prog=(((Sky.phase-DB_DAYSTART)%1)+1)%1;
+  return { prog:+prog.toFixed(4), T:+DB_T.toFixed(4), night:prog>=DB_T,
+    markerLeft:_bar.marker?_bar.marker.style.left:null, time:_bar.time?_bar.time.textContent:null,
+    sunOp:_bar.sun?+_bar.sun.style.opacity:null, moonOp:_bar.moon?+_bar.moon.style.opacity:null }; };
 
 function draw(dt){
   Sky.update(dt,cam);                       // advance day/night (wall clock — runs even while paused)
@@ -1998,6 +2194,7 @@ function draw(dt){
     const sc=0.6+p*2.4;burst.scale.set(sc,sc,1);burst.material.opacity=(1-p)*0.8;if(p>=1)burstT=-1;}
   // NPCs: gentle paper breathing + greet hop
   npcs.forEach(o=>{
+    if(o.group && !o.group.visible) return;      // off-duty NPC (night/day schedule) — don't animate
     const t=S.animClock+o.phase;
     // discrete pose swap (Paper-Mario style: a hard image flip, no tween). The
     // breathing/greet transforms below keep running on whichever image is shown.
@@ -2034,15 +2231,16 @@ function draw(dt){
     if(a.next<=0){ const e=a.every||[3,6]; a.next=e[0]+Math.random()*(e[1]-e[0]);
       const pg=proxGain(a.x,a.z); if(pg>0.02) Sound.sfx(a.type,pg); } } }
 
-  // proximity → nearest talkable NPC + floating prompt
+  // proximity → nearest talkable NPC + floating prompt (off-duty NPCs are not talkable)
   nearNpc=null;
-  if(!Dialogue.active && talkCooldown<=0){let best=1e9;
-    npcs.forEach(o=>{const dx=o.data.x-S.x,dz=o.data.z-S.z,d=dx*dx+dz*dz;
+  if(!Dialogue.active && talkCooldown<=0 && !dnTrans){let best=1e9;
+    npcs.forEach(o=>{ if(o.group && !o.group.visible) return;
+      const dx=o.data.x-S.x,dz=o.data.z-S.z,d=dx*dx+dz*dz;
       if(d<TALK_R*TALK_R&&d<best){best=d;nearNpc=o;}});}
   // proximity → nearest loading-zone door (only when not beside an NPC, so a door
   // and a person never fight for the same key). Skipped during a transition/cooldown.
   nearPortal=null;
-  if(!Dialogue.active && !nearNpc && portalCooldown<=0 && !trans){ let best=1e9;
+  if(!Dialogue.active && !nearNpc && portalCooldown<=0 && !trans && !dnTrans){ let best=1e9;
     for(const p of portals){ const dx=p.x-S.x,dz=p.z-S.z,d=dx*dx+dz*dz,r=(p.r||1.7);
       if(d<r*r&&d<best){best=d;nearPortal=p;} } }
   const tp=document.getElementById('talkPrompt');
@@ -2053,24 +2251,24 @@ function draw(dt){
     tp.textContent='💬 Talk to '+nearNpc.data.name;
     tp.classList.add('on');
   } else if(nearPortal){cam.updateMatrixWorld();
-    const dr=nearPortal.door||nearPortal;
+    const dr=nearPortal.door||nearPortal, lab=nearPortal.label||'the door';
     _tv.set(dr.x,(dr.h||3)*0.7,dr.z).project(cam);
     tp.style.left=((_tv.x*0.5+0.5)*innerWidth)+'px';
     tp.style.top=((-_tv.y*0.5+0.5)*innerHeight)+'px';
-    tp.textContent='🚪 Enter '+(nearPortal.label||'the door');
+    tp.textContent= isOpen(nearPortal) ? ('🚪 Enter '+lab) : ('🔒 '+lab+' — closed');
     tp.classList.add('on');
   } else tp.classList.remove('on');
   // the action button only appears when there's something to do — talk to a person,
   // advance a line, or step through a door — and relabels itself accordingly.
   const talkable=!!nearNpc||Dialogue.active||!!nearPortal, bTalk=document.getElementById('bTalk');
   bTalk.hidden=!talkable; bTalk.classList.toggle('near',talkable);
-  const bLbl=Dialogue.active?'next ▾':(nearPortal&&!nearNpc?'enter 🚪':'talk 💬');
+  const bLbl=Dialogue.active?'next ▾':(nearPortal&&!nearNpc?(isOpen(nearPortal)?'enter 🚪':'closed 🔒'):'talk 💬');
   if(bTalk.textContent!==bLbl)bTalk.textContent=bLbl;
   // on touch, hide the d-pad mid-conversation (movement is gated; choices are tapped
   // directly + Talk advances) so it never overlaps the dialogue box on small screens
   document.body.classList.toggle('talking',Dialogue.active);
 
-  updateClock();
+  updateDayBar();
   FX.render();
 }
 
@@ -2381,12 +2579,15 @@ const FIXED=1/60; let playing=true,timer=null,last=null,acc=0;
 function frame(){const now=performance.now();if(last===null)last=now;
   let e=(now-last)/1000;last=now; if(e>0.5)e=0.5;
   if(trans){ edgeTalk=edgeJump=false; updateTransition(e); draw(e); return; }   // a door transition owns the loop
+  if(dnTrans){ edgeTalk=edgeJump=false; updateDayNight(e); draw(e); return; }   // a day/night curtain owns the loop
+  if(started&&playing&&!Dialogue.active){ maybeBeginDayNight();                 // 21:00/07:00 crossing → curtain
+    if(dnTrans){ draw(e); return; } }
   if(started&&edgeTalk){edgeTalk=false;
     if(playing&&!Dialogue.active){
       if(nearNpc){const npc=nearNpc.data; nearNpc.greet=0.5; Sound.sfx('talk'); aiTarget=aiMove=null;   // drop any auto-nav push so walk-away-ends-dialogue can't self-cancel the greeting
         Dialogue.start(npc, entryNode(npc));   // entry node BEFORE noting
         if(npc.name)Quests.note({type:'talk',npc:npc.name});}
-      else if(nearPortal){ startPortal(nearPortal); }   // step through the door
+      else if(nearPortal){ if(isOpen(nearPortal)) startPortal(nearPortal); else showClosed(nearPortal); }   // door (or a "closed" beat at night)
     }}
   if(playing){acc+=e;let n=0;while(acc>=FIXED&&n<40){S=step(S,resolveInput(),FIXED);audioStep(S);acc-=FIXED;n++;}}
   draw(e);}
@@ -2444,7 +2645,7 @@ function beginGame(fresh){
   // Auto-loop the ambient track only on a real deploy (build.json present → BUILD
   // is a git sha). In a local dev worktree (no build.json → BUILD==='dev') it's
   // armed but silent; the music slider still starts it if you want it.
-  Sound.startMusic((SCENE&&SCENE.music)||'out/music/calm.ogg', BUILD!=='dev');   // the boot scene's track
+  Sound.startMusic(effectiveTrack(SCENE), BUILD!=='dev');   // the boot scene's track (night vs day for overworld)
   started=true; titleEl.classList.add('off');
   document.body.classList.remove('pregame');   // reveal the in-game HUD
   if(journalOpen())closeJournal();             // a Settings peek may still be open
@@ -2480,6 +2681,16 @@ addEventListener('resize',resize);
 // the fullscreen button on these; a narrow desktop window is left alone.
 const isTouch=()=> (matchMedia('(pointer:coarse)').matches || matchMedia('(hover:none)').matches
   || 'ontouchstart' in window);
+// desktop = a fine pointer with hover (not a touch device): the keyboard plays the game, so
+// the on-screen touch chrome (d-pad / action / journal / fullscreen) is hidden via body.desktop.
+// Reactive so devtools device-emulation / plugging in a mouse updates it live.
+function applyInputMode(){ document.body.classList.toggle('desktop', !isTouch()); }
+applyInputMode();
+try{ matchMedia('(pointer:coarse)').addEventListener('change',applyInputMode);
+     matchMedia('(hover:none)').addEventListener('change',applyInputMode); }catch(e){}
+// preview/QA: force the on-screen chrome to mobile or desktop (or 'auto' to re-detect)
+window.__forceInputMode=(mode)=>{ if(mode==='auto'){ applyInputMode(); return 'auto'; }
+  document.body.classList.toggle('desktop', mode!=='touch'); return mode; };
 const UA=navigator.userAgent||'';
 // iPadOS 13+ reports as "MacIntel" with a touch screen, so sniff that too.
 const isIPad=()=> /ipad/i.test(UA) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
@@ -2580,9 +2791,28 @@ window.game={
   // sky / day-night debug surface
   time:(p)=>p===undefined?Sky.getTime():Sky.setTime(+p),        // 0=sunrise .25=noon .5=sunset .75=midnight
   dayLength:(s)=>s===undefined?Sky.dayLength:Sky.setDayLength(+s),
+  forceTime:(h)=>window.__forceTime(h),                         // jump to wall-clock hour h, snap state (no curtain)
+  dn:()=>window.__dnState(),                                    // day/night gameplay state snapshot
 };
 window.sky=Sky;
 window.audio=Sound;
+// ---- day/night debug + QA hooks ----
+window.__worldState=()=>worldState();
+window.__dnState=()=>({ state:worldState(), night:isNight(), h24:Sky.clock().h24,
+  track:effectiveTrack(SCENE),
+  portals:portals.map(p=>({id:p.id, open:isOpen(p), hours:(p.hours??null)})),
+  npcs:npcs.map(o=>({name:o.data.name, active:isActive(o.data), visible:!!(o.group&&o.group.visible)})),
+  curtain:dnTrans?dnTrans.to:null });
+// jump the clock to wall-clock hour h (0..24), SNAP the world state (no curtain) — for QA
+window.__forceTime=(h)=>{ const p=((((+h)-6)/24)%1+1)%1; Sky.setTime(p); _clkMin=-1;
+  DN.prev=DN.state=worldState(); applyWorldState(); updateDayBar();
+  return { h24:Sky.clock().h24, state:worldState() }; };
+// force the transition curtain — for QA of the animation/swap. Syncs the clock to a
+// representative hour for the target FIRST, so after it completes worldState()===target
+// (no ping-pong re-fire; faithful to a real crossing).
+window.__triggerDayNight=(to)=>{ to=(to==='DAY')?'DAY':'NIGHT'; const t=(to==='DAY')?12:23;
+  Sky.setTime((((t-6)/24)%1+1)%1); _clkMin=-1; DN.prev=DN.state=(to==='NIGHT'?'DAY':'NIGHT');
+  beginDayNight(to); return dnTrans?dnTrans.to:null; };
 build().catch(e=>{window.__err=String(e&&e.stack||e);console.error(e);
   const ld=document.getElementById('loader'); if(ld){ld.classList.add('err');
     const t=document.getElementById('loadText'); if(t)t.textContent='couldn’t load ✗';}});

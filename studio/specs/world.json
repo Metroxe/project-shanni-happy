@@ -8,6 +8,7 @@
   },
   "ground": "c1bdb4",
   "music": "out/music/calm.ogg",
+  "nightMusic": "out/music/night.ogg",
   "fog": [46, 165],
   "bounds": { "xmin": -41, "xmax": 38, "zmin": -70, "zmax": 30 },
   "spawn": { "x": -20, "z": -41 },
@@ -18,11 +19,15 @@
   "portals": [
     { "id": "to_petshop", "x": -15.8, "z": -20, "r": 2.0, "to": "petshop", "spawn": "from_town",
       "label": "the Pet Shop",
+      "hours": "day",
+      "closedMsg": "The pet shop is closed for the night. The lights are off and the door is locked. Come back after 7 a.m.",
       "door": { "x": -14, "z": -20, "face": "-x", "w": 1.8, "h": 3.1, "y": 4.5,
                 "panel": "b88a5e", "frame": "efe7d6", "window": "cfe0e6", "bell": true,
                 "awning": "9bb6c2", "sign": "PET SHOP", "signBg": "8fa6b2" } },
     { "id": "to_gym", "x": 8.2, "z": -8.9, "r": 2.0, "to": "gym", "spawn": "from_town",
-      "label": "the Gym" }
+      "label": "the Gym",
+      "hours": "day",
+      "closedMsg": "The gym is shut for the night. A note on the glass reads: Open 7-9. See you in the morning!" }
   ],
 
   "level": { "H": 4.5, "stone": "b5b1ab", "wall": "d8d0c2" },

@@ -398,6 +398,9 @@ Debug hooks (all on `window`): `cameraQA.{static,framing,clip,path,transition,re
 `__overlaps()` (town 2D footprints), `__clips()`/`__interiorOverlaps()` (interior 3D per-mesh),
 `__floorOverruns()`, `__sceneBackgrounds()`, `__fixtures()` (per-fixture AABBs), `__textureDensity()`,
 `__skyLeak()`, `__camAbyss()`, `__shadowInfo()` (`{pcss,soft,texelsPerUnit,level,gfx,…}`),
+`__worldState()`/`__dnState()` (day-night state + shop gating + track), `__dayBar()` (Pikmin bar state),
+`__forceTime(h)` (snap clock to wall-hour h, no curtain) / `__triggerDayNight('DAY'|'NIGHT')` (force the curtain),
+`__forceInputMode('desktop'|'touch'|'auto')` (force HUD chrome mode),
 `__gfx()`/`__gfx(kind,val)` (read/set graphics quality: `shadows`/`fx`/`res`), `__gh(x,z)`,
 `__probe(x,z)`, `__colliders(x,z,r)`,
 `__freecam/__look` (free-cam for QA shots — they STOP the auto loop; call `__startAuto()` after).
@@ -624,6 +627,33 @@ Deterministic gate: `node studio/qa_audit.mjs` (auto-runs `studio/qa/checks/*`).
   10% lens**; SSAO parked — billboard halo); (2) the **`papercraft-texture`** skill that fixes the
   blurry/stretched surfaces (256px fixed-`repeat` → crisp seamless tiles + world-space UVs). The brief
   says the real win is in the **bones** (palette, textures, toon, UI skin, character rim), not the lens.
+- DONE: **Day/Night world states** — full brief + AS-BUILT notes in **`studio/DAY_NIGHT.md`**
+  (READ IT before any day/night work). Gameplay state (DAY/NIGHT, **night = 21:00–07:00**) layered
+  on the EXISTING cosmetic cycle in `studio/js/sky.js` (`Sky.clock()` is the time source; ⚠️ its
+  `isDay` is 06:00–18:00 and is NOT the gameplay night — a separate `isNight()` is used). At each
+  21:00/07:00 crossing a screen-wide `#daynight` curtain (sun-down / moon-up + "Night falls" label,
+  `DN_DUR=1.9s`) **conceals** the swap, applied at full cover: day-only doors → **closed**
+  (`🔒 … — closed` prompt + `closed 🔒` button + `showClosed` toast + `locked` sfx, NO scene
+  change), NPCs gated by `isActive` (mechanism wired; town has no street NPCs yet so it's latent),
+  and the overworld music → MusicGen night loop `out/music/night.ogg`. **Closing a shop ON the
+  player:** a ~20:45 pre-close heads-up toast (tailored if you're inside one), and if you're INSIDE
+  a day-only shop when 21:00 hits the curtain **ejects you to town in front of its door** (the
+  curtain holds at full cover during the async swap) + shows its `closedMsg` — never stranded
+  inside. Data-driven gating:
+  `portal.hours`/`npc.active` = `"day"|"night"|[open,close]`; `spec.nightMusic`. **Chosen variant:**
+  continuous sky + concealing overlay (NOT a frozen sky — that would break the clock-HUD coupling &
+  degrade the arc; the overlay delivers "the animation is the transition"). New SFX `dusk`/`dawn`/
+  `locked`. No `SAVE_VERSION` bump (time ephemeral, additive scene data). Guarded by
+  **Clock is now a Pikmin-style day/night BAR** (`#daybar`, top-center; replaces the analog clock):
+  one continuous cycle (NOT 12h) — left = day-start 07:00, right = night-end 07:00; a sun marker
+  rides across + **morphs to a moon** past a transition **tick** at 21:00 (`updateDayBar`/`initDayBar`,
+  `DB_DAYSTART`/`DB_T`; hook `__dayBar()`). **HUD chrome is mobile-only:** the top-right key-hint
+  (`#hint`) is removed entirely, and the d-pad / action / journal / fullscreen show only on touch
+  (`body.desktop` via `applyInputMode()`/`isTouch()`; force with `__forceInputMode('desktop'|'touch'|'auto')`).
+  Guarded by
+  `checks/day-night.mjs`, `checks/hud-visibility.mjs` + scenarios `qa/scenarios/day-night.mjs`, `day-night-eject.mjs` (+ `-shots.mjs`, `hud-daybar-shots.mjs`). Audit 16/16,
+  smoke green, scenario green, curtain + night look verified in screenshots. Follow-ups: time
+  persistence, dusk/dawn sub-states, real night-only actors. See [[shanni-day-night-states]].
 - NEXT (ideas): more NPCs/quests (drop-in: add art + a `world.json` npc/quest); conversation state
   (remember choices) — persist into the reserved `npcs:{}` slot already in the save blob; more zones/goals;
   per-mood music loops (6 palettes in `specs/all.json`); idle polish. NOTE: photos in the macOS **Photos library** are unreadable from bash
