@@ -854,7 +854,7 @@ function makeFacade(bd,base,top,dir){
   const rows = h>=9 ? [{y:h*0.62,skipMid:false,big:false},{y:big?h*0.30:h*0.34,skipMid:drawDoor,big}] : [{y:h*0.54,skipMid:false,big}];
   for(const row of rows){ for(let i=0;i<bays;i++){ if(row.skipMid&&i===midBay)continue;
     const cx=-faceLen/2+cellW*(i+0.5);
-    const wH=row.big?Math.min(h*0.30,3.0):winH, fw=row.big?Math.min(cellW*0.84,3.4):Math.min(cellW*0.6,2.2);
+    const wH=row.big?Math.min(h*0.34,3.5):winH, fw=row.big?Math.min(cellW*0.86,4.9):Math.min(cellW*0.6,2.2);
     const frame=M(new THREE.BoxGeometry(fw,wH,0.06),trim,false,false); frame.position.set(cx,row.y,0.09); g.add(frame);
     const pane=M(new THREE.BoxGeometry(fw*(row.big?0.88:0.78),wH*(row.big?0.88:0.8),0.06),win,false,false); pane.position.set(cx,row.y,0.13); g.add(pane); } }
   // door on the middle bay, GROUNDED (bottom tucked just below base, not floating) + a knob.
