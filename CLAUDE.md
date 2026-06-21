@@ -149,6 +149,162 @@ OGG (`out/music/calm.ogg`), because real-time music synthesis isn't practical. I
   `bubble` (not the fountain `setWaterLevel`) and that music is per-scene (calm→shop→calm across
   the door). Add an assert there when you add a contextual sound.
 
+## Cutscenes — scripted Paper-Mario set-pieces (the world plays itself)
+
+A cutscene is a **beat timeline** played by `studio/js/cutscene.js` (`Cutscene`) — a generic,
+UI/scene-agnostic sequencer (same ethos as `dialogue.js`/`quests.js`). game.html supplies the
+staging; the engine just keeps time. During a cutscene the player **cannot move** — input is
+locked, the camera is a **director camera**, and the world is "played out" until each little
+dialogue box is dismissed with **Next**, then the next set-piece runs. Exactly like Paper Mario.
+
+- **A beat** is `{ dur?, ease?, hold?, until?, start?, update?(u,dt), end? }`. Pick a completion
+  rule: `dur` (timed, auto-advance; `update` gets eased `u` 0..1), `hold` (wait for Next), `until`
+  (wait for a predicate — used for dialogue: `until:()=>!Dialogue.active`), or none (instant). `dur`
+  + `until` together = a timed beat with an EARLY-OUT (the knockover runs with a `dur` cap but ends
+  the instant the last hamster clears the door — `until:()=>allHamstersGone` — so there is NEVER a
+  dead hold on the empty door). Author concurrency by driving several things in one beat's `update`
+  (camera dollies WHILE Shen walks WHILE the hamsters scatter) — there is no separate group primitive.
+- **Director camera:** beats write `Cutscene.cam = lookCam({tx,ty,tz,yaw,pitch,dist,fov})` (the same
+  target+orbit+dolly convention as `window.__look`); `applyDirectorCam()` points the real camera at
+  it each frame. Tween shots by lerping the look PARAMS (`lerpLook`) so it arcs+dollies, not a
+  straight slide. On end, `CAMRIG` is seeded from the last shot so the normal zone camera eases back
+  in (no pop). Cinematic framing is allowed here — the gameplay framing-QA floor (`CAM_MIN_FRAC`/
+  `CAM_MAX_PITCH`) only governs the live zone cameras, not a cutscene.
+- **Emotion = MOTION, never a tween between drawings** (the locked art rule still holds). A held
+  `mood` (`moodOffset`: fluster/fret/perk/idle) + a decaying one-shot `impulse` (`applyImpulse`:
+  stumble/startle/nod) layer additive squash/lean/hop offsets onto Shen (`csShen`) and an NPC
+  (`o.emote`), applied in draw()/the npc loop ON TOP of the normal pose. (If a character ever needs a
+  genuinely different drawing for a beat, that is a `poses` hard-swap via the asset pipeline — but
+  prefer motion.)
+- **Pacing + LOOPING (player-paced, easy to follow) — a standing rule for every cutscene.** Nothing
+  rushes and nothing freezes. A bustling world element does NOT play once and then sit on an empty
+  frame waiting; it **LOOPS continuously while a dialogue line holds**, and only **resolves when the
+  player advances the CUE line**. The pet-shop hamsters model this: they spill out, then *scurry
+  around the whole shop on autonomous wandering loops* (mode `perch`→`loose`→`flee`→`gone`, driven
+  every frame in `updateCutsceneHamsters` — the beats only TRIGGER transitions, never freeze) the
+  entire time Shen + Adrian react, and only **bolt for the door when the player advances past
+  "there they go!"** (`fleeHamsters()`). Give the reader a beat to take it in (a held wide of the
+  chaos), keep motion legible (a tight readable PACK or clear individual scurrying, not a fast blur),
+  and end an action shot the moment the action leaves frame (`dur` + `until` early-out). When you
+  build a cutscene, make these calls deliberately: what loops, what's the cue, how slow is "easy to
+  follow."
+- **No IMPOSSIBLE MOVEMENT — actors never pass THROUGH solid props.** Shen walks UP TO the table and
+  BUMPS it (stops at contact), she does not clip through it. Author the approach so the path doesn't
+  cross a standing prop's footprint (the pet-shop walk goes forward into the open floor first, THEN
+  turns to the table). Guarded deterministically: `__csReport().clip` counts frames where Shen's
+  footprint centre is inside a still-standing prop (`csTableBox`), asserted `0` — review the whole
+  animation, not just keyframes, for any move that should be impossible.
+- **Cutscene props: SWEEP what's transient, KEEP what's a consequence.** Every object a cutscene
+  spawns is tagged `userData.csProp`; `endCutscene` sweeps all *remaining* csProp objects (generic, so
+  a future cutscene that forgets can't leave junk in the world) and `window.__csProps().lingering`
+  must be empty outside a cutscene. But a prop that should PERSIST as a consequence (the knocked-over
+  table — Shen tipped it, it stays) is **converted to a permanent fixture** at the end (un-tag csProp,
+  set `userData.fx`) AND **rebuilt on every later entry** by the scene builder gated on the cutscene
+  being seen (petshop: `cutsceneTable` spec field → `buildInterior` builds the pre-tipped remnant when
+  `seenCutscenes` has it). Make it non-colliding decor so it never affects reachability/camera QA.
+  The scenario asserts the remnant is present after AND on re-entry, and `__clips()` stays empty.
+- **Sound:** a cutscene ships its SFX in the same change (every interaction is audible). Its focal,
+  camera-driven SFX (`knock`, `scurry`, hamster `squeak`) play **full** — they are the thing the
+  camera is showing, like a Paper-Mario hit, NOT an ambient world loop, so the "world sounds are
+  spatial" rolloff does NOT apply. Music stays per-scene (the shop track plays under the pet-shop
+  cutscene). New speakers get a `VOICES` timbre (added Adrian).
+- **Triggering + once-only:** a scene names its first-visit cutscene with a top-level `"cutscene"`
+  id in its spec. `maybeArmCutscene()` (called on a REAL entry — a finished door transition + boot
+  Continue, NOT the debug `game.enter` teleport) arms it when `!seenCutscenes.has(id)`; the frame
+  loop starts it. Seen ids persist in the save (`cutscenes` array — **additive, no `SAVE_VERSION`
+  bump**); a New Game clears them so it replays. A **quest-giving** cutscene also skips+marks-seen if
+  its quest is already underway (an old save that got the quest the previous way must NOT replay the
+  intro mid-quest).
+- **The pet-shop intro (`cs_petshop_intro`):** first time you enter the shop — Adrian greets, Shen
+  ambles to a display table and **walks right into it**, knocking it over; **5 hamsters spill out and
+  scurry around the whole shop** while she + Adrian react (Shen mortified, Adrian flustered), and on
+  the player's cue ("there they go!") **they bolt out the door**; then the **Hamster Roundup quest
+  starts here** (not from dialogue anymore — Adrian's old offer tree is a debug-only fallback). The
+  table + cutscene hamsters are PROCEDURAL (built at cutscene start); the **hamsters are swept** at the
+  end but the **knocked-over table STAYS** (converted to a persistent fixture + rebuilt on re-entry —
+  she tipped it, it remains). **Town hamsters are GATED** on the quest being active
+  (`activeCollectibles` filters them) — they don't exist anywhere until they "escape" in the
+  cutscene; `initState` + `buildCollectibles` use the same gated list so `S.collectibles` ↔
+  `pickups[]` stay index-aligned.
+- **Camera shots MUST track the actor, never a hardcoded point.** A character shot whose target is
+  a fixed coordinate frames empty floor the moment the actor isn't exactly there ("the camera zoomed
+  in on someone who isn't there"). Author character shots as RUNTIME functions of the live position
+  (`shenCU`/`adrianCU`/`twoShot` return `()=>({tx:S.x,…})`); the walk FOLLOWS Shen. Reserve fixed
+  look-specs for genuinely static spots (establishing / the table / the door). Tag every camera/say
+  beat with a `subject` ('shen'|'adrian'|'two'|'table'|'hamsters'|'wide') — the framing trace asserts
+  that subject is actually on-screen.
+- **No dead holds — and whip the transitions.** End an action shot the moment its action leaves
+  frame (an `until` early-out cuts the instant the last hamster clears the door). The recurring
+  offender is the *transition pan* from a now-empty action spot (the door) to the next subject: it
+  lingers on empty floor. FIX: give that `camTo` an EASE-OUT (`u=>1-(1-u)**3`) so the camera whips off
+  the empty space fast. (A frozen still of a moving camera mid-pan reads "empty" but plays fine — the
+  real-time sweep over-flags these; see the two-tier QA note.)
+- **Framing TWO actors in a small room (the head-stacking trap — generalize this).** With one actor
+  behind the other (e.g. a clerk at the back counter behind the customer), a solo close-up keeps
+  catching the bystander's head over the subject. **Lateral x-separation does NOT fix it** — a FAR
+  bystander projects toward frame-CENTRE regardless of their x, so moving them sideways just slides
+  them behind the subject's head. What excludes them is the camera ANGLE, three ways (pick per scene):
+  (1) **shoot the subject from the side the bystander ISN'T** — stage the subject to one side, then yaw
+  the camera so the through-subject sightline points AWAY from the bystander (subject LEFT → shoot from
+  their RIGHT, +yaw, so the background is the far-left wall); (2) a **high-angle** close-up (`pitch`
+  ~25–34) frames the subject against the FLOOR and pushes the back wall + bystander up out of frame
+  (a high angle also suits a sheepish beat); (3) **opposite-side staging** so the two are a clean
+  shot-reverse-shot. Two far-apart actors never make a good two-shot (both tiny, empty middle) — prefer
+  single-subject shots. Guarded by `__csReport().bystanderInCU` (the bystander's HEAD clearly inside a
+  CU = 0; gate it on a real close-up, not a wide two-shot).
+- **Sprite scale is a MULTIPLIER (~1.0), never the sprite's own width/height** — setting a billboard's
+  `scale` to its W×H shrinks it to ~0.4× ("the hamster shrunk"). Squash/stretch is `scale.set(~1, ~1)`.
+- **Per-frame framing TRACE + deterministic FILMSTRIP = the permanent "go scene by scene" guard.**
+  Every cutscene frame records the beat's `subject`, whether it's framed (Shen/Adrian/both/hamsters
+  on-screen), Shen's on-screen SIZE, the camera eye + frame-to-frame JUMP, and the min hamster
+  run-scale. `window.__csReport()` reduces it to violations the scenario asserts on. **Sample the
+  TWEENS, not just keyframes:** `window.__csStep(1/30)` is a deterministic frame-stepper (stop the
+  auto loop, then step + screenshot) that auto-advances dialogue — the scenario's "filmstrip" pass
+  drives the WHOLE cutscene at a fixed dt so mid-animation weirdness is caught (a camera POP = a big
+  per-frame `maxJump`; the camera swinging through a wall = `camBad`; an empty/clipped subject; a
+  shrunk hamster; an escape that never reads). Framing is judged only while a dialogue line is
+  showing (`dlg`), so camera TRANSITIONS aren't false-flagged; `maxJump`/`camBad` are asserted only
+  in the deterministic stepped pass (fixed dt → a smooth tween is small per-frame).
+- **Adding a cutscene:** write a `buildXxx()` in game.html returning a beat array (close over the
+  scene objects), wire it in `startPendingCutscene`, name it in the scene spec's `cutscene` field,
+  and ship its SFX. **QA (do ALL):** the deterministic check (`studio/qa/checks/cutscene.mjs`, via
+  `window.__cutscene()` — engine wired + gating) AND the real-path scenario
+  (`studio/qa/scenarios/cutscene.mjs`) which runs TWO passes — a **stepped FILMSTRIP** (`__csStep`,
+  fixed dt, dense tween screenshots + asserts `maxJump`/`camBad`/framing/escape/scale) and a
+  **real-time** path (door entry; asserts input-lock, quest start, seen-flag, table teardown, SFX
+  fired, gating flips, no replay) — THEN the multi-agent visual sweep over the captured frames
+  (adversarially verified) which catches edge-clips / dead holds / awkward head-stacking / artifacts
+  the trace can't. **When iterating on look + feel, also self-`/grill-me`** the cutscene (pacing,
+  emotion readability, camera language, charm) and act on it. Debug surface: `game.cutscene()` /
+  `game.csNext()` / `game.csSkip()` / `game.playCutscene()`, probes `window.__cutscene()` /
+  `window.__csReport()` / `window.__csTrace()` / `window.__csStep()` / `window.__csHam()` / `window.__csProps()`.
+- **The two-tier QA — what each catches, which to trust.** (1) The **deterministic stepped pass**
+  (`__csStep` + `__csReport`) samples EVERY tween frame at a fixed dt and is AUTHORITATIVE for held
+  framing + physics (subject framed, no pop / wall-clip / prop-clip, no shrink, no head-stack); a green
+  `__csReport` is the floor. (2) The **multi-agent visual sweep** over real-time stills catches
+  composition the trace can't (dead holds, edge-crowding, awkward overlap, stray artifacts) — but it
+  OVER-flags transient *transition* stills (a frozen mid-pan looks "empty"/"wrong" yet plays fine), so
+  weigh severity: a defect on a HELD beat is real; one on a 1–2-frame camera move is the whip-it-faster
+  fix (ease-out), not a redesign. Run the sweep ITERATIVELY — it CONVERGES (this set-piece went 8→3→1
+  confirmed across runs); each pass, fix the worst + re-shoot. Trust the deterministic guard over the
+  sweep's synthesizer when they disagree (same as env-QA `__camAbyss` vs the fog false-read).
+- **New-cutscene CHECKLIST (the lessons, generalized — do every item, promote any NEW problem to a
+  `__csReport` metric so it's caught forever):**
+  - *Build:* beats with ONE completion rule (`dur`/`hold`/`until`/instant; `dur`+`until` = early-out);
+    camera tracks ACTORS via runtime fns, never hardcoded coords; emotion = MOTION (mood + impulse) and
+    make it READ; pacing is player-paced — world elements LOOP during dialogue + resolve on the player's
+    CUE (autonomous, beats only trigger); ship SFX + per-scene music; once-only on a REAL entry + save
+    the seen-flag + gate spawned collectibles; SWEEP transient props, CONVERT consequence props to
+    fixtures + rebuild on re-entry.
+  - *Per-frame invariants (`__csReport`, all asserted by the scenario, all must be clean):* `shenOff`/
+    `adrianOff` 0 (speaker framed while a line shows) · `shenTiny`/`shenHuge` 0 · `bystanderInCU` 0
+    (no head-stack — ANGLE not lateral) · `hamMax` ≥ peak (action reads) · `hamMinScale` ≳0.6 (no
+    shrink) · `maxJump` small (no camera POP) · `camBad` 0 (camera never through a wall) · `clip` 0
+    (no actor THROUGH a solid prop — bump, don't pass through) · `__csProps().lingering` empty.
+  - *Run before deploy:* `qa_audit.mjs` → `scenarios/cutscene.mjs` (stepped filmstrip + real-time) →
+    the multi-agent sweep (iterate to convergence) → self-`/grill-me` for feel → eyeball the dense
+    filmstrip + any remnant.
+
 ## How to run
 
 ```sh
@@ -259,6 +415,15 @@ before anything is ever called done.** This is the standing reflex; treat every 
   looking. Run this for **any** visual/world change (not deploy-only) and **always** before
   `/deploy` + `/done`. This is the "really big sub-agent QA run" — scale it up freely;
   thoroughness over brevity. Full contract + how to add checks/scenarios: `studio/qa/README.md`.
+  - **For ANYTHING ANIMATED, sample the in-between (TWEEN) frames, not just start/end states.**
+    Most animation bugs (a camera pop, an actor clipping through a prop, a sprite shrinking, a dead
+    hold on empty space) live BETWEEN keyframes and are invisible if you only check the static
+    before/after. The strongest guard is a **deterministic frame-stepper that drives the whole
+    animation at a fixed dt and asserts per-frame invariants** — see the cutscene `window.__csStep` +
+    `window.__csReport` (it turned every "looks weird mid-motion" report into a permanent metric).
+    Build the same shape for any future animated system. The multi-agent sweep then judges the dense
+    frames — but it OVER-flags transient transition stills, so trust the deterministic per-frame
+    guard over a single frozen still (see the Cutscenes "two-tier QA" note).
 
 **The hard gate (enforced, not just documented):** a committed **Stop hook**
 (`.claude/settings.json` → `.claude/hooks/qa-gate.mjs`) refuses to let a turn end while
@@ -360,6 +525,8 @@ audit alone for these.
 | Windows/door sunk into ground | building `base`=`groundHeight`; box `bottom=base` (NO downward extension) |
 | Dark squares / mottled patch / flicker on a park-edge wall | box extended below base INTO the retaining wall (vertical z-fight) → `bottom=base` |
 | Two buildings/stairs flicker where they meet | overlapping footprints → `window.__overlaps()` must be `[]`; separate them |
+| Player clips THROUGH the steps going down stairs | `groundHeight` returned a SMOOTH RAMP through STEPPED stair boxes → her feet sat up to ~2 risers BELOW the tread tops in the lower half, so the step behind clipped her legs → snap grounding to the SAME tread tops the builder draws (`H - floor((z-zTop)/dz)*dy`); ease the RENDER height down (clamped `>=` true surface, never below) so descents glide without per-step snap. Guarded by `checks/stair-grounding.mjs` (`window.__stairGrounding()`=`[]`). General class: a billboard's grounding height must match the VISIBLE surface beneath her, never below it |
+| Subtle "fold" / weird shadow slivers on the LEFT & RIGHT of a billboard (Shen) on stairs | the flat contact-shadow oval is ONE horizontal quad at foot height; a HARD-edged disc (solid core + thin rim) gets sliced by the step edges (occluded behind the higher tread, floating over the lower one) so it bands across steps + its wide L/R extremities poke out beside her hips → make the oval a soft radial gradient whose alpha reaches **0 at the rim** (keep a defined core so it still reads grounded); a rim that hits 0 can't show a hard clip on stepped/uneven ground. General class: a billboard contact shadow must dissolve at its rim, never be a hard-edged disc. Guarded by `checks/contact-shadow-soft.mjs` (`window.__contactShadowProfile()` rim≈0) |
 | Road/plaza/sidewalk shimmer seam | coplanar surfaces same height → distinct per-kind `y`-eps (+ `lift`) |
 | Stray white/cream outline lines | `EdgesGeometry` on the wrong thing → `edge=false` on buildings + rounded/small props (keep only as deliberate die-cut) |
 | "Invisible circle" blocks a path | coarse box collider (`r=0.5·min(w,d)` → r=2 bulge) → tight perimeter ring (~0.55); confirm with `cameraQA.walk` |
@@ -384,17 +551,77 @@ audit alone for these.
 | **Room walls don't line up at the corners** | side walls and back wall built at different heights (e.g. `wallH` 4.5 vs `backH` 5.4) → a step at the corner. Give a room ONE wall height. |
 | **Door/shelf/sign has the WALL drawn over it; one prop clips THROUGH another** | a fixture recessed INTO the wall (placed at wall centre `z`) → the wall front occludes it; or a shelf board spans a tank. Mount fixtures PROUD of the wall front face (`zBack + th/2`); a tank SITS ON a shelf board (y-touch). `window.__clips()` / `window.__interiorOverlaps()` (3D per-mesh audit over `userData.fx`-tagged fixtures) must be `[]` — guarded by `checks/interior-overlap.mjs`. |
 | **A long/thin prop (shelf) walls off the room** | a single circular collider `r=½·max(w,d)` (≈4u for a width-8 shelf) bulges a huge invisible wall → blocked the counter. Use `pushBoxColliders` matching the footprint (swap w/d when rotated). Tell: `cameraQA.static`/`framing` cell count drops. |
+| **Muddy / blurry CAST shadows on the ground** | the sun's shadow map spread thin over a huge frustum (`±60` ÷ `2048` ≈ 17 texels/u) → smudge edges. Density = `mapSize ÷ (2·frustumHalf)`. Fit a FIXED frustum to the scene's reachable bounds (`Sky.setShadowBounds` from `spec.bounds`) + a bigger map: `4096`÷`±53` ≈ 38 t/u for town. Guarded by `checks/shadow-quality.mjs` (`window.__shadowInfo()` → `texelsPerUnit ≥ 28` + `soft` at the top tier). |
+| **CAST shadows crawl / flicker as the player moves** | a shadow frustum that FOLLOWS the player swims its texels every frame (world-x/z snapping is wrong for an angled light → the edge crawls, worst under small props like bushes). FIX: a FIXED, world-locked frustum (`Sky.setShadowBounds(cx,cz,half)` per scene) — it physically can't shimmer. Never follow the player with the shadow camera. |
+| **DOUBLE shadow under one object (a pool below + a cast shadow to the side)** | a 3D modelled prop both casts a REAL shadow (`M()` sets `castShadow=true`) AND gets a `contactShadow()` oval → two shadows. RULE: 3D props (tree/bench/bush/fountain…) cast the real shadow ONLY (no oval in `buildProps`); flat BILLBOARDS (Shen/NPCs/pickups, `castShadow=false`) get the oval ONLY. Each thing = exactly one shadow of the right kind. |
+| **Cast shadow fuzzy / jagged / hard (not an accurate real-life bleed)** | the built-in shadow filters are all wrong for this: `PCFSoftShadowMap` is a fixed-width DITHERED blur (reads fuzzy/jagged), `PCFShadowMap` is hard, `VSMShadowMap` LIGHT-BLEEDS small props to nothing. FIX: **PCSS** (`js/pcss.js` patches `ShaderChunk.shadowmap_pars_fragment`) = contact-hardening soft shadows — crisp where an object meets the ground, bleeding softer with distance (sun read as an AREA light). `installPCSS()` runs BEFORE any material compiles; `renderer.shadowMap.type=PCFShadowMap` (PCSS short-circuits `getShadow`). Guarded by `checks/shadow-quality.mjs` (`__shadowInfo().pcss`). |
+| **PCSS shadows wash out / small props lose their shadow** | the PCSS **filter radius is in shadow-UV, not texels** — `0.024` UV ≈ 98 texels at 4096 → samples over a huge area → averages the shadow to nothing. Keep `PCSS_MAX` a FEW texels (`~0.006` UV ≈ 24 tx); `PCSS_SOFT` ~0.13, `MIN` ~0.0006. Also tighten the shadow camera near/far to the light's real distance (`setShadowBounds`: outdoor ~40/178, interior ~2/48) so packed-depth precision resolves the blocker gap. |
+| **Small-prop shadows vanish entirely** | (a) `VSMShadowMap` light-bleed (don't use VSM); (b) `shadow.normalBias` too high (`0.4` peter-pans the shadow off small casters) → keep `~0.02`; (c) PCSS filter radius too big (row above). The big building still casts (large occluder) while trees/benches lose theirs = the tell. |
+| **Soft contact-shadow oval too sharp/dark (vs the soft cast shadows)** | the die-cut oval's rim feather too tight → widen the canvas blur so it matches the soft world shadows: `ctx.filter='blur(s*0.085)'` over a filled ellipse (`r≈0.355·s`, alpha ~0.46) on a 256px canvas + mipmaps. Visual-sweep item (subjective edge). |
 | Edits not showing on reload | browser cached `specs/world.json` → fetched `cache:'no-store'`; hard-reload. **The preview hard-caches ES modules and WON'T re-fetch even on reload** — a fix can be in the served file yet the page runs old code (symptom: `'newThing' in window.audio` is false). FIX: `studio/js/*.js` are imported in `game.html` with a `?v=N` cache-bust — **bump N when you edit any module**. Also verify in a FRESH headless context (`node studio/qa_audit.mjs` / `studio/qa/scenarios/*`). |
+| **Cutscene camera zooms in on someone who ISN'T there** | a character shot targeted a HARDCODED coord that didn't match where the actor actually ends up → frames empty floor. FIX: author character shots as RUNTIME fns of the live position (`shenCU`/`adrianCU`/`twoShot` → `()=>({tx:S.x,…})`); the walk FOLLOWS Shen. Guarded by the framing trace (`__csReport().shenOff/adrianOff` while a line is showing). |
+| **Cutscene character clipped/merged at a frame edge, or a dead hold on empty space** | an action shot was too wide (caught a bystander half-cropped) or held after the action left frame (empty door after the hamsters exit). FIX: frame the action TIGHT with bystanders fully OUT, and END the shot as the action exits (cut straight to the next beat — no empty hold). Caught by the dense scene-by-scene screenshot + multi-agent sweep. |
+| **Cutscene close-up stacks the OTHER character's head behind the subject** | the second actor sat on the close-up's sightline. FIX: angle the CU well to the side (strong `yaw`) + tighten, and recoil/stage the subject off the other's axis, so the bystander sits off-frame or clearly separated. Caught by the sweep (`awkward-overlap`). |
+| **Cutscene sprite (hamster) SHRINKS the moment it animates** | `mesh.scale` was set to the sprite's own width/height (~0.4) as if a multiplier, but the geometry is already W×H → ~0.4×. FIX: `scale` is a MULTIPLIER ~1.0 (squash/stretch only). Guarded by `__csReport().hamMinScale` (must stay ≳0.6). |
+| **Actor walks THROUGH a solid cutscene prop (impossible move)** | the walk target was INSIDE the prop footprint (Shen ended up inside the table). FIX: stop at CONTACT (target outside the footprint); route the approach path around standing props (go into the open floor, THEN turn to the prop). Guarded by `__csReport().clip` (Shen's centre inside a still-standing `csTableBox` = 0). Review the whole tween, not keyframes. |
+| **A cutscene consequence (knocked-over table) VANISHES at the end** | `endCutscene` swept ALL csProp props including one that should persist. FIX: convert the consequence prop to a permanent fixture (un-tag csProp, set `userData.fx`) + rebuild it on later entries via the scene builder gated on `seenCutscenes` (spec `cutsceneTable` → `buildInterior`). Scenario asserts the remnant present after + on re-entry. |
 
 Debug hooks (all on `window`): `cameraQA.{static,framing,clip,path,transition,reach,walk,warp}`,
 `__overlaps()` (town 2D footprints), `__clips()`/`__interiorOverlaps()` (interior 3D per-mesh),
 `__floorOverruns()`, `__sceneBackgrounds()`, `__fixtures()` (per-fixture AABBs), `__textureDensity()`,
-`__skyLeak()`, `__camAbyss()`, `__gh(x,z)`, `__probe(x,z)`, `__colliders(x,z,r)`,
+`__skyLeak()`, `__camAbyss()`, `__shadowInfo()` (`{pcss,soft,texelsPerUnit,level,gfx,…}`),
+`__worldState()`/`__dnState()` (day-night state + shop gating + track), `__dayBar()` (Pikmin bar state),
+`__forceTime(h)` (snap clock to wall-hour h, no curtain) / `__triggerDayNight('DAY'|'NIGHT')` (force the curtain),
+`__forceInputMode('desktop'|'touch'|'auto')` (force HUD chrome mode),
+`__gfx()`/`__gfx(kind,val)` (read/set graphics quality: `shadows`/`fx`/`res`),
+`__cutscene()`/`__csReport()`/`__csTrace()`/`__csStep(dt)`/`__csHam()` (cutscene engine + framing trace + tween stepper),
+`__gh(x,z)`, `__probe(x,z)`, `__colliders(x,z,r)`,
 `__freecam/__look` (free-cam for QA shots — they STOP the auto loop; call `__startAuto()` after).
 Deterministic gate: `node studio/qa_audit.mjs` (auto-runs `studio/qa/checks/*`). See `studio/qa/README.md`.
 
 ## Status / next
 
+- DONE: **Cutscene system + pet-shop first-visit set-piece** (`studio/js/cutscene.js` + game.html).
+  A generic Paper-Mario beat-timeline engine: input-locked, a keyframed **director camera** that
+  zooms/dollies onto the action + speakers, motion-based emotion (mood + impulse overlays, no
+  drawing tweens), little dialogue boxes that hold for **Next**. First cutscene `cs_petshop_intro`:
+  enter the shop → Adrian greets → Shen knocks over a table → **5 hamsters spill out + bolt for the
+  door** → both react → the **Hamster Roundup quest starts here** (the cutscene is the giver now).
+  Once-only (persisted `cutscenes` save field, additive — no `SAVE_VERSION` bump; skips if the quest
+  already started, so old saves don't replay it mid-quest). **Town hamsters are gated** on the quest
+  (none exist until they escape). New SFX `knock`/`scurry` + an Adrian voice. Full QA green:
+  deterministic `checks/cutscene.mjs` (engine wired + gating), real-path `scenarios/cutscene.mjs`
+  (input-lock, quest start, seen-flag, table teardown, SFX, gating-flip, no replay), all existing
+  scenarios + audit + smoke + shot-battery geometry still clean; ~15 cutscene frames eyeballed
+  (establishing, knock, 5-hamster scatter, dialogue, clean hand-back). See the **Cutscenes** section.
+- DONE: **Shadow rework + graphics menu** — fixed three shadow problems Christopher flagged
+  (first "always very blurry edges"; then on a follow-up: flicker, double shadows, too sharp).
+  Final approach:
+  - **Soft + ACCURATE (PCSS):** the built-in filters all fail here — PCFSoft is a fuzzy/jagged
+    dither, VSM light-bleeds small props away. So `js/pcss.js` patches the shadow shader to do
+    **PCSS** (contact-hardening soft shadows: crisp where an object meets the ground, bleeding
+    softer with distance — the sun read as an AREA light). `installPCSS()` before any material
+    compiles; type stays `PCFShadowMap` (PCSS short-circuits `getShadow`). Density from a FIXED
+    frustum fit to the scene (`4096`÷`±53` ≈ 38 t/u for town), not the old muddy `±60`÷`2048` ≈ 17.
+    ⚠️ PCSS filter radius is in shadow-UV (a few texels), NOT a big number — too big washes small
+    props out. (First pass used PCFSoft/`shadow.radius`; the user flagged it as fuzzy → PCSS.)
+  - **No flicker:** the shadow frustum is FIXED + world-locked (`Sky.setShadowBounds(cx,cz,half)`
+    from `spec.bounds`, called by `buildScene`). The earlier player-FOLLOWING frustum is what made
+    shadows crawl/swim under the bushes; a fixed one can't shimmer. (`setShadowFocus` removed.)
+  - **No double shadows:** every 3D prop's `M()` meshes cast a REAL shadow, so `buildProps` no
+    longer also adds a `contactShadow()` oval (that was the "one below + one to the side" the player
+    saw on the tree). 3D props (tree/bench/bush/fountain…) → real cast shadow only; flat BILLBOARDS
+    (Shen/NPCs/pickups, `castShadow=false`) → soft contact OVAL only (oval blur widened to match).
+  - **Graphics menu** (Settings → `Gfx`): three independent chips on their own `shen.gfx.*` keys
+    (like the volume mix), applied live + persisted — **shadows** (off/low/high; both tiers soft,
+    the tier trades map resolution), **finish** (the `fx.js` lens: off/minimal/diorama/full,
+    defaults **off** so it's opt-in), **resolution** (fast 1× / crisp `min(dpr,2)`). Mobile/
+    coarse-pointer defaults shadows to **low**. Chip click plays `select`.
+  - Deterministic **`checks/shadow-quality.mjs`** (`window.__shadowInfo()` → `soft` + `texelsPerUnit
+    ≥ 28` + `blurRadius>0` at the top tier + the `__gfx` knobs wired) so shadows can't silently
+    regress to muddy/hard. `window.__gfx()`/`__gfx(kind,val)` console+QA hook. Audit 10/10 green,
+    smoke green; town + park (tree/bench/bush single soft shadows) + interior + all menu knobs
+    verified in preview. See the failure-modes table (six shadow rows) + [[premium-look-overhaul]].
 - DONE: **QA capture reflex + hard gate** — a problem Christopher reports once becomes a
   permanent check (fix → generalize → promote to a **deterministic** assertion → record).
   New **`studio/qa/`** = the single QA home: a shared `harness.mjs` (`withGamePage`, free
@@ -559,6 +786,26 @@ Deterministic gate: `node studio/qa_audit.mjs` (auto-runs `studio/qa/checks/*`).
     (cross-scene persistence + old-save compat), `studio/qa_quest.mjs` (full hamster loop with Adrian
     inside). All green; smoke + town `qa_shots` geometry audit still clean; multi-agent visual sweep =
     enclosed/on-aesthetic. New SFX: `door`, `chirp`.
+- DONE: **GYM scene (`specs/gym.json`) — third loading zone, north of the stairs.** The town's big
+  **Corner Market → GYM**: relabelled facade ("GYM"), `faceDir` gained `+z` so its south face (the
+  blank wall facing the road/stairs) is now a storefront (windows + sign + awning + door at x≈8.2,
+  right above the stairs). A trigger-only `to_gym` portal (NO `door` geom — the facade door is the
+  visual) + `from_gym` town spawn. The gym interior is a decent-sized walled room (`room.x [-10,10]`,
+  z `-11..3.5`, one wall height) with new MODELED paper fixtures (no images): **treadmill** (deck +
+  dark belt + front cowl + console screen + handlebar), **gymbench** (×2), **squatrack** (uprights +
+  top crossbar + barbell/plates + safety arms), **dumbbells** (A-frame rack of paired dumbbells),
+  **cooler** (water cooler) — builders in the `IPROP` map, each returns a `footprint:{w,d}` so
+  `buildInteriorProps` lays a tight box-collider ring (never one fat circle). Reuses `counter`/
+  `register` (front desk), `mat`/`rug`, `plant`/`hangplant`, `sign`. **Chrees MOVED here** (out of
+  the town `npcs`, now empty) doing dumbbell curls (his `curl` rep + proximity `lift`), dialogue
+  rewritten for the gym. Sound: shares the calm **indoor loop `shop.ogg`** (interiors share one
+  indoor track — a dedicated gym loop is an open follow-up) + a new proximity `clink` ambient near
+  the free-weights (`audio.js`, `audio.js?v=4`). One fixed `gym` zone camera (axisDeg 0 + `trackWid`
+  follow → constant size). QA: deterministic audit 9/9 clean (incl. interior overlap/floor/bg),
+  `cameraQA.static`/`framing` 0 fails in the gym, reach all cells, town↔gym round-trip clean, smoke
+  green, audio scenario extended (gym block: indoor music + `clink` + Chrees `lift`), gym battery
+  captured (`studio/qa/scenarios/gym-shots.mjs`) + two-agent visual sweep (treadmill + squat rack
+  beefed after it). No `SAVE_VERSION` bump (additive scene). New SFX: `clink`.
 - IN FLIGHT: **Premium look overhaul** (make it less "web-ish"). Working brief + A–Z of style
   directions + concerns + method: **`studio/PREMIUM_LOOK.md`** — READ IT before doing visual work.
   Two pieces already exist: (1) a post-processing finishing lens `studio/js/fx.js` (`EffectComposer`
@@ -566,6 +813,33 @@ Deterministic gate: `node studio/qa_audit.mjs` (auto-runs `studio/qa/checks/*`).
   10% lens**; SSAO parked — billboard halo); (2) the **`papercraft-texture`** skill that fixes the
   blurry/stretched surfaces (256px fixed-`repeat` → crisp seamless tiles + world-space UVs). The brief
   says the real win is in the **bones** (palette, textures, toon, UI skin, character rim), not the lens.
+- DONE: **Day/Night world states** — full brief + AS-BUILT notes in **`studio/DAY_NIGHT.md`**
+  (READ IT before any day/night work). Gameplay state (DAY/NIGHT, **night = 21:00–07:00**) layered
+  on the EXISTING cosmetic cycle in `studio/js/sky.js` (`Sky.clock()` is the time source; ⚠️ its
+  `isDay` is 06:00–18:00 and is NOT the gameplay night — a separate `isNight()` is used). At each
+  21:00/07:00 crossing a screen-wide `#daynight` curtain (sun-down / moon-up + "Night falls" label,
+  `DN_DUR=1.9s`) **conceals** the swap, applied at full cover: day-only doors → **closed**
+  (`🔒 … — closed` prompt + `closed 🔒` button + `showClosed` toast + `locked` sfx, NO scene
+  change), NPCs gated by `isActive` (mechanism wired; town has no street NPCs yet so it's latent),
+  and the overworld music → MusicGen night loop `out/music/night.ogg`. **Closing a shop ON the
+  player:** a ~20:45 pre-close heads-up toast (tailored if you're inside one), and if you're INSIDE
+  a day-only shop when 21:00 hits the curtain **ejects you to town in front of its door** (the
+  curtain holds at full cover during the async swap) + shows its `closedMsg` — never stranded
+  inside. Data-driven gating:
+  `portal.hours`/`npc.active` = `"day"|"night"|[open,close]`; `spec.nightMusic`. **Chosen variant:**
+  continuous sky + concealing overlay (NOT a frozen sky — that would break the clock-HUD coupling &
+  degrade the arc; the overlay delivers "the animation is the transition"). New SFX `dusk`/`dawn`/
+  `locked`. No `SAVE_VERSION` bump (time ephemeral, additive scene data). Guarded by
+  **Clock is now a Pikmin-style day/night BAR** (`#daybar`, top-center; replaces the analog clock):
+  one continuous cycle (NOT 12h) — left = day-start 07:00, right = night-end 07:00; a sun marker
+  rides across + **morphs to a moon** past a transition **tick** at 21:00 (`updateDayBar`/`initDayBar`,
+  `DB_DAYSTART`/`DB_T`; hook `__dayBar()`). **HUD chrome is mobile-only:** the top-right key-hint
+  (`#hint`) is removed entirely, and the d-pad / action / journal / fullscreen show only on touch
+  (`body.desktop` via `applyInputMode()`/`isTouch()`; force with `__forceInputMode('desktop'|'touch'|'auto')`).
+  Guarded by
+  `checks/day-night.mjs`, `checks/hud-visibility.mjs` + scenarios `qa/scenarios/day-night.mjs`, `day-night-eject.mjs` (+ `-shots.mjs`, `hud-daybar-shots.mjs`). Audit 16/16,
+  smoke green, scenario green, curtain + night look verified in screenshots. Follow-ups: time
+  persistence, dusk/dawn sub-states, real night-only actors. See [[shanni-day-night-states]].
 - NEXT (ideas): more NPCs/quests (drop-in: add art + a `world.json` npc/quest); conversation state
   (remember choices) — persist into the reserved `npcs:{}` slot already in the save blob; more zones/goals;
   per-mood music loops (6 palettes in `specs/all.json`); idle polish. NOTE: photos in the macOS **Photos library** are unreadable from bash

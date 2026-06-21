@@ -32,14 +32,14 @@ await withGamePage(async (page, ctx) => {
     continueHidden: document.getElementById('btnContinue').hidden,
     newVisible: !document.getElementById('btnNew').hidden,
     settingsVisible: !!document.getElementById('btnSettings'),
-    hudHidden: getComputedStyle(document.getElementById('bMenu')).display==='none',
+    hudHidden: getComputedStyle(document.getElementById('daybar')).display==='none',   // mode-agnostic HUD element (the journal button is touch-only / hidden on desktop)
     shenImg: document.querySelector('#title .shen')?.complete && document.querySelector('#title .shen')?.naturalWidth>0,
   }))()`);
   ok(s.title, 'title screen is shown on boot');
   ok(s.pregame, 'body.pregame set (HUD hidden) on the menu');
   ok(s.continueHidden, 'no save → Continue hidden');
   ok(s.newVisible && s.settingsVisible, 'New Game + Settings present');
-  ok(s.hudHidden, 'in-game HUD (journal button) hidden behind the menu');
+  ok(s.hudHidden, 'in-game HUD (day bar) hidden behind the menu');
   ok(s.shenImg, 'Shen cutout image loaded on the menu diorama');
 
   // 2) keyboard nav makes a sound + moves the selection
@@ -88,11 +88,11 @@ await withGamePage(async (page, ctx) => {
   let started = await page.evaluate(`(()=>({
     titleOff: document.getElementById('title').classList.contains('off'),
     pregame: document.body.classList.contains('pregame'),
-    hudShown: getComputedStyle(document.getElementById('bMenu')).display!=='none',
+    hudShown: getComputedStyle(document.getElementById('daybar')).display!=='none',   // mode-agnostic HUD element (the journal button is touch-only / hidden on desktop)
   }))()`);
   ok(started.titleOff, 'New Game/Continue hides the title');
   ok(!started.pregame, 'body.pregame cleared once playing');
-  ok(started.hudShown, 'HUD (journal button) revealed once playing');
+  ok(started.hudShown, 'HUD (day bar) revealed once playing');
   await page.screenshot({ path: join(OUT, '4-playing.png') });
 
   await page.reload({ waitUntil: 'load' });
