@@ -9,7 +9,7 @@
   "ground": "c1bdb4",
   "music": "out/music/calm.ogg",
   "fog": [46, 165],
-  "bounds": { "xmin": -38, "xmax": 38, "zmin": -68, "zmax": 30 },
+  "bounds": { "xmin": -41, "xmax": 38, "zmin": -70, "zmax": 30 },
   "spawn": { "x": -20, "z": -41 },
   "spawns": {
     "from_petshop": { "x": -15.8, "z": -20, "face": 1 },
@@ -30,13 +30,13 @@
               "tread": "c6c1b6", "riser": "b8b1a8", "rail": "ddd8cf" },
 
   "rings": [
-    { "cx": -20, "cz": -50, "r": 9.5, "segs": 22, "gapDeg": [58, 122], "h": 0.55,
+    { "cx": -20, "cz": -51, "r": 11, "segs": 30, "gapDeg": [74, 106], "h": 0.55,
       "thick": 0.6, "color": "c0c7b4", "kind": "planter" }
   ],
 
   "walls": [
-    { "x": -25.3, "z": -17.4, "w": 0.5, "d": 39.6, "h": 0.6, "color": "bdc7b1", "kind": "hedge" },
-    { "x": -15.3, "z": -30.1, "w": 0.5, "d": 14.2, "h": 0.6, "color": "bdc7b1", "kind": "hedge" },
+    { "x": -25.3, "z": -19.3, "w": 0.5, "d": 43.4, "h": 0.6, "color": "bdc7b1", "kind": "hedge" },
+    { "x": -15.3, "z": -32, "w": 0.5, "d": 18, "h": 0.6, "color": "bdc7b1", "kind": "hedge" },
     { "x": -15.3, "z": -12.4, "w": 0.5, "d": 9.2, "h": 0.6, "color": "bdc7b1", "kind": "hedge" },
     { "x": -9.75, "z": 2.3, "w": 31, "d": 0.5, "h": 0.6, "color": "bdc7b1", "kind": "hedge" },
     { "x": 21.9, "z": 2.3, "w": 17, "d": 0.5, "h": 0.6, "color": "bdc7b1", "kind": "hedge" },
@@ -48,7 +48,7 @@
   ],
 
   "surfaces": [
-    { "kind": "plaza",    "shape": "disc", "x": -20, "z": -50, "r": 11.5, "color": "c2beb5", "y": 4.5 },
+    { "kind": "plaza",    "shape": "disc", "x": -20, "z": -51, "r": 13, "color": "c2beb5", "y": 4.5 },
 
     { "kind": "road",     "shape": "rect", "x": -20, "z": -22, "w": 6,  "d": 32, "color": "c7c3bd", "y": 4.5 },
     { "kind": "sidewalk", "shape": "rect", "x": -24, "z": -22, "w": 2,  "d": 32, "color": "c1beb6", "y": 4.5 },
@@ -63,15 +63,15 @@
   ],
 
   "buildings": [
-    { "x": -20, "z": -63, "w": 30, "d": 4, "h": 13, "color": "ccd6e0", "faceDir": "+z",
-      "facade": { "bays": 6, "wall": "dfe2ea", "trim": "f4efe6", "window": "e6dcc8", "awning": "9bb6c2", "sign": "Plaza Cafe", "signBg": "8fa6b2" } },
-    { "x": -33, "z": -50, "w": 4, "d": 17, "h": 12, "color": "d7c9c2", "faceDir": "+x",
+    { "x": -20, "z": -66, "w": 32, "d": 4, "h": 13, "color": "ccd6e0", "faceDir": "+z",
+      "facade": { "bays": 7, "wall": "dfe2ea", "trim": "f4efe6", "window": "e6dcc8", "awning": "9bb6c2", "sign": "Plaza Cafe", "signBg": "8fa6b2" } },
+    { "x": -37, "z": -51, "w": 4, "d": 18, "h": 12, "color": "d7c9c2", "faceDir": "+x",
       "facade": { "bays": 3, "wall": "e7d3cc", "trim": "f4efe6", "window": "cfe0e6", "awning": "d99fa9", "sign": "Florist", "signBg": "c98f86" } },
-    { "x": -5, "z": -52, "w": 4, "d": 18, "h": 12, "color": "d8d2cc", "faceDir": "-x",
+    { "x": -2, "z": -52, "w": 4, "d": 20, "h": 12, "color": "d8d2cc", "faceDir": "-x",
       "facade": { "bays": 3, "wall": "e7ddcf", "trim": "f4efe6", "window": "d7e0cf", "awning": "c2a98c", "sign": "Grocer", "signBg": "c2a07a" } },
-    { "x": -30, "z": -38, "w": 9, "d": 4, "h": 11, "color": "ddd6e0", "faceDir": "-z",
+    { "x": -31, "z": -38, "w": 9, "d": 4, "h": 11, "color": "ddd6e0", "faceDir": "-z",
       "facade": { "bays": 2, "wall": "e3dce6", "trim": "f4efe6", "window": "e6dcc8", "awning": "b6a2ca", "sign": "Books", "signBg": "9c89b8" } },
-    { "x": -10, "z": -38, "w": 8, "d": 4, "h": 11, "color": "d7c9c2", "faceDir": "-z",
+    { "x": -9, "z": -38, "w": 8, "d": 4, "h": 11, "color": "d7c9c2", "faceDir": "-z",
       "facade": { "bays": 2, "wall": "e7d3cc", "trim": "f4efe6", "window": "cfe0e6", "awning": "d99fa9", "sign": "Bakery", "signBg": "c98f86" } },
 
     { "x": -32, "z": -21, "w": 6, "d": 28, "h": 12, "color": "ccd6e0", "faceDir": "+x",
@@ -99,15 +99,14 @@
   ],
 
   "props": [
-    { "type": "fountain", "x": -20, "z": -50, "scale": 1.0, "solid": true },
-    { "type": "bush", "x": -12, "z": -50,   "scale": 1.0, "solid": true },
-    { "type": "bush", "x": -16, "z": -43,   "scale": 0.85, "solid": true },
-    { "type": "bush", "x": -24, "z": -43,   "scale": 0.85, "solid": true },
-    { "type": "bush", "x": -28, "z": -50,   "scale": 1.0, "solid": true },
-    { "type": "bush", "x": -24, "z": -57,   "scale": 0.85, "solid": true },
-    { "type": "bush", "x": -16, "z": -57,   "scale": 0.85, "solid": true },
-    { "type": "lamp", "x": -28, "z": -44, "scale": 1.0 },
-    { "type": "lamp", "x": -12, "z": -44, "scale": 1.0 },
+    { "type": "fountain", "x": -20, "z": -51, "scale": 1.0, "solid": true },
+    { "type": "lamp", "x": -20, "z": -60.5, "scale": 1.0 },
+    { "type": "lamp", "x": -29.5, "z": -51, "scale": 1.0 },
+    { "type": "lamp", "x": -10.5, "z": -51, "scale": 1.0 },
+    { "type": "bush", "x": -26, "z": -57,   "scale": 0.9, "solid": true },
+    { "type": "bush", "x": -14, "z": -57,   "scale": 0.9, "solid": true },
+    { "type": "bush", "x": -26, "z": -45,   "scale": 0.9, "solid": true },
+    { "type": "bush", "x": -14, "z": -45,   "scale": 0.9, "solid": true },
 
     { "type": "lamp", "x": -16, "z": -30, "scale": 1.0 },
     { "type": "lamp", "x": -16, "z": -14, "scale": 1.0 },
@@ -131,10 +130,14 @@
     { "type": "bench", "x": 13, "z": 20, "rot": 0, "scale": 1.0 }
   ],
 
+  "ambients": [
+    { "type": "plip", "x": -20, "z": -51, "every": [1.4, 3.0] }
+  ],
+
   "zones": [
     { "id": "plaza",
-      "center": [-20, -50], "axisDeg": 0, "halfLen": 10, "halfWid": 11,
-      "height": 7, "back": 10.5, "side": 0, "lookAhead": 0, "lookY": 1.5,
+      "center": [-20, -51], "axisDeg": 0, "halfLen": 13, "halfWid": 13, "trackWid": 14,
+      "height": 6.8, "back": 11, "side": 0, "lookAhead": 0, "lookY": 1.5,
       "fov": 47, "pitchBias": -0.01, "follow": 5.0, "blendIn": 0.9 },
 
     { "id": "vroad",
@@ -164,7 +167,7 @@
   ],
 
   "collectibles": [
-    { "id": "ham1", "kind": "hamster", "x": -24, "z": -46 },
+    { "id": "ham1", "kind": "hamster", "x": -25, "z": -47 },
     { "id": "ham2", "kind": "hamster", "x": -20, "z": -20 },
     { "id": "ham3", "kind": "hamster", "x": -2,  "z": -3 },
     { "id": "ham4", "kind": "hamster", "x": -8,  "z": 14 },

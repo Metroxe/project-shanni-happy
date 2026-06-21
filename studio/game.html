@@ -131,6 +131,17 @@
   .mrow #muteState{font-weight:700;color:#7aa37e}
   .mrow.off{opacity:.75}
   .mrow.off #muteState{color:#c08a8a}
+  /* graphics options — segmented chips, same rose-highlight language as choices */
+  .gfxh{margin:20px 2px 6px;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:#a99f8c;
+    border-top:1px solid #ece2d0;padding-top:15px}
+  .gfxrow{display:flex;align-items:center;gap:10px;margin:11px 0;font-size:14px}
+  .gfxrow>span:first-child{width:70px;color:#7a756c;flex:none}
+  .gopts{display:flex;gap:5px;flex:1;flex-wrap:wrap}
+  .gopt{border:1px solid #e0d4bf;border-radius:9px;padding:5px 11px;font:inherit;font-size:12.5px;
+    background:rgba(255,255,255,.6);color:#6a655c;cursor:pointer;transition:.12s}
+  .gopt:hover{color:#7a6f5c}
+  .gopt.sel{background:#f6e7ea;border-color:#e6b9c6;color:#b76b7d;box-shadow:inset 0 0 0 1px #e6b9c6;font-weight:600}
+  .gfxhint{margin:9px 2px 0;font-size:11px;color:#a99f8c;line-height:1.6}
   .jhint{margin:16px 2px 4px;font-size:11.5px;color:#8a8579;text-align:center;line-height:1.7}
   .menuBtns{display:flex;gap:10px;margin-top:16px}
   .menuBtns .btn{flex:1;padding:11px 0;font-size:14px}
@@ -434,6 +445,20 @@
           <div class="srow" id="rowVol"><span>volume</span><input type="range" id="vol" min="0" max="100" value="70"><span id="volVal" class="sval">70%</span><button class="tog" id="volTog" title="Mute everything">on</button></div>
           <div class="srow" id="rowSfx"><span>effects</span><input type="range" id="sfxvol" min="0" max="100" value="100"><span id="sfxVal" class="sval">100%</span><button class="tog" id="sfxTog" title="Turn sound effects on/off">on</button></div>
           <div class="srow" id="rowMusic"><span>music</span><input type="range" id="musicvol" min="0" max="100" value="42"><span id="musicVal" class="sval">42%</span><button class="tog" id="musicTog" title="Turn music on/off">on</button></div>
+          <div class="gfxh">Graphics</div>
+          <div class="gfxrow"><span>shadows</span><div class="gopts" data-gfx="shadows">
+            <button class="gopt" data-val="off">Off</button>
+            <button class="gopt" data-val="low">Low</button>
+            <button class="gopt" data-val="high">High</button></div></div>
+          <div class="gfxrow"><span>finish</span><div class="gopts" data-gfx="fx">
+            <button class="gopt" data-val="off">Off</button>
+            <button class="gopt" data-val="minimal">Minimal</button>
+            <button class="gopt" data-val="diorama">Diorama</button>
+            <button class="gopt" data-val="full">Full</button></div></div>
+          <div class="gfxrow"><span>resolution</span><div class="gopts" data-gfx="res">
+            <button class="gopt" data-val="fast">Fast</button>
+            <button class="gopt" data-val="crisp">Crisp</button></div></div>
+          <div class="gfxhint">Lower these if the game runs hot. Shadows + resolution are the heaviest.</div>
           <div class="jhint">arrows / WASD move · space hop<br>E talk · Esc journal · M mute</div>
           <div class="menuBtns">
             <button class="btn" id="restartBtn">restart ✿</button>
@@ -480,15 +505,23 @@ import * as THREE from 'three';
 import { WORLD, initState, step, setBounds, setColliders } from './js/sim.js?v=4';
 import { Dialogue } from './js/dialogue.js?v=4';
 import * as Save from './js/save.js?v=4';
-import { Sound } from './js/audio.js?v=4';
+import { Sound } from './js/audio.js?v=5';
 import { Quests } from './js/quests.js?v=4';
-import { Sky } from './js/sky.js?v=4';
+import { Sky } from './js/sky.js?v=8';
 import { FX } from './js/fx.js?v=4';
+import { installPCSS } from './js/pcss.js?v=2';
 
+// PCSS = contact-hardening SOFT shadows: crisp where an object meets the ground, bleeding softer
+// the farther it gets (the sun read as an AREA light, not a point). Patches the global shadow
+// shader chunk, so it MUST run before any material compiles (i.e. before build()). Degrades to
+// plain PCF if the patch can't apply. See js/pcss.js.
+const PCSS_ON=installPCSS();
 const canvas=document.getElementById('c');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.outputColorSpace=THREE.SRGBColorSpace;
-renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+// Type stays PCF: PCSS (injected into getShadow) short-circuits the filter, so this just needs a
+// type whose define compiles. Set once here so it never triggers a runtime shader recompile.
+renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFShadowMap;
 const scene=new THREE.Scene();
 const cam=new THREE.PerspectiveCamera(40,1,0.1,300);
 
@@ -526,9 +559,27 @@ function softCanvasTex(draw){const s=128,c=document.createElement('canvas');c.wi
   draw(c.getContext('2d'),s);return new THREE.CanvasTexture(c);}
 
 // shadow + cloud + hill canvas textures
-const shadowTex=softCanvasTex((x,s)=>{const g=x.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
-  g.addColorStop(0,'rgba(60,52,40,.5)');g.addColorStop(.6,'rgba(60,52,40,.2)');g.addColorStop(1,'rgba(60,52,40,0)');
-  x.fillStyle=g;x.fillRect(0,0,s,s);});
+// Contact shadow (for the flat BILLBOARD cutouts — Shen / NPCs / pickups, which can't cast a
+// real shadow) = a soft oval with a DEFINED dark core that fades SMOOTHLY to fully transparent
+// at the rim. The fade-to-0 rim is load-bearing, NOT just taste: this oval is a single FLAT
+// horizontal quad sitting at the player's foot height, but the ground under her is not always
+// flat. On the stepped stairs a HARD-edged disc (a solid core + thin blurred rim) gets sliced
+// by the step edges — occluded by the higher tread behind her, floating over the lower tread in
+// front — so its body bands across the steps and its wide left/right extremities poke out beside
+// her hips (the "fold / weird shadow" artifact). An alpha that reaches 0 at the rim can't show a
+// hard clip: wherever the ground steps, the oval just dissolves. Keep a solid-ish core so it
+// still reads as a grounded contact shadow (not a vague smudge), then ramp to nothing.
+// GUARDED by studio/qa/checks/contact-shadow-soft.mjs (window.__contactShadowProfile).
+const shadowTex=(()=>{const s=256,c=document.createElement('canvas');c.width=c.height=s;
+  const x=c.getContext('2d');
+  const g=x.createRadialGradient(s/2,s/2,0,s/2,s/2,s*0.5);
+  g.addColorStop(0.00,'rgba(58,50,40,.50)');        // defined dark core (grounded, not muddy)
+  g.addColorStop(0.42,'rgba(58,50,40,.40)');        // small plateau keeps it bodied
+  g.addColorStop(0.72,'rgba(58,50,40,.15)');        // ramp down…
+  g.addColorStop(1.00,'rgba(58,50,40,0)');          // …to fully transparent at the rim (no hard edge to clip)
+  x.fillStyle=g;x.fillRect(0,0,s,s);
+  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;
+  t.minFilter=THREE.LinearMipmapLinearFilter;t.magFilter=THREE.LinearFilter;return t;})();
 function blobTex(col){return softCanvasTex((x,s)=>{x.fillStyle=col;
   [[.5,.55,.34],[.32,.6,.24],[.68,.6,.24],[.42,.42,.2],[.6,.42,.2]].forEach(([a,b,r])=>{
     x.beginPath();x.ellipse(a*s,b*s,r*s,r*s*.8,0,0,7);x.fill();});});}
@@ -615,7 +666,7 @@ function M(geo,col,flat,edge){ paperUV(geo,DENSITY); const m=new THREE.Mesh(geo,
   m.castShadow=true;m.receiveShadow=true;
   if(edge===true)m.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo,38),EDGEMAT));
   return m;}
-let SCENE,LEVEL={H:0},STAIRS=null,SCENE_COLLIDERS=[],BUILDING_MESHES=[],billboards=[],fountains=[];
+let SCENE,LEVEL={H:0},STAIRS=null,SCENE_COLLIDERS=[],BUILDING_MESHES=[],billboards=[],fountains=[],propAnims=[];
 // Two-terrace city: a raised upper level (plaza + street + shops) at LEVEL.H, a
 // sunken park at y=0, joined by a descending stair notch in the central corridor.
 function groundHeight(x,z){
@@ -894,16 +945,69 @@ function makeBench(p){ const g=new THREE.Group(), s=p.scale||1, col='#'+(p.color
   [[-0.7,-0.18],[0.7,-0.18],[-0.7,0.18],[0.7,0.18]].forEach(([lx,lz])=>{const leg=M(new THREE.BoxGeometry(0.1*s,0.45*s,0.1*s),col,false,false);
     leg.position.set(lx*s,0.22*s,lz*s); g.add(leg);});
   return {group:g,h:1.0*s,rad:0.95*s}; }
-function makeFountain(p){ const g=new THREE.Group(), s=p.scale||1, stone='#'+(p.color||'ded8cc');
-  const basin=M(new THREE.CylinderGeometry(1.85*s,2.05*s,0.6*s,28),stone,false,false); basin.position.y=0.3*s; g.add(basin);
-  const w1=new THREE.Mesh(new THREE.CircleGeometry(1.6*s,28),new THREE.MeshStandardMaterial({color:hex('bcd9e6'),roughness:0.5,transparent:true,opacity:0.85}));
-  w1.rotation.x=-Math.PI/2; w1.position.y=0.57*s; g.add(w1);
-  const ped=M(new THREE.CylinderGeometry(0.4*s,0.52*s,0.95*s,16),stone,false,false); ped.position.y=0.95*s; g.add(ped);
-  const bowl=M(new THREE.CylinderGeometry(0.92*s,0.6*s,0.35*s,20),stone,false,false); bowl.position.y=1.5*s; g.add(bowl);
-  const w2=new THREE.Mesh(new THREE.CircleGeometry(0.8*s,20),new THREE.MeshStandardMaterial({color:hex('cfe6ef'),roughness:0.5,transparent:true,opacity:0.85}));
-  w2.rotation.x=-Math.PI/2; w2.position.y=1.69*s; g.add(w2);
-  const top=M(new THREE.CylinderGeometry(0.1*s,0.15*s,0.5*s,12),stone,false,false); top.position.y=1.92*s; g.add(top);
-  return {group:g,h:2.1*s,rad:2.0*s,shadowR:2.1*s}; }
+// translucent water material (pale paper-blue). depthWrite off so the many thin water
+// layers blend over each other instead of z-fighting; never casts a shadow.
+function waterMat(col,op){ const c=hex(col); return new THREE.MeshStandardMaterial({color:c,emissive:c,
+  emissiveIntensity:0.32, roughness:0.28, metalness:0, transparent:true, opacity:op,
+  depthWrite:false, side:THREE.DoubleSide}); }
+// A generous town-square fountain that ACTUALLY moves water: a stone basin POOL with a
+// real translucent surface + expanding ripple rings, a two-tier stone centre, a pulsing
+// central JET, a ring of arcing droplet "spurts" that fall into the pool, and overflow
+// trickles from the upper bowl. All motion is paper cutouts physically moving (droplets
+// arc + fall, ripples spread, jet breathes) — never a tween between drawings. Returns an
+// update(t) closure so draw() animates it each frame; sound is the spatial water ambient
+// (setWaterLevel) plus an occasional `plip` droplet (world.json `ambients`).
+function makeFountain(p){ const g=new THREE.Group(), s=p.scale||1, stone='#'+(p.color||'e4ddd0');
+  const poolR=3.0, wy=0.56, W1='a8d3e3', W2='c6e4ee';           // pool radius + water-line + two water tints
+  // --- the little pool (plinth + basin drum; the drum's top cap is the stone rim) ---
+  const foot=M(new THREE.CylinderGeometry(poolR+0.5,poolR+0.72,0.3,44),stone,false,false); foot.position.y=0.15; g.add(foot);
+  const drum=M(new THREE.CylinderGeometry(poolR+0.3,poolR+0.5,0.62,44),stone,false,false); drum.position.y=0.46; g.add(drum);
+  const pool=new THREE.Mesh(new THREE.CircleGeometry(poolR+0.04,48),waterMat(W1,0.8));
+  pool.rotation.x=-Math.PI/2; pool.position.y=wy; pool.castShadow=false; g.add(pool);
+  // expanding ripple rings on the pool surface (scale out + fade, staggered)
+  const ripples=[]; for(let i=0;i<3;i++){ const rg=new THREE.Mesh(new THREE.RingGeometry(0.86,1.0,44),waterMat(W2,0));
+    rg.rotation.x=-Math.PI/2; rg.position.y=wy+0.015; rg.castShadow=false; rg.renderOrder=2; g.add(rg); ripples.push(rg); }
+  // --- two-tier stone centre ---
+  const ped=M(new THREE.CylinderGeometry(0.62,0.82,1.25,24),stone,false,false); ped.position.y=0.9; g.add(ped);
+  const bowl=M(new THREE.CylinderGeometry(1.3,0.74,0.36,28),stone,false,false); bowl.position.y=1.66; g.add(bowl);
+  const bowlW=new THREE.Mesh(new THREE.CircleGeometry(1.12,28),waterMat(W1,0.84));
+  bowlW.rotation.x=-Math.PI/2; bowlW.position.y=1.85; bowlW.castShadow=false; g.add(bowlW);
+  const stem=M(new THREE.CylinderGeometry(0.19,0.27,0.62,18),stone,false,false); stem.position.y=2.12; g.add(stem);
+  const noz=M(new THREE.CylinderGeometry(0.1,0.17,0.22,14),stone,false,false); noz.position.y=2.5; g.add(noz);
+  // --- central jet: a bright translucent water spout rising from the nozzle ---
+  const jetMat=new THREE.MeshStandardMaterial({color:hex(W2),emissive:hex(W2),emissiveIntensity:0.5,
+    roughness:0.2,metalness:0,transparent:true,opacity:0.62,depthWrite:false,side:THREE.DoubleSide});
+  const nozY=2.55, jetH=1.55;
+  const jet=new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.3,jetH,16),jetMat);
+  jet.castShadow=false; jet.renderOrder=3; g.add(jet);
+  // --- droplets: one shared geo + material, scale-faded at the ends so recycling never pops ---
+  const dGeo=new THREE.IcosahedronGeometry(0.095,0), dMat=waterMat(W2,0.95);
+  const arcs=[], N=9, reach=poolR*0.82;                         // arcing "spurts" out of the crown into the pool
+  for(let i=0;i<N;i++){ const th=i/N*Math.PI*2;
+    for(let k=0;k<3;k++){ const m=new THREE.Mesh(dGeo,dMat); m.castShadow=false; m.renderOrder=4; g.add(m); arcs.push({m,th,ph:k/3}); } }
+  const crown=[]; for(let i=0;i<6;i++){ const m=new THREE.Mesh(dGeo,dMat); m.castShadow=false; m.renderOrder=4; g.add(m); crown.push({m,th:i*1.05,ph:i/6}); }
+  // overflow: droplets spilling off the upper-bowl lip straight down into the pool
+  const falls=[], FN=6;
+  for(let i=0;i<FN;i++){ const th=(i+0.5)/FN*Math.PI*2;
+    for(let k=0;k<2;k++){ const m=new THREE.Mesh(dGeo,dMat); m.castShadow=false; m.renderOrder=4; g.add(m); falls.push({m,th,ph:k/2}); } }
+  const update=t=>{
+    const jp=0.85+0.15*Math.sin(t*3.0);                         // jet breathes in height
+    jet.scale.set(1,jp,1); jet.position.y=nozY+jetH*0.5*jp; jetMat.opacity=0.55+0.12*Math.sin(t*5.1+1);
+    for(let i=0;i<ripples.length;i++){ const pr=(t*0.45+i/ripples.length)%1, rs=0.22+pr*(poolR-0.22);
+      ripples[i].scale.set(rs,rs,1); ripples[i].material.opacity=0.42*(1-pr); }
+    const top=nozY+jetH;
+    for(const a of arcs){ const pr=(t*0.62+a.ph)%1, r=0.32+pr*reach, hump=Math.sin(Math.PI*pr);
+      a.m.position.set(Math.cos(a.th)*r, nozY+(wy-nozY)*pr+1.05*hump, Math.sin(a.th)*r);
+      a.m.scale.setScalar(0.12+1.0*hump); }
+    for(const c of crown){ const pr=(t*0.95+c.ph)%1, r=0.06+pr*0.5, hump=Math.sin(Math.PI*pr);
+      c.m.position.set(Math.cos(c.th)*r, top+0.55*hump-(top-wy)*pr, Math.sin(c.th)*r);
+      c.m.scale.setScalar(0.12+0.95*hump); }
+    for(const f of falls){ const pr=(t*0.8+f.ph)%1, hump=Math.sin(Math.PI*pr);  // bowl lip → pool
+      f.m.position.set(Math.cos(f.th)*(1.12+pr*0.06), 1.72+(wy-1.72)*pr, Math.sin(f.th)*(1.12+pr*0.06));
+      f.m.scale.setScalar(0.1+0.7*hump); }
+  };
+  g.scale.setScalar(s);                                        // base geometry is full-size; scale tweaks it in spec
+  return {group:g,h:(nozY+jetH)*s,rad:(poolR+0.6)*s,shadowR:(poolR+0.6)*s,update}; }
 // playground: slide tower + canopy + slide w/ side rails + climbing arches. Solid
 // parts get their OWN colliders (cols[]) so you can't clip through the slide.
 function makePlayground(p){ const g=new THREE.Group(), s=p.scale||1;
@@ -938,10 +1042,13 @@ function buildProps(cols){
   for(const p of (SCENE.props||[])){ const mk=PROP[p.type]; if(!mk)continue;
     const r=mk(p), gy=groundHeight(p.x,p.z), rot=p.rot||0, ca=Math.cos(rot), sa=Math.sin(rot);
     r.group.position.set(p.x,gy,p.z); if(rot)r.group.rotation.y=rot; sceneRoot.add(r.group);
-    contactShadow(p.x,p.z,r.shadowR||r.rad||0.7,gy);
+    // NO contact oval here: these are 3D modelled props whose meshes cast a REAL shadow (M()
+    // sets castShadow). Adding an oval too gave the "double shadow" (one under + one cast). The
+    // real cast shadow is the only one — soft VSM grounds them. (Billboards still get an oval.)
     if(p.solid){ if(r.cols){ for(const c of r.cols) cols.push({x:p.x+c.dx*ca-c.dz*sa, z:p.z+c.dx*sa+c.dz*ca, r:c.r}); }
                  else cols.push({x:p.x,z:p.z,r:r.rad||0.7}); }
-    if(p.type==='fountain')fountains.push({x:p.x,z:p.z,y:gy,h:r.h}); }
+    if(p.type==='fountain')fountains.push({x:p.x,z:p.z,y:gy,h:r.h});
+    if(r.update)propAnims.push(r.update); }
 }
 // backdrop city: filler buildings beyond the playable bounds so no sightline ever
 // hits the void. No colliders, no shadows; fog fades the far rings. Deterministic.
@@ -1489,6 +1596,26 @@ window.__sceneBackgrounds=()=>{ const out=[];
     if(!bg){ white=true; } else { const c=new THREE.Color(bg[0]==='#'?bg:'#'+bg); white=(c.r>0.93&&c.g>0.93&&c.b>0.93); }
     out.push({scene:id, isWhiteOrUnset:white}); }
   return out; };
+// QA probe for the shadow-quality check (studio/qa/checks/shadow-quality.mjs): the sun's CAST
+// shadow sharpness IS texel density = shadowMap size ÷ frustum width. Surface it (+ the renderer
+// state + the graphics knobs) so a future change can't silently re-muddy the shadows the player
+// flagged, and the graphics-menu wiring stays regression-guarded.
+window.__shadowInfo=()=>{ const d=Sky&&Sky.dir, sm=renderer.shadowMap;
+  const cast=!!(d&&d.castShadow), half=cast?Math.abs(d.shadow.camera.right):0, map=cast?d.shadow.mapSize.width:0;
+  return { enabled:!!sm.enabled, type:sm.type, pcss:!!PCSS_ON,
+    soft:(!!PCSS_ON||sm.type===THREE.PCFSoftShadowMap||sm.type===THREE.VSMShadowMap), castShadow:cast,
+    mapSize:map, frustumHalf:half, blurRadius:cast?d.shadow.radius:0,
+    texelsPerUnit: half?+(map/(2*half)).toFixed(1):0,
+    level:(Sky&&Sky._shadowLevel)||null, gfx:(window.__gfx&&window.__gfx())||null }; };
+// QA probe for studio/qa/checks/contact-shadow-soft.mjs: sample the billboard CONTACT-shadow
+// oval's alpha from its core out to its rim. The rim MUST reach ~0 — a hard-edged disc bands /
+// pokes out beside the player on stepped/uneven ground (the stair "fold" artifact). Reads the
+// live shadow material's canvas so a regression to a solid oval is caught deterministically.
+window.__contactShadowProfile=()=>{ const img=shadow&&shadow.material&&shadow.material.map&&shadow.material.map.image;
+  if(!img) return null; const S=img.width, cv=document.createElement('canvas'); cv.width=cv.height=S;
+  const cx=cv.getContext('2d'); cx.drawImage(img,0,0);
+  const aAt=fr=>cx.getImageData(Math.round(S/2),Math.round(S/2*(1-fr)),1,1).data[3]/255;   // up the vertical radius
+  return { center:+aAt(0).toFixed(3), mid:+aAt(0.42).toFixed(3), edge:+aAt(0.78).toFixed(3), rim:+aAt(0.96).toFixed(3) }; };
 // each tagged interior fixture's world-AABB centre + size, so the QA harness can frame a
 // per-object close-up of EVERY fixture (the "look at every single thing" pass, interiors).
 window.__fixtures=()=>{ const out=[]; if(sceneRoot) sceneRoot.traverse(o=>{ if(o.userData&&o.userData.fx){
@@ -1581,6 +1708,41 @@ window.__camAbyss=(opts)=>{ opts=opts||{}; const ceiling=opts.ceiling==null?0.55
   return { leaks:leaks.slice(0,20), leakCount:leaks.length, cells:cells.length, ceiling, worst }; };
 
 
+// ---------- graphics quality (Settings → renderer / Sky / FX) ----------
+// Three independent knobs, each on its OWN localStorage key (same pattern as the volume
+// mix), so weaker machines can scale the heavy bits without touching the base look:
+//   shadows  — the sun's soft CAST shadow quality (Sky.setShadowQuality: off / low / high —
+//              both tiers are soft-edged VSM; the tier trades map resolution + GPU cost)
+//   fx       — the post-processing finishing lens (FX preset: off / minimal / diorama / full)
+//   res      — render pixel ratio (fast = 1×, crisp = device ratio capped at 2×)
+// Contact-shadow ovals + the flat papercraft base render are ALWAYS on (unaffected). The
+// renderer's shadowMap.enabled/type never change here (no shader recompile) — 'off' just
+// stops the sun light casting. Defaults preserve today's look + the soft shadows.
+const Gfx=(()=>{
+  const store=(()=>{try{return window.localStorage;}catch(e){return null;}})();
+  const SHADOWS=['off','low','high'], FXP=['off','minimal','diorama','full'], RES=['fast','crisp'];
+  const read=(k,def,allow)=>{ try{const v=store&&store.getItem(k); return allow.includes(v)?v:def;}catch(e){return def;} };
+  // mobile/touch gets a lighter shadow default (the 4096 map is heavy on phones); the player
+  // can still bump it to High. Desktop (incl. headless QA) defaults to high.
+  const coarse=(()=>{try{return matchMedia('(pointer:coarse)').matches||Math.min(innerWidth,innerHeight)<540;}catch(e){return false;}})();
+  let shadows=read('shen.gfx.shadows',coarse?'low':'high',SHADOWS);
+  let fx=read('shen.gfx.fx','off',FXP);
+  let res=read('shen.gfx.res','crisp',RES);
+  const applyShadows=()=>Sky.setShadowQuality(shadows);
+  const applyFx=()=>{ if(window.__fx)window.__fx(fx); else { FX.setPreset(fx); resize(); } };
+  const applyRes=()=>{ renderer.setPixelRatio(res==='fast'?1:Math.min(devicePixelRatio,2)); resize(); };
+  function applyAll(){ applyShadows(); applyFx(); applyRes(); }
+  function set(kind,val){
+    if(kind==='shadows'&&SHADOWS.includes(val)){ shadows=val; try{store&&store.setItem('shen.gfx.shadows',val);}catch(e){} applyShadows(); }
+    else if(kind==='fx'&&FXP.includes(val)){ fx=val; try{store&&store.setItem('shen.gfx.fx',val);}catch(e){} applyFx(); }
+    else if(kind==='res'&&RES.includes(val)){ res=val; try{store&&store.setItem('shen.gfx.res',val);}catch(e){} applyRes(); }
+    return {shadows,fx,res};
+  }
+  return { applyAll, set, get state(){return {shadows,fx,res};} };
+})();
+// QA + console hook: __gfx() reads, __gfx(kind,val) sets one knob.
+window.__gfx=(kind,val)=> kind===undefined?Gfx.state:Gfx.set(kind,val);
+
 async function build(){
   // Load EVERY scene spec up-front (cheap JSON): transitions are then instant, and
   // the save layer can validate ids / clamp positions against any scene.
@@ -1597,6 +1759,7 @@ async function build(){
   // optional post-processing finishing pass. window.__fx(name) switches live.
   FX.init({renderer,scene,camera:cam,skyColor:'cfe0f2',groundColor:world.ground});
   window.__fx=(name)=>{const p=FX.setPreset(name);resize();return p;};
+  Gfx.applyAll();   // apply the saved graphics quality (shadows / finish lens / resolution)
   // load the ONE shared crisp paper tile set BEFORE any scene geometry is built (textures
   // populate async; the Texture objects exist synchronously so the scene builders — buildCity,
   // makeFacade, paperMat — can reference them via PAPER now). PERSISTENT across scene switches.
@@ -1620,7 +1783,8 @@ async function build(){
     persist(); };
 
   // shadow + shen + burst (PERSISTENT — they travel between scenes, never torn down)
-  shadow=new THREE.Mesh(new THREE.PlaneGeometry(SHEN_W*1.5,SHEN_W*1.5),
+  // flatter-than-wide oval: a standing figure casts a horizontal pool, not a circle.
+  shadow=new THREE.Mesh(new THREE.PlaneGeometry(SHEN_W*1.7,SHEN_W*1.18),
     new THREE.MeshBasicMaterial({map:shadowTex,transparent:true,depthWrite:false}));
   shadow.rotation.x=-Math.PI/2; shadow.position.y=GROUND_EPS; shadow.renderOrder=1; scene.add(shadow);
   shen=new THREE.Group(); scene.add(shen);
@@ -1671,6 +1835,10 @@ async function buildScene(spec, spawn){
   const cols=[];
   if(spec.interior){ Sky.setInterior(true, spec.sky||{}); buildInterior(cols); }
   else { Sky.setInterior(false); buildCity(cols); }
+  // fit the FIXED sun-shadow frustum to THIS scene's reachable extent so its texels land where
+  // the player can be (clean soft shadow) without a moving frustum (which made shadows flicker).
+  { const b=spec.bounds||{xmin:-40,xmax:40,zmin:-40,zmax:40};
+    Sky.setShadowBounds((b.xmin+b.xmax)/2,(b.zmin+b.zmax)/2, Math.max(b.xmax-b.xmin,b.zmax-b.zmin)/2+4); }
   buildPortalDoors(cols);
   SCENE_COLLIDERS=cols; setColliders(cols);
   await buildCollectibles();
@@ -1695,7 +1863,7 @@ function clearScene(){
   if(sceneRoot){ scene.remove(sceneRoot); }
   sceneRoot=new THREE.Group(); scene.add(sceneRoot);
   npcs.length=0; pickups.length=0; billboards.length=0; propsMesh.length=0;
-  BUILDING_MESHES.length=0; fountains.length=0; ifish.length=0; SCENE_COLLIDERS=[];
+  BUILDING_MESHES.length=0; fountains.length=0; propAnims.length=0; ifish.length=0; SCENE_COLLIDERS=[];
   nearNpc=null; nearPortal=null; Sound.setWaterLevel(0);
 }
 // collectible pickups (billboard sprites, grounded) for the active scene; index-aligned
@@ -1853,6 +2021,9 @@ function draw(dt){
   // sub-bus, so the effects + master sliders already scale it (see audio.js setWaterLevel).
   if(fountains.length){let wl=0;for(const f of fountains){const g=proxGain(f.x,f.z);if(g>wl)wl=g;}Sound.setWaterLevel(wl);}
 
+  // animated props (fountain water: jets, ripples, arcing droplets) — purely visual, runs
+  // every frame regardless of distance (cheap); the sound is proximity-gated separately.
+  for(const u of propAnims) u(S.animClock);
   // interior life: tiny fish drift inside the tanks (purely visual)
   for(const f of ifish){ f.m.position.x=f.ax+0.45*Math.sin(S.animClock*0.7+f.ph);
     f.m.position.y=f.base+0.06*Math.sin(S.animClock*1.3+f.ph*1.7);
@@ -1966,6 +2137,11 @@ function syncMenu(){
   setTog(sfxTog,'rowSfx',Sound.sfxOn);       // effects: on == audible (level > 0)
   setTog(musicTog,'rowMusic',Sound.musicOn);}// music:   on == audible (level > 0)
 
+// --- graphics chips: light the active option in each group from Gfx state ---
+function syncGfx(){ const st=Gfx.state;
+  document.querySelectorAll('.gopts[data-gfx]').forEach(g=>{ const cur=st[g.dataset.gfx];
+    g.querySelectorAll('.gopt').forEach(b=>b.classList.toggle('sel',b.dataset.val===cur)); }); }
+
 // --- quest page rendering (from Quests.list()) ---
 function mk(tag,cls,txt){const e=document.createElement(tag); if(cls)e.className=cls; if(txt!=null)e.textContent=txt; return e;}
 function renderQuests(){
@@ -2009,7 +2185,7 @@ function showPage(name){
   document.getElementById('page-quests').hidden=name!=='quests';
   document.getElementById('page-settings').hidden=name!=='settings';
   if(name==='quests'&&listDirty){renderQuests(); listDirty=false;}
-  if(name==='settings')syncMenu();
+  if(name==='settings'){syncMenu();syncGfx();}
   refreshMenu();                                                 // rebuild the keyboard cursor for this page
 }
 function switchTab(name){
@@ -2050,6 +2226,13 @@ const menuNav={
       [['vol','volTog'],['sfxvol','sfxTog'],['musicvol','musicTog']].forEach(([sid,tid])=>{
         const sl=document.getElementById(sid), tog=document.getElementById(tid), row=sl.closest('.srow');
         items.push({el:row, left:()=>stepSlider(sl,-5), right:()=>stepSlider(sl,5), activate:()=>tog.click()});
+      });
+      // graphics chips: Left/Right cycle the option (like the sliders), Space activates the next
+      document.querySelectorAll('.gopts[data-gfx]').forEach(g=>{
+        const kind=g.dataset.gfx, row=g.closest('.gfxrow'), opts=[...g.querySelectorAll('.gopt')].map(b=>b.dataset.val);
+        const cyc=d=>{let i=opts.indexOf(Gfx.state[kind]); i=(i+d+opts.length)%opts.length;
+          Gfx.set(kind,opts[i]); syncGfx(); Sound.sfx('select');};
+        items.push({el:row, left:()=>cyc(-1), right:()=>cyc(1), activate:()=>cyc(1)});
       });
       const rb=document.getElementById('restartBtn'), rs=document.getElementById('resumeBtn');
       if(rb&&rb.style.display!=='none')items.push({el:rb, activate:()=>rb.click()});
@@ -2139,6 +2322,10 @@ musicvol.addEventListener('input',()=>{Sound.resume();Sound.setMusicVolume(+musi
 volTog.addEventListener('click',e=>{e.preventDefault();Sound.resume();Sound.toggle();syncMenu();});
 sfxTog.addEventListener('click',e=>{e.preventDefault();Sound.resume();Sound.toggleSfx();syncMenu();if(Sound.sfxOn)Sound.sfx('select');});
 musicTog.addEventListener('click',e=>{e.preventDefault();Sound.resume();Sound.toggleMusic();syncMenu();});
+// graphics option chips: set the knob, persist+apply, re-light the row, click sound
+document.querySelectorAll('.gopts[data-gfx]').forEach(g=>g.addEventListener('click',e=>{
+  const b=e.target.closest('.gopt'); if(!b)return; e.preventDefault(); Sound.resume();
+  Gfx.set(g.dataset.gfx,b.dataset.val); syncGfx(); Sound.sfx('select'); }));
 document.getElementById('resumeBtn').addEventListener('click',e=>{e.preventDefault();closeJournal();});
 document.getElementById('restartBtn').addEventListener('click',e=>{e.preventDefault();Save.wipe();
   const swap=curScene!=='town', F=fadeEl();

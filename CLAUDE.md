@@ -361,6 +361,7 @@ audit alone for these.
 | Dark squares / mottled patch / flicker on a park-edge wall | box extended below base INTO the retaining wall (vertical z-fight) → `bottom=base` |
 | Two buildings/stairs flicker where they meet | overlapping footprints → `window.__overlaps()` must be `[]`; separate them |
 | Player clips THROUGH the steps going down stairs | `groundHeight` returned a SMOOTH RAMP through STEPPED stair boxes → her feet sat up to ~2 risers BELOW the tread tops in the lower half, so the step behind clipped her legs → snap grounding to the SAME tread tops the builder draws (`H - floor((z-zTop)/dz)*dy`); ease the RENDER height down (clamped `>=` true surface, never below) so descents glide without per-step snap. Guarded by `checks/stair-grounding.mjs` (`window.__stairGrounding()`=`[]`). General class: a billboard's grounding height must match the VISIBLE surface beneath her, never below it |
+| Subtle "fold" / weird shadow slivers on the LEFT & RIGHT of a billboard (Shen) on stairs | the flat contact-shadow oval is ONE horizontal quad at foot height; a HARD-edged disc (solid core + thin rim) gets sliced by the step edges (occluded behind the higher tread, floating over the lower one) so it bands across steps + its wide L/R extremities poke out beside her hips → make the oval a soft radial gradient whose alpha reaches **0 at the rim** (keep a defined core so it still reads grounded); a rim that hits 0 can't show a hard clip on stepped/uneven ground. General class: a billboard contact shadow must dissolve at its rim, never be a hard-edged disc. Guarded by `checks/contact-shadow-soft.mjs` (`window.__contactShadowProfile()` rim≈0) |
 | Road/plaza/sidewalk shimmer seam | coplanar surfaces same height → distinct per-kind `y`-eps (+ `lift`) |
 | Stray white/cream outline lines | `EdgesGeometry` on the wrong thing → `edge=false` on buildings + rounded/small props (keep only as deliberate die-cut) |
 | "Invisible circle" blocks a path | coarse box collider (`r=0.5·min(w,d)` → r=2 bulge) → tight perimeter ring (~0.55); confirm with `cameraQA.walk` |
@@ -384,17 +385,54 @@ audit alone for these.
 | **Room walls don't line up at the corners** | side walls and back wall built at different heights (e.g. `wallH` 4.5 vs `backH` 5.4) → a step at the corner. Give a room ONE wall height. |
 | **Door/shelf/sign has the WALL drawn over it; one prop clips THROUGH another** | a fixture recessed INTO the wall (placed at wall centre `z`) → the wall front occludes it; or a shelf board spans a tank. Mount fixtures PROUD of the wall front face (`zBack + th/2`); a tank SITS ON a shelf board (y-touch). `window.__clips()` / `window.__interiorOverlaps()` (3D per-mesh audit over `userData.fx`-tagged fixtures) must be `[]` — guarded by `checks/interior-overlap.mjs`. |
 | **A long/thin prop (shelf) walls off the room** | a single circular collider `r=½·max(w,d)` (≈4u for a width-8 shelf) bulges a huge invisible wall → blocked the counter. Use `pushBoxColliders` matching the footprint (swap w/d when rotated). Tell: `cameraQA.static`/`framing` cell count drops. |
+| **Muddy / blurry CAST shadows on the ground** | the sun's shadow map spread thin over a huge frustum (`±60` ÷ `2048` ≈ 17 texels/u) → smudge edges. Density = `mapSize ÷ (2·frustumHalf)`. Fit a FIXED frustum to the scene's reachable bounds (`Sky.setShadowBounds` from `spec.bounds`) + a bigger map: `4096`÷`±53` ≈ 38 t/u for town. Guarded by `checks/shadow-quality.mjs` (`window.__shadowInfo()` → `texelsPerUnit ≥ 28` + `soft` at the top tier). |
+| **CAST shadows crawl / flicker as the player moves** | a shadow frustum that FOLLOWS the player swims its texels every frame (world-x/z snapping is wrong for an angled light → the edge crawls, worst under small props like bushes). FIX: a FIXED, world-locked frustum (`Sky.setShadowBounds(cx,cz,half)` per scene) — it physically can't shimmer. Never follow the player with the shadow camera. |
+| **DOUBLE shadow under one object (a pool below + a cast shadow to the side)** | a 3D modelled prop both casts a REAL shadow (`M()` sets `castShadow=true`) AND gets a `contactShadow()` oval → two shadows. RULE: 3D props (tree/bench/bush/fountain…) cast the real shadow ONLY (no oval in `buildProps`); flat BILLBOARDS (Shen/NPCs/pickups, `castShadow=false`) get the oval ONLY. Each thing = exactly one shadow of the right kind. |
+| **Cast shadow fuzzy / jagged / hard (not an accurate real-life bleed)** | the built-in shadow filters are all wrong for this: `PCFSoftShadowMap` is a fixed-width DITHERED blur (reads fuzzy/jagged), `PCFShadowMap` is hard, `VSMShadowMap` LIGHT-BLEEDS small props to nothing. FIX: **PCSS** (`js/pcss.js` patches `ShaderChunk.shadowmap_pars_fragment`) = contact-hardening soft shadows — crisp where an object meets the ground, bleeding softer with distance (sun read as an AREA light). `installPCSS()` runs BEFORE any material compiles; `renderer.shadowMap.type=PCFShadowMap` (PCSS short-circuits `getShadow`). Guarded by `checks/shadow-quality.mjs` (`__shadowInfo().pcss`). |
+| **PCSS shadows wash out / small props lose their shadow** | the PCSS **filter radius is in shadow-UV, not texels** — `0.024` UV ≈ 98 texels at 4096 → samples over a huge area → averages the shadow to nothing. Keep `PCSS_MAX` a FEW texels (`~0.006` UV ≈ 24 tx); `PCSS_SOFT` ~0.13, `MIN` ~0.0006. Also tighten the shadow camera near/far to the light's real distance (`setShadowBounds`: outdoor ~40/178, interior ~2/48) so packed-depth precision resolves the blocker gap. |
+| **Small-prop shadows vanish entirely** | (a) `VSMShadowMap` light-bleed (don't use VSM); (b) `shadow.normalBias` too high (`0.4` peter-pans the shadow off small casters) → keep `~0.02`; (c) PCSS filter radius too big (row above). The big building still casts (large occluder) while trees/benches lose theirs = the tell. |
+| **Soft contact-shadow oval too sharp/dark (vs the soft cast shadows)** | the die-cut oval's rim feather too tight → widen the canvas blur so it matches the soft world shadows: `ctx.filter='blur(s*0.085)'` over a filled ellipse (`r≈0.355·s`, alpha ~0.46) on a 256px canvas + mipmaps. Visual-sweep item (subjective edge). |
 | Edits not showing on reload | browser cached `specs/world.json` → fetched `cache:'no-store'`; hard-reload. **The preview hard-caches ES modules and WON'T re-fetch even on reload** — a fix can be in the served file yet the page runs old code (symptom: `'newThing' in window.audio` is false). FIX: `studio/js/*.js` are imported in `game.html` with a `?v=N` cache-bust — **bump N when you edit any module**. Also verify in a FRESH headless context (`node studio/qa_audit.mjs` / `studio/qa/scenarios/*`). |
 
 Debug hooks (all on `window`): `cameraQA.{static,framing,clip,path,transition,reach,walk,warp}`,
 `__overlaps()` (town 2D footprints), `__clips()`/`__interiorOverlaps()` (interior 3D per-mesh),
 `__floorOverruns()`, `__sceneBackgrounds()`, `__fixtures()` (per-fixture AABBs), `__textureDensity()`,
-`__skyLeak()`, `__camAbyss()`, `__gh(x,z)`, `__probe(x,z)`, `__colliders(x,z,r)`,
+`__skyLeak()`, `__camAbyss()`, `__shadowInfo()` (`{pcss,soft,texelsPerUnit,level,gfx,…}`),
+`__gfx()`/`__gfx(kind,val)` (read/set graphics quality: `shadows`/`fx`/`res`), `__gh(x,z)`,
+`__probe(x,z)`, `__colliders(x,z,r)`,
 `__freecam/__look` (free-cam for QA shots — they STOP the auto loop; call `__startAuto()` after).
 Deterministic gate: `node studio/qa_audit.mjs` (auto-runs `studio/qa/checks/*`). See `studio/qa/README.md`.
 
 ## Status / next
 
+- DONE: **Shadow rework + graphics menu** — fixed three shadow problems Christopher flagged
+  (first "always very blurry edges"; then on a follow-up: flicker, double shadows, too sharp).
+  Final approach:
+  - **Soft + ACCURATE (PCSS):** the built-in filters all fail here — PCFSoft is a fuzzy/jagged
+    dither, VSM light-bleeds small props away. So `js/pcss.js` patches the shadow shader to do
+    **PCSS** (contact-hardening soft shadows: crisp where an object meets the ground, bleeding
+    softer with distance — the sun read as an AREA light). `installPCSS()` before any material
+    compiles; type stays `PCFShadowMap` (PCSS short-circuits `getShadow`). Density from a FIXED
+    frustum fit to the scene (`4096`÷`±53` ≈ 38 t/u for town), not the old muddy `±60`÷`2048` ≈ 17.
+    ⚠️ PCSS filter radius is in shadow-UV (a few texels), NOT a big number — too big washes small
+    props out. (First pass used PCFSoft/`shadow.radius`; the user flagged it as fuzzy → PCSS.)
+  - **No flicker:** the shadow frustum is FIXED + world-locked (`Sky.setShadowBounds(cx,cz,half)`
+    from `spec.bounds`, called by `buildScene`). The earlier player-FOLLOWING frustum is what made
+    shadows crawl/swim under the bushes; a fixed one can't shimmer. (`setShadowFocus` removed.)
+  - **No double shadows:** every 3D prop's `M()` meshes cast a REAL shadow, so `buildProps` no
+    longer also adds a `contactShadow()` oval (that was the "one below + one to the side" the player
+    saw on the tree). 3D props (tree/bench/bush/fountain…) → real cast shadow only; flat BILLBOARDS
+    (Shen/NPCs/pickups, `castShadow=false`) → soft contact OVAL only (oval blur widened to match).
+  - **Graphics menu** (Settings → `Gfx`): three independent chips on their own `shen.gfx.*` keys
+    (like the volume mix), applied live + persisted — **shadows** (off/low/high; both tiers soft,
+    the tier trades map resolution), **finish** (the `fx.js` lens: off/minimal/diorama/full,
+    defaults **off** so it's opt-in), **resolution** (fast 1× / crisp `min(dpr,2)`). Mobile/
+    coarse-pointer defaults shadows to **low**. Chip click plays `select`.
+  - Deterministic **`checks/shadow-quality.mjs`** (`window.__shadowInfo()` → `soft` + `texelsPerUnit
+    ≥ 28` + `blurRadius>0` at the top tier + the `__gfx` knobs wired) so shadows can't silently
+    regress to muddy/hard. `window.__gfx()`/`__gfx(kind,val)` console+QA hook. Audit 10/10 green,
+    smoke green; town + park (tree/bench/bush single soft shadows) + interior + all menu knobs
+    verified in preview. See the failure-modes table (six shadow rows) + [[premium-look-overhaul]].
 - DONE: **QA capture reflex + hard gate** — a problem Christopher reports once becomes a
   permanent check (fix → generalize → promote to a **deterministic** assertion → record).
   New **`studio/qa/`** = the single QA home: a shared `harness.mjs` (`withGamePage`, free
