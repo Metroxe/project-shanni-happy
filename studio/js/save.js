@@ -59,6 +59,8 @@ function backup(rawStr) {
 //                     from S, or they'd be dropped the moment you change rooms.
 //   extra.scene     — id of the scene the player is currently in (which world spec
 //                     their x/z belong to). Absent on old saves → town (default).
+//   extra.cutscenes — ids of one-time cutscenes already SEEN (array). Additive: absent
+//                     on old saves → none seen → first-visit scenes will replay them.
 export function write(S, world, build, extra) {
   const s = store(); if (!s) return;
   const collected = (extra && Array.isArray(extra.collected))
@@ -71,6 +73,8 @@ export function write(S, world, build, extra) {
     scene: (extra && typeof extra.scene === 'string') ? extra.scene : undefined,
     player: { x: round(S.x), z: round(S.z), facing: S.facing === -1 ? -1 : 1 },
     collected,
+    cutscenes: (extra && Array.isArray(extra.cutscenes))
+      ? extra.cutscenes.filter(id => typeof id === 'string') : [],
     quests: (extra && extra.quests && typeof extra.quests === 'object') ? extra.quests : {},
     npcs: {},                       // reserved: future conversation state
   };
@@ -159,7 +163,9 @@ function sanitize(raw, scenes) {
   // quest progress is owned by the Quests engine; pass the blob through (it
   // validates/clamps per-quest on its own init). Missing → empty (fresh quests).
   const quests = (raw.quests && typeof raw.quests === 'object' && !Array.isArray(raw.quests)) ? raw.quests : {};
-  return { player, collected, quests, scene };
+  // seen one-time cutscenes (string ids); missing/old → none seen.
+  const cutscenes = (Array.isArray(raw.cutscenes) ? raw.cutscenes : []).filter(id => typeof id === 'string');
+  return { player, collected, quests, scene, cutscenes };
 }
 
 // Apply a sanitized save onto a fresh sim state (mutates S). The collected-id

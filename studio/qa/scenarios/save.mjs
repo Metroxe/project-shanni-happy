@@ -9,9 +9,13 @@ await withGamePage(async (page, ctx) => {
   const boot=async()=>{ await page.goto(`${ctx.base}/game.html`,{waitUntil:'load'});
     await page.waitForFunction('window.__ready===true||!!window.__err'); await page.waitForTimeout(250); };
 
-  // 1) New game in town, collect 2 hamsters by walking over them
+  // 1) New game in town, collect 2 hamsters by walking over them. The town hamsters only
+  // exist once the roundup quest is active (they "escape" in the pet-shop cutscene), so start
+  // it directly + rebuild town (in real play the cutscene does this) before collecting.
   await page.evaluate(`(()=>{__startAuto&&__startAuto();game.wipe();game.start(true);})()`);
   await page.waitForTimeout(200);
+  await page.evaluate(`game.startQuest('q_hamsters')`);
+  await page.evaluate(`game.enter('town')`); await page.waitForTimeout(400);
   await page.evaluate(`(async()=>{ for(const [x,z] of [[-24,-46],[-2,-3]]){ cameraQA.warp(x,z+2); game.goTo(x,z); await new Promise(r=>setTimeout(r,700)); } })()`);
   await page.waitForTimeout(300);
   let got=await page.evaluate(`game.state().collectibles.filter(c=>c.got).length`);

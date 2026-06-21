@@ -16,7 +16,7 @@
 const CFG = {
   sfx: { hop: 0.34, land: 0.42, step: 0.09, stepSoft: 0.08, move: 0.3, talk: 0.42, select: 0.42,
          squeak: 0.34, quest: 0.42, questStep: 0.44, questDone: 0.5, book: 0.4, bookClose: 0.36, flip: 0.3,
-         fs: 0.4, lift: 0.18, door: 0.4, chirp: 0.26, bubble: 0.12 },
+         fs: 0.4, lift: 0.18, door: 0.4, chirp: 0.26, bubble: 0.12, knock: 0.46, scurry: 0.3 },
   blip: 0.17,
   water: 0.14,   // ambient fountain trickle ceiling (faded in by player proximity — a spatial world sound)
 };
@@ -26,6 +26,7 @@ const CFG = {
 const VOICES = {
   Chrees:    { base: 132, range: 4, mute: 2100 },  // buff, gruff — low trombone
   Shen:      { base: 320, range: 5, mute: 2900 },  // player — bright, light
+  Adrian:    { base: 196, range: 4, mute: 2300 },  // shy shopkeep — soft, warm, a touch muffled
   _default:  { base: 210, range: 5, mute: 2600 },
 };
 
@@ -264,6 +265,25 @@ const SFX = {
     const f = 150 + rand(-25, 70);
     note({ type: 'sine', f: f * 0.85, f2: f * 2.0, dur: 0.10, gain: v, atk: 0.004 });
     if (Math.random() < 0.4) note({ type: 'sine', f: f * 1.3, f2: f * 2.6, t0: 0.05, dur: 0.07, gain: v * 0.5 });
+  },
+  // a light wooden table tipping over: a soft low "bonk" as it goes, then a little
+  // clatter of legs + pen meeting the floor. Woody (low sines) + two short noise
+  // rattles, kept gentle — papercraft, never a crash. Used in the pet-shop cutscene.
+  knock(v) {
+    note({ type: 'sine', f: semi(-15), f2: semi(-22), dur: 0.20, gain: v * 0.8, atk: 0.003 });
+    note({ type: 'triangle', f: semi(-10), f2: semi(-18), dur: 0.16, gain: v * 0.5 });
+    noise({ t0: 0.04, dur: 0.10, gain: v * 0.55, freq: 540, q: 0.6 });            // first thud
+    noise({ t0: 0.16, dur: 0.12, gain: v * 0.4, freq: 760, q: 0.7 });             // clatter settle
+    note({ type: 'sine', f: semi(-19), t0: 0.18, dur: 0.14, gain: v * 0.35 });
+  },
+  // a flurry of tiny paws bolting off — several quick soft patter ticks fanning out,
+  // with a faint high skitter on top. Soft + brief: a stampede of hamsters, not boots.
+  scurry(v) {
+    for (let i = 0; i < 6; i++) {
+      const t0 = i * 0.045 + rand(0, 0.02);
+      noise({ t0, dur: 0.035, gain: v * (0.5 - i * 0.04), freq: 900 + rand(-150, 250), q: 0.7 });
+      if (i % 2 === 0) note({ type: 'triangle', f: semi(22 + rand(-2, 4)), t0, dur: 0.04, gain: v * 0.25 });
+    }
   },
 };
 
