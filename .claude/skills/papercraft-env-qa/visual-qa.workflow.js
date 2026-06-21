@@ -28,6 +28,7 @@ NAMED REGRESSIONS — specific defects Christopher has flagged before; check eac
   e. BLURRY / MIS-ALIGNED TEXTURE — stretched low-res maps, building textures that don't line up across faces (prefer modelled structure over big textures in the foreground).
   f. TEXTURE SEAM — a hard, unblended join where two materials/textures meet.
   g. SKY-GAP — pale sky/light seeping through a vertical gap between two adjacent shopfronts/buildings (an abyss leak).
+  h. OFF-COLOUR GROUND BAND — a flat ground surface (grass/path/plaza) whose hue clashes with the warm-neutral palette (e.g. a saturated yellow-green strip flipping G>R against warm-gray ground) OR that doesn't cover its intended region, leaving warm base-ground slivers — so it reads as a coplanar band "bleeding through" rather than a deliberate lawn/path. A real surface must HARMONISE (soft, on-palette) and FULLY cover its area, meeting believable boundaries (stairs/hedge/building), not float a stray edge on open ground.
 
 For EACH defect: which shot, which class, severity (high/med/low), and a precise detail of WHAT and WHERE in the frame. If a shot looks clean, do not invent problems. Be specific and visual.`;
 

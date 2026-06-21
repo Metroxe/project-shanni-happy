@@ -63,7 +63,7 @@
     { "kind": "sidewalk", "shape": "rect", "x": 9,  "z": -6.6, "w": 50, "d": 2, "color": "c1beb6", "y": 4.5 },
     { "kind": "sidewalk", "shape": "rect", "x": 12, "z": 0.8, "w": 44, "d": 2, "color": "c1beb6", "y": 4.5 },
 
-    { "kind": "grass",    "shape": "rect", "x": 0, "z": 18.5, "w": 66, "d": 19, "color": "c5d9b3", "y": 0.0 },
+    { "kind": "grass",    "shape": "rect", "x": 0, "z": 17.5, "w": 74, "d": 25, "color": "c6cdac", "y": 0.0 },
     { "kind": "path",     "shape": "rect", "x": 9.5, "z": 10.6, "w": 9, "d": 2.4, "color": "bfbaad", "y": 0.0 }
   ],
 
