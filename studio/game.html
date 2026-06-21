@@ -1230,10 +1230,10 @@ function buildInterior(cols){
   }
   buildInteriorProps(cols);
   // the knocked-over table REMNANT: once the first-visit cutscene has played, the table Shen tipped
-  // stays in the shop on every later entry (built pre-tipped here). Non-colliding decor (it lies flat
-  // — the player steps past it), so it never affects reachability/camera QA.
+  // stays in the shop on every later entry (built pre-tipped here). It's a SOLID obstacle — a collider
+  // matching its tipped footprint (cols) makes the player walk around it, not through it.
   if(SCENE.cutscene && SCENE.cutsceneTable && seenCutscenes.has(SCENE.cutscene))
-    buildCutsceneTable(SCENE.cutsceneTable.x, SCENE.cutsceneTable.z, {tipped:true, persistent:true});
+    buildCutsceneTable(SCENE.cutsceneTable.x, SCENE.cutsceneTable.z, {tipped:true, persistent:true, cols});
 }
 // ---- interior fixtures (counter, tanks, shelves, cages, plants...) ----
 function iRug(p){ const g=new THREE.Group(), w=p.w||6, d=p.d||4;
@@ -2298,9 +2298,20 @@ function buildCutsceneTable(tx0,tz0,opts){
   rail(1.24,0.06,0,-0.34); rail(1.24,0.06,0,0.34); rail(0.06,0.74,-0.62,0); rail(0.06,0.74,0.62,0);
   const bed=M(new THREE.BoxGeometry(1.18,0.05,0.68),'#e8d8b4',false,false); bed.position.set(off,top0+0.10,0); g.add(bed);
   if(opts.tipped) g.rotation.z=TABLE_TIP;                       // already knocked over (the remnant)
-  if(opts.persistent){ g.userData.fx='tipped_table'; }         // a real fixture — survives the cutscene + re-entries (NOT csProp)
+  if(opts.persistent){ g.userData.fx='tipped_table';           // a real fixture — survives the cutscene + re-entries (NOT csProp)
+    if(opts.cols) addTippedTableCollider(g, opts.cols); }      // SOLID: the player walks around the tipped table, not through it
   else { g.userData.fx='cs_table'; g.userData.csProp=true; csTable=g; csTableBox={x:tx0,z:tz0,hw:0.78,hd:0.49}; }   // footprint for the clip guard
   sceneRoot.add(g); return g;
+}
+// The knocked-over table is a SOLID obstacle — give it a collider matching its tipped XZ
+// footprint so the player walks AROUND it, not through it (it stands ~0.9u off the floor on
+// its side, not flat). Used by the persistent remnant (buildInterior, via opts.cols) and the
+// live cutscene table on conversion (endCutscene, pushed into SCENE_COLLIDERS).
+function addTippedTableCollider(g, cols){
+  g.updateMatrixWorld(true);
+  const bb=new THREE.Box3().setFromObject(g);
+  pushBoxColliders(cols, (bb.min.x+bb.max.x)/2, (bb.min.z+bb.max.z)/2,
+    Math.max(0.4, bb.max.x-bb.min.x), Math.max(0.4, bb.max.z-bb.min.z));
 }
 function buildCutsceneHamsters(tx0,tz0){
   csHamsters.length=0; const tex=txCacheU['out/hamster-paper.png']; if(!tex) return;
@@ -2563,11 +2574,18 @@ function startPendingCutscene(){
   const id=pendingCutscene; pendingCutscene=null;
   if(!id || Cutscene.active) return;
   const beats = id==='cs_petshop_intro' ? buildPetshopIntro() : null;
-  if(!beats){ seenCutscenes.add(id); return; }                    // unknown id → mark seen, skip
+  if(!beats){ seenCutscenes.add(id); persist(); return; }         // unknown id → mark seen, skip
+  // A cutscene happens ONCE: mark it SEEN + persist the moment it BEGINS, before any line plays.
+  // If the player reloads / hides the tab mid-cutscene, the autosave (10s interval / pagehide)
+  // must already record it as seen — otherwise Continue lands back in this scene with an empty
+  // seen-set and RE-ARMS it, replaying on every entry (the "plays every time" bug). Marking at
+  // END alone is too late: the autosave fires mid-cutscene. (The quest still starts at its beat
+  // on normal completion; if interrupted, Adrian re-offers it in dialogue.)
+  seenCutscenes.add(id);
   held.up=held.down=held.left=held.right=false; edgeJump=edgeTalk=false;
   nearNpc=null; nearPortal=null; if(Dialogue.active)Dialogue.end();
   document.getElementById('talkPrompt').classList.remove('on');
-  document.body.classList.add('cutscene'); Sound.resume();
+  document.body.classList.add('cutscene'); Sound.resume(); persist();
   Cutscene.play(beats, { label:id, onEnd:()=>endCutscene(id) });
 }
 function endCutscene(id){
@@ -2575,7 +2593,8 @@ function endCutscene(id){
   // LEAVE the knocked-over table — Shen tipped it; it stays in the shop as the remnant (re-built on
   // every later entry by buildInterior when the cutscene is seen). Convert it from a cutscene csProp
   // to a permanent 'tipped_table' fixture so the teardown sweep below doesn't take it.
-  if(csTable){ csTable.userData.csProp=false; csTable.userData.fx='tipped_table'; csTable.rotation.z=TABLE_TIP; csTable=null; } csTableBox=null;
+  if(csTable){ csTable.userData.csProp=false; csTable.userData.fx='tipped_table'; csTable.rotation.z=TABLE_TIP;
+    addTippedTableCollider(csTable, SCENE_COLLIDERS); setColliders(SCENE_COLLIDERS); csTable=null; } csTableBox=null;
   // GENERIC teardown: drop EVERY remaining cutscene-spawned prop (userData.csProp — the hamsters, who
   // fled out the door) so nothing a cutscene built is left stuck in the room. Standing rule for ALL
   // cutscenes. (The table is now untagged → it stays.)
