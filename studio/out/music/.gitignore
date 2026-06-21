@@ -1,3 +1,5 @@
-# raw generated audio (intermediate; only the final *.ogg loops are committed)
+# raw generated audio + loop candidates (intermediate; only the final picked top-level
+# *.ogg loops are committed — calm.ogg, shop.ogg, night.ogg)
 raw/
+cand/
 *.wav
