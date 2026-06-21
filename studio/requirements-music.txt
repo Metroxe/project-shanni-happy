@@ -24,8 +24,9 @@
 #   ssh system76-cf 'cd ~/shanni-music && .venv/bin/python gen_music.py \
 #       --name gym --seeds 0,1,2,3 --dur 30 --prompt "<prompt>"'   # runs on CUDA, ~30s/clip
 #   scp 'system76-cf:~/shanni-music/out/music/raw/gym-s*.wav' studio/out/music/raw/
-#   # then make_loop.py + verify_loop.mjs run LOCALLY (lightweight: numpy/soundfile/oggenc,
-#   # no torch) to build the seamless loop and pick the cleanest seed.
+#   # then make_loop.py + qa/scenarios/music-seam.mjs run LOCALLY (lightweight: numpy/
+#   # soundfile/oggenc/playwright, no torch) to build the seamless loop and pick the
+#   # cleanest seed by in-browser wrap/p99.9 — build a loop per seed, seam-check each.
 # (system76-cf: ⚠️ never reboot it — no auto sshd/cloudflared means a reboot locks you out.)
 torch
 torchaudio
