@@ -476,7 +476,7 @@ import * as THREE from 'three';
 import { WORLD, initState, step, setBounds, setColliders } from './js/sim.js?v=4';
 import { Dialogue } from './js/dialogue.js?v=4';
 import * as Save from './js/save.js?v=4';
-import { Sound } from './js/audio.js?v=4';
+import { Sound } from './js/audio.js?v=5';
 import { Quests } from './js/quests.js?v=4';
 import { Sky } from './js/sky.js?v=4';
 import { FX } from './js/fx.js?v=4';
@@ -611,7 +611,7 @@ function M(geo,col,flat,edge){ paperUV(geo,DENSITY); const m=new THREE.Mesh(geo,
   m.castShadow=true;m.receiveShadow=true;
   if(edge===true)m.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo,38),EDGEMAT));
   return m;}
-let SCENE,LEVEL={H:0},STAIRS=null,SCENE_COLLIDERS=[],BUILDING_MESHES=[],billboards=[],fountains=[];
+let SCENE,LEVEL={H:0},STAIRS=null,SCENE_COLLIDERS=[],BUILDING_MESHES=[],billboards=[],fountains=[],propAnims=[];
 // Two-terrace city: a raised upper level (plaza + street + shops) at LEVEL.H, a
 // sunken park at y=0, joined by a descending stair notch in the central corridor.
 function groundHeight(x,z){
@@ -880,16 +880,69 @@ function makeBench(p){ const g=new THREE.Group(), s=p.scale||1, col='#'+(p.color
   [[-0.7,-0.18],[0.7,-0.18],[-0.7,0.18],[0.7,0.18]].forEach(([lx,lz])=>{const leg=M(new THREE.BoxGeometry(0.1*s,0.45*s,0.1*s),col,false,false);
     leg.position.set(lx*s,0.22*s,lz*s); g.add(leg);});
   return {group:g,h:1.0*s,rad:0.95*s}; }
-function makeFountain(p){ const g=new THREE.Group(), s=p.scale||1, stone='#'+(p.color||'ded8cc');
-  const basin=M(new THREE.CylinderGeometry(1.85*s,2.05*s,0.6*s,28),stone,false,false); basin.position.y=0.3*s; g.add(basin);
-  const w1=new THREE.Mesh(new THREE.CircleGeometry(1.6*s,28),new THREE.MeshStandardMaterial({color:hex('bcd9e6'),roughness:0.5,transparent:true,opacity:0.85}));
-  w1.rotation.x=-Math.PI/2; w1.position.y=0.57*s; g.add(w1);
-  const ped=M(new THREE.CylinderGeometry(0.4*s,0.52*s,0.95*s,16),stone,false,false); ped.position.y=0.95*s; g.add(ped);
-  const bowl=M(new THREE.CylinderGeometry(0.92*s,0.6*s,0.35*s,20),stone,false,false); bowl.position.y=1.5*s; g.add(bowl);
-  const w2=new THREE.Mesh(new THREE.CircleGeometry(0.8*s,20),new THREE.MeshStandardMaterial({color:hex('cfe6ef'),roughness:0.5,transparent:true,opacity:0.85}));
-  w2.rotation.x=-Math.PI/2; w2.position.y=1.69*s; g.add(w2);
-  const top=M(new THREE.CylinderGeometry(0.1*s,0.15*s,0.5*s,12),stone,false,false); top.position.y=1.92*s; g.add(top);
-  return {group:g,h:2.1*s,rad:2.0*s,shadowR:2.1*s}; }
+// translucent water material (pale paper-blue). depthWrite off so the many thin water
+// layers blend over each other instead of z-fighting; never casts a shadow.
+function waterMat(col,op){ const c=hex(col); return new THREE.MeshStandardMaterial({color:c,emissive:c,
+  emissiveIntensity:0.32, roughness:0.28, metalness:0, transparent:true, opacity:op,
+  depthWrite:false, side:THREE.DoubleSide}); }
+// A generous town-square fountain that ACTUALLY moves water: a stone basin POOL with a
+// real translucent surface + expanding ripple rings, a two-tier stone centre, a pulsing
+// central JET, a ring of arcing droplet "spurts" that fall into the pool, and overflow
+// trickles from the upper bowl. All motion is paper cutouts physically moving (droplets
+// arc + fall, ripples spread, jet breathes) — never a tween between drawings. Returns an
+// update(t) closure so draw() animates it each frame; sound is the spatial water ambient
+// (setWaterLevel) plus an occasional `plip` droplet (world.json `ambients`).
+function makeFountain(p){ const g=new THREE.Group(), s=p.scale||1, stone='#'+(p.color||'e4ddd0');
+  const poolR=3.0, wy=0.56, W1='a8d3e3', W2='c6e4ee';           // pool radius + water-line + two water tints
+  // --- the little pool (plinth + basin drum; the drum's top cap is the stone rim) ---
+  const foot=M(new THREE.CylinderGeometry(poolR+0.5,poolR+0.72,0.3,44),stone,false,false); foot.position.y=0.15; g.add(foot);
+  const drum=M(new THREE.CylinderGeometry(poolR+0.3,poolR+0.5,0.62,44),stone,false,false); drum.position.y=0.46; g.add(drum);
+  const pool=new THREE.Mesh(new THREE.CircleGeometry(poolR+0.04,48),waterMat(W1,0.8));
+  pool.rotation.x=-Math.PI/2; pool.position.y=wy; pool.castShadow=false; g.add(pool);
+  // expanding ripple rings on the pool surface (scale out + fade, staggered)
+  const ripples=[]; for(let i=0;i<3;i++){ const rg=new THREE.Mesh(new THREE.RingGeometry(0.86,1.0,44),waterMat(W2,0));
+    rg.rotation.x=-Math.PI/2; rg.position.y=wy+0.015; rg.castShadow=false; rg.renderOrder=2; g.add(rg); ripples.push(rg); }
+  // --- two-tier stone centre ---
+  const ped=M(new THREE.CylinderGeometry(0.62,0.82,1.25,24),stone,false,false); ped.position.y=0.9; g.add(ped);
+  const bowl=M(new THREE.CylinderGeometry(1.3,0.74,0.36,28),stone,false,false); bowl.position.y=1.66; g.add(bowl);
+  const bowlW=new THREE.Mesh(new THREE.CircleGeometry(1.12,28),waterMat(W1,0.84));
+  bowlW.rotation.x=-Math.PI/2; bowlW.position.y=1.85; bowlW.castShadow=false; g.add(bowlW);
+  const stem=M(new THREE.CylinderGeometry(0.19,0.27,0.62,18),stone,false,false); stem.position.y=2.12; g.add(stem);
+  const noz=M(new THREE.CylinderGeometry(0.1,0.17,0.22,14),stone,false,false); noz.position.y=2.5; g.add(noz);
+  // --- central jet: a bright translucent water spout rising from the nozzle ---
+  const jetMat=new THREE.MeshStandardMaterial({color:hex(W2),emissive:hex(W2),emissiveIntensity:0.5,
+    roughness:0.2,metalness:0,transparent:true,opacity:0.62,depthWrite:false,side:THREE.DoubleSide});
+  const nozY=2.55, jetH=1.55;
+  const jet=new THREE.Mesh(new THREE.CylinderGeometry(0.09,0.3,jetH,16),jetMat);
+  jet.castShadow=false; jet.renderOrder=3; g.add(jet);
+  // --- droplets: one shared geo + material, scale-faded at the ends so recycling never pops ---
+  const dGeo=new THREE.IcosahedronGeometry(0.095,0), dMat=waterMat(W2,0.95);
+  const arcs=[], N=9, reach=poolR*0.82;                         // arcing "spurts" out of the crown into the pool
+  for(let i=0;i<N;i++){ const th=i/N*Math.PI*2;
+    for(let k=0;k<3;k++){ const m=new THREE.Mesh(dGeo,dMat); m.castShadow=false; m.renderOrder=4; g.add(m); arcs.push({m,th,ph:k/3}); } }
+  const crown=[]; for(let i=0;i<6;i++){ const m=new THREE.Mesh(dGeo,dMat); m.castShadow=false; m.renderOrder=4; g.add(m); crown.push({m,th:i*1.05,ph:i/6}); }
+  // overflow: droplets spilling off the upper-bowl lip straight down into the pool
+  const falls=[], FN=6;
+  for(let i=0;i<FN;i++){ const th=(i+0.5)/FN*Math.PI*2;
+    for(let k=0;k<2;k++){ const m=new THREE.Mesh(dGeo,dMat); m.castShadow=false; m.renderOrder=4; g.add(m); falls.push({m,th,ph:k/2}); } }
+  const update=t=>{
+    const jp=0.85+0.15*Math.sin(t*3.0);                         // jet breathes in height
+    jet.scale.set(1,jp,1); jet.position.y=nozY+jetH*0.5*jp; jetMat.opacity=0.55+0.12*Math.sin(t*5.1+1);
+    for(let i=0;i<ripples.length;i++){ const pr=(t*0.45+i/ripples.length)%1, rs=0.22+pr*(poolR-0.22);
+      ripples[i].scale.set(rs,rs,1); ripples[i].material.opacity=0.42*(1-pr); }
+    const top=nozY+jetH;
+    for(const a of arcs){ const pr=(t*0.62+a.ph)%1, r=0.32+pr*reach, hump=Math.sin(Math.PI*pr);
+      a.m.position.set(Math.cos(a.th)*r, nozY+(wy-nozY)*pr+1.05*hump, Math.sin(a.th)*r);
+      a.m.scale.setScalar(0.12+1.0*hump); }
+    for(const c of crown){ const pr=(t*0.95+c.ph)%1, r=0.06+pr*0.5, hump=Math.sin(Math.PI*pr);
+      c.m.position.set(Math.cos(c.th)*r, top+0.55*hump-(top-wy)*pr, Math.sin(c.th)*r);
+      c.m.scale.setScalar(0.12+0.95*hump); }
+    for(const f of falls){ const pr=(t*0.8+f.ph)%1, hump=Math.sin(Math.PI*pr);  // bowl lip → pool
+      f.m.position.set(Math.cos(f.th)*(1.12+pr*0.06), 1.72+(wy-1.72)*pr, Math.sin(f.th)*(1.12+pr*0.06));
+      f.m.scale.setScalar(0.1+0.7*hump); }
+  };
+  g.scale.setScalar(s);                                        // base geometry is full-size; scale tweaks it in spec
+  return {group:g,h:(nozY+jetH)*s,rad:(poolR+0.6)*s,shadowR:(poolR+0.6)*s,update}; }
 // playground: slide tower + canopy + slide w/ side rails + climbing arches. Solid
 // parts get their OWN colliders (cols[]) so you can't clip through the slide.
 function makePlayground(p){ const g=new THREE.Group(), s=p.scale||1;
@@ -927,7 +980,8 @@ function buildProps(cols){
     contactShadow(p.x,p.z,r.shadowR||r.rad||0.7,gy);
     if(p.solid){ if(r.cols){ for(const c of r.cols) cols.push({x:p.x+c.dx*ca-c.dz*sa, z:p.z+c.dx*sa+c.dz*ca, r:c.r}); }
                  else cols.push({x:p.x,z:p.z,r:r.rad||0.7}); }
-    if(p.type==='fountain')fountains.push({x:p.x,z:p.z,y:gy,h:r.h}); }
+    if(p.type==='fountain')fountains.push({x:p.x,z:p.z,y:gy,h:r.h});
+    if(r.update)propAnims.push(r.update); }
 }
 // backdrop city: filler buildings beyond the playable bounds so no sightline ever
 // hits the void. No colliders, no shadows; fog fades the far rings. Deterministic.
@@ -1601,7 +1655,7 @@ function clearScene(){
   if(sceneRoot){ scene.remove(sceneRoot); }
   sceneRoot=new THREE.Group(); scene.add(sceneRoot);
   npcs.length=0; pickups.length=0; billboards.length=0; propsMesh.length=0;
-  BUILDING_MESHES.length=0; fountains.length=0; ifish.length=0; SCENE_COLLIDERS=[];
+  BUILDING_MESHES.length=0; fountains.length=0; propAnims.length=0; ifish.length=0; SCENE_COLLIDERS=[];
   nearNpc=null; nearPortal=null; Sound.setWaterLevel(0);
 }
 // collectible pickups (billboard sprites, grounded) for the active scene; index-aligned
@@ -1755,6 +1809,9 @@ function draw(dt){
   // sub-bus, so the effects + master sliders already scale it (see audio.js setWaterLevel).
   if(fountains.length){let wl=0;for(const f of fountains){const g=proxGain(f.x,f.z);if(g>wl)wl=g;}Sound.setWaterLevel(wl);}
 
+  // animated props (fountain water: jets, ripples, arcing droplets) — purely visual, runs
+  // every frame regardless of distance (cheap); the sound is proximity-gated separately.
+  for(const u of propAnims) u(S.animClock);
   // interior life: tiny fish drift inside the tanks (purely visual)
   for(const f of ifish){ f.m.position.x=f.ax+0.45*Math.sin(S.animClock*0.7+f.ph);
     f.m.position.y=f.base+0.06*Math.sin(S.animClock*1.3+f.ph*1.7);
