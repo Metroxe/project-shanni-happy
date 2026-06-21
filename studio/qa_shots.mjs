@@ -38,7 +38,7 @@ const VW = 1280, VH = 820;
 // gameplay: [name, x, z]  → cameraQA.warp(x,z) (the zone camera the player sees)
 const GAMEPLAY = [
   ['plaza-spawn', -20, -41], ['plaza-west', -27, -50], ['plaza-east', -13, -50],
-  ['plaza-north', -20, -57], ['plaza-fountain', -20, -46],
+  ['plaza-north', -15, -55], ['plaza-fountain', -20, -46],
   ['vroad-top', -20, -33], ['vroad-mid', -20, -20], ['vroad-bottom', -20, -9],
   ['corner', -19, -3], ['corner-west', -23, -3],
   ['hroad-west', -8, -3], ['hroad-mid', 9, -3], ['hroad-east', 26, -3],
