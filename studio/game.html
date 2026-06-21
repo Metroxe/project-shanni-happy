@@ -62,6 +62,10 @@
     transition:background .15s,color .15s,transform .15s;-webkit-tap-highlight-color:transparent}
   .jtab:hover{color:#7a6f5c}
   .jtab.active{background:#fffdf8;color:#c27d8b;transform:translateX(-5px);z-index:3}
+  /* keyboard cursor: a rose focus ring on whichever menu item the keyboard has selected */
+  .ksel{box-shadow:0 0 0 2px #e6b9c6,0 3px 10px rgba(183,107,125,.18)!important;border-radius:11px}
+  .srow.ksel,.qhead.ksel{background:#faecf0!important}                /* soft fill so the cursor is unmistakable on borderless rows */
+  .jtab.ksel{box-shadow:0 0 0 2px #e6b9c6,-3px 3px 8px rgba(90,80,60,.12)!important;z-index:4}
   /* book body + page */
   #bookBody{position:relative;flex:1;background:#fffdf8;border:1px solid #d6c9b2;border-radius:6px 16px 16px 6px;
     box-shadow:0 14px 40px rgba(90,80,60,.30);overflow:hidden;
@@ -127,6 +131,17 @@
   .mrow #muteState{font-weight:700;color:#7aa37e}
   .mrow.off{opacity:.75}
   .mrow.off #muteState{color:#c08a8a}
+  /* graphics options — segmented chips, same rose-highlight language as choices */
+  .gfxh{margin:20px 2px 6px;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:#a99f8c;
+    border-top:1px solid #ece2d0;padding-top:15px}
+  .gfxrow{display:flex;align-items:center;gap:10px;margin:11px 0;font-size:14px}
+  .gfxrow>span:first-child{width:70px;color:#7a756c;flex:none}
+  .gopts{display:flex;gap:5px;flex:1;flex-wrap:wrap}
+  .gopt{border:1px solid #e0d4bf;border-radius:9px;padding:5px 11px;font:inherit;font-size:12.5px;
+    background:rgba(255,255,255,.6);color:#6a655c;cursor:pointer;transition:.12s}
+  .gopt:hover{color:#7a6f5c}
+  .gopt.sel{background:#f6e7ea;border-color:#e6b9c6;color:#b76b7d;box-shadow:inset 0 0 0 1px #e6b9c6;font-weight:600}
+  .gfxhint{margin:9px 2px 0;font-size:11px;color:#a99f8c;line-height:1.6}
   .jhint{margin:16px 2px 4px;font-size:11.5px;color:#8a8579;text-align:center;line-height:1.7}
   .menuBtns{display:flex;gap:10px;margin-top:16px}
   .menuBtns .btn{flex:1;padding:11px 0;font-size:14px}
@@ -430,6 +445,20 @@
           <div class="srow" id="rowVol"><span>volume</span><input type="range" id="vol" min="0" max="100" value="70"><span id="volVal" class="sval">70%</span><button class="tog" id="volTog" title="Mute everything">on</button></div>
           <div class="srow" id="rowSfx"><span>effects</span><input type="range" id="sfxvol" min="0" max="100" value="100"><span id="sfxVal" class="sval">100%</span><button class="tog" id="sfxTog" title="Turn sound effects on/off">on</button></div>
           <div class="srow" id="rowMusic"><span>music</span><input type="range" id="musicvol" min="0" max="100" value="42"><span id="musicVal" class="sval">42%</span><button class="tog" id="musicTog" title="Turn music on/off">on</button></div>
+          <div class="gfxh">Graphics</div>
+          <div class="gfxrow"><span>shadows</span><div class="gopts" data-gfx="shadows">
+            <button class="gopt" data-val="off">Off</button>
+            <button class="gopt" data-val="low">Low</button>
+            <button class="gopt" data-val="high">High</button></div></div>
+          <div class="gfxrow"><span>finish</span><div class="gopts" data-gfx="fx">
+            <button class="gopt" data-val="off">Off</button>
+            <button class="gopt" data-val="minimal">Minimal</button>
+            <button class="gopt" data-val="diorama">Diorama</button>
+            <button class="gopt" data-val="full">Full</button></div></div>
+          <div class="gfxrow"><span>resolution</span><div class="gopts" data-gfx="res">
+            <button class="gopt" data-val="fast">Fast</button>
+            <button class="gopt" data-val="crisp">Crisp</button></div></div>
+          <div class="gfxhint">Lower these if the game runs hot. Shadows + resolution are the heaviest.</div>
           <div class="jhint">arrows / WASD move · space hop<br>E talk · Esc journal · M mute</div>
           <div class="menuBtns">
             <button class="btn" id="restartBtn">restart ✿</button>
@@ -478,13 +507,21 @@ import { Dialogue } from './js/dialogue.js?v=4';
 import * as Save from './js/save.js?v=4';
 import { Sound } from './js/audio.js?v=5';
 import { Quests } from './js/quests.js?v=4';
-import { Sky } from './js/sky.js?v=4';
+import { Sky } from './js/sky.js?v=8';
 import { FX } from './js/fx.js?v=4';
+import { installPCSS } from './js/pcss.js?v=2';
 
+// PCSS = contact-hardening SOFT shadows: crisp where an object meets the ground, bleeding softer
+// the farther it gets (the sun read as an AREA light, not a point). Patches the global shadow
+// shader chunk, so it MUST run before any material compiles (i.e. before build()). Degrades to
+// plain PCF if the patch can't apply. See js/pcss.js.
+const PCSS_ON=installPCSS();
 const canvas=document.getElementById('c');
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.outputColorSpace=THREE.SRGBColorSpace;
-renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+// Type stays PCF: PCSS (injected into getShadow) short-circuits the filter, so this just needs a
+// type whose define compiles. Set once here so it never triggers a runtime shader recompile.
+renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFShadowMap;
 const scene=new THREE.Scene();
 const cam=new THREE.PerspectiveCamera(40,1,0.1,300);
 
@@ -522,9 +559,18 @@ function softCanvasTex(draw){const s=128,c=document.createElement('canvas');c.wi
   draw(c.getContext('2d'),s);return new THREE.CanvasTexture(c);}
 
 // shadow + cloud + hill canvas textures
-const shadowTex=softCanvasTex((x,s)=>{const g=x.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
-  g.addColorStop(0,'rgba(60,52,40,.5)');g.addColorStop(.6,'rgba(60,52,40,.2)');g.addColorStop(1,'rgba(60,52,40,0)');
-  x.fillStyle=g;x.fillRect(0,0,s,s);});
+// Contact shadow (for the flat BILLBOARD cutouts — Shen / NPCs / pickups, which can't cast a
+// real shadow) = a clean oval with a SOFT real-life penumbra: a solid core + a gentle feathered
+// rim, NOT a vague smudge (the original muddy look) and NOT a razor edge. A wider canvas blur
+// gives the soft falloff; the solid core keeps it grounded + defined. Matches the soft VSM cast
+// shadows so a character's shadow reads the same as the world's.
+const shadowTex=(()=>{const s=256,c=document.createElement('canvas');c.width=c.height=s;
+  const x=c.getContext('2d');
+  x.filter='blur('+(s*0.085)+'px)';                 // soft, real-shadow falloff at the rim
+  x.fillStyle='rgba(58,50,40,.46)';
+  x.beginPath();x.ellipse(s/2,s/2,s*0.355,s*0.355,0,0,7);x.fill();
+  const t=new THREE.CanvasTexture(c);t.colorSpace=THREE.SRGBColorSpace;t.anisotropy=4;
+  t.minFilter=THREE.LinearMipmapLinearFilter;t.magFilter=THREE.LinearFilter;return t;})();
 function blobTex(col){return softCanvasTex((x,s)=>{x.fillStyle=col;
   [[.5,.55,.34],[.32,.6,.24],[.68,.6,.24],[.42,.42,.2],[.6,.42,.2]].forEach(([a,b,r])=>{
     x.beginPath();x.ellipse(a*s,b*s,r*s,r*s*.8,0,0,7);x.fill();});});}
@@ -555,7 +601,7 @@ const damp=(cur,tgt,tau,dt)=>tgt+(cur-tgt)*Math.exp(-dt/Math.max(tau,1e-4));
 // smoothed display pose: tweens between animation states so rapid direction
 // flips / start-stop / mode changes ease instead of snapping. Height stays
 // crisp (jumps feel responsive); lean & squash ease a touch more.
-const D={yW:0,sx:1,sy:1,rot:0}; let Dinit=false;
+const D={yW:0,sx:1,sy:1,rot:0}; let Dinit=false; let Dgy=null;  // Dgy: eased render-height so stepped stairs glide (never sinks below the true surface)
 function pose(s){
   if(s.mode==='air'){const sy=1+clamp(s.vy*0.022,-0.12,0.2);return{yW:s.y,sx:1/Math.sqrt(Math.max(sy,.4)),sy,rot:0};}
   if(s.mode==='walk'){const h=Math.abs(Math.sin(s.walkPhase));const sy=1+h*0.07-(1-h)*0.06;
@@ -619,8 +665,12 @@ function groundHeight(x,z){
   if(!ST) return 0;
   if(z<=ST.zTop) return H;                 // upper terrace (plaza/road/shops)
   if(z>=ST.zBot) return 0;                 // park
-  if(x>=ST.x0&&x<=ST.x1){                   // on the descending stairs → smooth ramp
-    const t=(z-ST.zTop)/(ST.zBot-ST.zTop); return H*(1-smooth(t)); }
+  if(x>=ST.x0&&x<=ST.x1){                   // on the descending stairs → stand ON the treads
+    // A smooth ramp here put her feet BELOW the stepped tread tops in the lower half, so the
+    // step she'd just left clipped across her legs. Snap to the SAME tread tops buildStairs
+    // draws (step i top = H - i*dy) so her feet always rest on a visible surface, never sunk.
+    const n=ST.steps, dz=(ST.zBot-ST.zTop)/n, dy=H/n;
+    const i=clampn(Math.floor((z-ST.zTop)/dz),0,n-1); return H-i*dy; }
   return H;                                 // plateau front edge beside the stairs (cliff top)
 }
 function zoneAxis(z){const a=z.axisDeg*Math.PI/180;return {fx:Math.sin(a),fz:-Math.cos(a)};}
@@ -977,7 +1027,9 @@ function buildProps(cols){
   for(const p of (SCENE.props||[])){ const mk=PROP[p.type]; if(!mk)continue;
     const r=mk(p), gy=groundHeight(p.x,p.z), rot=p.rot||0, ca=Math.cos(rot), sa=Math.sin(rot);
     r.group.position.set(p.x,gy,p.z); if(rot)r.group.rotation.y=rot; sceneRoot.add(r.group);
-    contactShadow(p.x,p.z,r.shadowR||r.rad||0.7,gy);
+    // NO contact oval here: these are 3D modelled props whose meshes cast a REAL shadow (M()
+    // sets castShadow). Adding an oval too gave the "double shadow" (one under + one cast). The
+    // real cast shadow is the only one — soft VSM grounds them. (Billboards still get an oval.)
     if(p.solid){ if(r.cols){ for(const c of r.cols) cols.push({x:p.x+c.dx*ca-c.dz*sa, z:p.z+c.dx*sa+c.dz*ca, r:c.r}); }
                  else cols.push({x:p.x,z:p.z,r:r.rad||0.7}); }
     if(p.type==='fountain')fountains.push({x:p.x,z:p.z,y:gy,h:r.h});
@@ -1389,6 +1441,19 @@ window.__overlaps=()=>{ const B=SCENE.buildings||[], ST=SCENE.stairs, out=[];
     const ix=Math.min(a.x1,b.x1)-Math.max(a.x0,b.x0), iz=Math.min(a.z1,b.z1)-Math.max(a.z0,b.z0);
     if(ix>0.02&&iz>0.02)out.push({a:a.name,b:b.name,overlapX:+ix.toFixed(2),overlapZ:+iz.toFixed(2)}); }
   return out; };
+// STAIR GROUNDING AUDIT — the player's feet (groundHeight) must rest ON the stepped tread
+// tops the stairs DRAW, never below them. A smooth ramp through the steps put her feet under
+// the tread tops in the lower half, so the step she'd just left clipped across her legs. This
+// derives the expected tread top per step from the STAIRS spec (independently of how
+// groundHeight is implemented) and flags any sample SUNK below it (clip) — a ramp regression
+// fails this, the stepped grounding passes. []=she stands on every tread.
+window.__stairGrounding=()=>{ const ST=SCENE.stairs; if(!ST)return null;
+  const H=(SCENE.level&&SCENE.level.H)||0, n=ST.steps, dz=(ST.zBot-ST.zTop)/n, dy=H/n, EPS=0.05, out=[];
+  for(let zi=0; zi<=n*4; zi++){ const z=ST.zTop+(zi/(n*4))*(ST.zBot-ST.zTop)*0.999;
+    const i=Math.min(n-1,Math.max(0,Math.floor((z-ST.zTop)/dz))), treadTop=H-i*dy;
+    for(const x of [ST.x0+0.4,(ST.x0+ST.x1)/2,ST.x1-0.4]){ const gh=groundHeight(x,z);
+      if(gh<treadTop-EPS)out.push({x:+x.toFixed(1),z:+z.toFixed(2),gh:+gh.toFixed(2),treadTop:+treadTop.toFixed(2),sunk:+(treadTop-gh).toFixed(2)}); } }
+  return out; };
 // 3D INTERPENETRATION (CLIP) AUDIT — for interior fixtures (walls/door/counter/shelf/
 // tanks/cages/plants/lamps/sign), tagged with userData.fx. Two fixtures that overlap in
 // ALL THREE axes by > eps are passing THROUGH each other: a shelf board clipping a tank,
@@ -1449,6 +1514,17 @@ window.__sceneBackgrounds=()=>{ const out=[];
     if(!bg){ white=true; } else { const c=new THREE.Color(bg[0]==='#'?bg:'#'+bg); white=(c.r>0.93&&c.g>0.93&&c.b>0.93); }
     out.push({scene:id, isWhiteOrUnset:white}); }
   return out; };
+// QA probe for the shadow-quality check (studio/qa/checks/shadow-quality.mjs): the sun's CAST
+// shadow sharpness IS texel density = shadowMap size ÷ frustum width. Surface it (+ the renderer
+// state + the graphics knobs) so a future change can't silently re-muddy the shadows the player
+// flagged, and the graphics-menu wiring stays regression-guarded.
+window.__shadowInfo=()=>{ const d=Sky&&Sky.dir, sm=renderer.shadowMap;
+  const cast=!!(d&&d.castShadow), half=cast?Math.abs(d.shadow.camera.right):0, map=cast?d.shadow.mapSize.width:0;
+  return { enabled:!!sm.enabled, type:sm.type, pcss:!!PCSS_ON,
+    soft:(!!PCSS_ON||sm.type===THREE.PCFSoftShadowMap||sm.type===THREE.VSMShadowMap), castShadow:cast,
+    mapSize:map, frustumHalf:half, blurRadius:cast?d.shadow.radius:0,
+    texelsPerUnit: half?+(map/(2*half)).toFixed(1):0,
+    level:(Sky&&Sky._shadowLevel)||null, gfx:(window.__gfx&&window.__gfx())||null }; };
 // each tagged interior fixture's world-AABB centre + size, so the QA harness can frame a
 // per-object close-up of EVERY fixture (the "look at every single thing" pass, interiors).
 window.__fixtures=()=>{ const out=[]; if(sceneRoot) sceneRoot.traverse(o=>{ if(o.userData&&o.userData.fx){
@@ -1541,6 +1617,41 @@ window.__camAbyss=(opts)=>{ opts=opts||{}; const ceiling=opts.ceiling==null?0.55
   return { leaks:leaks.slice(0,20), leakCount:leaks.length, cells:cells.length, ceiling, worst }; };
 
 
+// ---------- graphics quality (Settings → renderer / Sky / FX) ----------
+// Three independent knobs, each on its OWN localStorage key (same pattern as the volume
+// mix), so weaker machines can scale the heavy bits without touching the base look:
+//   shadows  — the sun's soft CAST shadow quality (Sky.setShadowQuality: off / low / high —
+//              both tiers are soft-edged VSM; the tier trades map resolution + GPU cost)
+//   fx       — the post-processing finishing lens (FX preset: off / minimal / diorama / full)
+//   res      — render pixel ratio (fast = 1×, crisp = device ratio capped at 2×)
+// Contact-shadow ovals + the flat papercraft base render are ALWAYS on (unaffected). The
+// renderer's shadowMap.enabled/type never change here (no shader recompile) — 'off' just
+// stops the sun light casting. Defaults preserve today's look + the soft shadows.
+const Gfx=(()=>{
+  const store=(()=>{try{return window.localStorage;}catch(e){return null;}})();
+  const SHADOWS=['off','low','high'], FXP=['off','minimal','diorama','full'], RES=['fast','crisp'];
+  const read=(k,def,allow)=>{ try{const v=store&&store.getItem(k); return allow.includes(v)?v:def;}catch(e){return def;} };
+  // mobile/touch gets a lighter shadow default (the 4096 map is heavy on phones); the player
+  // can still bump it to High. Desktop (incl. headless QA) defaults to high.
+  const coarse=(()=>{try{return matchMedia('(pointer:coarse)').matches||Math.min(innerWidth,innerHeight)<540;}catch(e){return false;}})();
+  let shadows=read('shen.gfx.shadows',coarse?'low':'high',SHADOWS);
+  let fx=read('shen.gfx.fx','off',FXP);
+  let res=read('shen.gfx.res','crisp',RES);
+  const applyShadows=()=>Sky.setShadowQuality(shadows);
+  const applyFx=()=>{ if(window.__fx)window.__fx(fx); else { FX.setPreset(fx); resize(); } };
+  const applyRes=()=>{ renderer.setPixelRatio(res==='fast'?1:Math.min(devicePixelRatio,2)); resize(); };
+  function applyAll(){ applyShadows(); applyFx(); applyRes(); }
+  function set(kind,val){
+    if(kind==='shadows'&&SHADOWS.includes(val)){ shadows=val; try{store&&store.setItem('shen.gfx.shadows',val);}catch(e){} applyShadows(); }
+    else if(kind==='fx'&&FXP.includes(val)){ fx=val; try{store&&store.setItem('shen.gfx.fx',val);}catch(e){} applyFx(); }
+    else if(kind==='res'&&RES.includes(val)){ res=val; try{store&&store.setItem('shen.gfx.res',val);}catch(e){} applyRes(); }
+    return {shadows,fx,res};
+  }
+  return { applyAll, set, get state(){return {shadows,fx,res};} };
+})();
+// QA + console hook: __gfx() reads, __gfx(kind,val) sets one knob.
+window.__gfx=(kind,val)=> kind===undefined?Gfx.state:Gfx.set(kind,val);
+
 async function build(){
   // Load EVERY scene spec up-front (cheap JSON): transitions are then instant, and
   // the save layer can validate ids / clamp positions against any scene.
@@ -1557,6 +1668,7 @@ async function build(){
   // optional post-processing finishing pass. window.__fx(name) switches live.
   FX.init({renderer,scene,camera:cam,skyColor:'cfe0f2',groundColor:world.ground});
   window.__fx=(name)=>{const p=FX.setPreset(name);resize();return p;};
+  Gfx.applyAll();   // apply the saved graphics quality (shadows / finish lens / resolution)
   // load the ONE shared crisp paper tile set BEFORE any scene geometry is built (textures
   // populate async; the Texture objects exist synchronously so the scene builders — buildCity,
   // makeFacade, paperMat — can reference them via PAPER now). PERSISTENT across scene switches.
@@ -1580,7 +1692,8 @@ async function build(){
     persist(); };
 
   // shadow + shen + burst (PERSISTENT — they travel between scenes, never torn down)
-  shadow=new THREE.Mesh(new THREE.PlaneGeometry(SHEN_W*1.5,SHEN_W*1.5),
+  // flatter-than-wide oval: a standing figure casts a horizontal pool, not a circle.
+  shadow=new THREE.Mesh(new THREE.PlaneGeometry(SHEN_W*1.7,SHEN_W*1.18),
     new THREE.MeshBasicMaterial({map:shadowTex,transparent:true,depthWrite:false}));
   shadow.rotation.x=-Math.PI/2; shadow.position.y=GROUND_EPS; shadow.renderOrder=1; scene.add(shadow);
   shen=new THREE.Group(); scene.add(shen);
@@ -1631,6 +1744,10 @@ async function buildScene(spec, spawn){
   const cols=[];
   if(spec.interior){ Sky.setInterior(true, spec.sky||{}); buildInterior(cols); }
   else { Sky.setInterior(false); buildCity(cols); }
+  // fit the FIXED sun-shadow frustum to THIS scene's reachable extent so its texels land where
+  // the player can be (clean soft shadow) without a moving frustum (which made shadows flicker).
+  { const b=spec.bounds||{xmin:-40,xmax:40,zmin:-40,zmax:40};
+    Sky.setShadowBounds((b.xmin+b.xmax)/2,(b.zmin+b.zmax)/2, Math.max(b.xmax-b.xmin,b.zmax-b.zmin)/2+4); }
   buildPortalDoors(cols);
   SCENE_COLLIDERS=cols; setColliders(cols);
   await buildCollectibles();
@@ -1759,7 +1876,11 @@ function draw(dt){
   D.sy =damp(D.sy, q.sy, 0.05, dt);
   D.rot=damp(D.rot,q.rot,0.09, dt);   // lean: eased most → direction flips swing
   const gy=groundHeight(S.x,S.z);
-  shen.position.set(S.x,gy+GROUND_EPS,S.z); faceYaw(shen);
+  // Ground is stepped on the stairs; ease the RENDER height down so a fast descent glides
+  // instead of hard-snapping each riser, but clamp to >= the true surface so a step can never
+  // poke up through her (no sink/clip). On flat ground gy is constant → this is a no-op.
+  if(Dgy==null)Dgy=gy; Dgy=Math.max(damp(Dgy,gy,0.05,dt),gy);
+  shen.position.set(S.x,Dgy+GROUND_EPS,S.z); faceYaw(shen);
   mesh.position.y=SHEN_H/2+D.yW; shen.scale.set(D.sx*transShenScale,D.sy*transShenScale,1); shen.rotation.z=D.rot;
   const k=clamp(D.yW/MAX_LIFT,0,1);
   shadow.position.set(S.x,gy+GROUND_EPS,S.z); const ss=1-0.5*k; shadow.scale.set(ss,ss,1);
@@ -1882,7 +2003,7 @@ addEventListener('keydown',e=>{const k=e.key.toLowerCase();
   Sound.resume();                            // browsers gate audio behind a gesture
   if(k==='escape'&&!e.repeat){e.preventDefault();toggleJournal();return;}
   if(k==='m'&&!e.repeat){Sound.toggle();syncMenu();return;}
-  if(journalOpen())return;                   // open journal eats other keys
+  if(journalOpen()){menuNav.key(e);return;}  // open journal: keys drive the menu cursor
   if(Dialogue.active){                       // talking: advance / pick — but movement keys fall through so you can walk away
     if(k===' '||k==='enter'||k==='e'){Dialogue.advance();e.preventDefault();return;}
     if(Dialogue.choiceMode){                 // an open choice menu owns up/down; left/right still walk you out
@@ -1893,7 +2014,7 @@ addEventListener('keydown',e=>{const k=e.key.toLowerCase();
   }
   if(k==='arrowup'||k==='w')held.up=true; else if(k==='arrowdown'||k==='s')held.down=true;
   else if(k==='arrowleft'||k==='a')held.left=true; else if(k==='arrowright'||k==='d')held.right=true;
-  else if((k===' ')&&!e.repeat)edgeJump=true;
+  else if((k===' ')&&!e.repeat){if(nearNpc||nearPortal)edgeTalk=true;else edgeJump=true;}   // space = action: talk/enter when beside someone or a door, hop otherwise
   else if((k==='e'||k==='enter')&&!e.repeat)edgeTalk=true;
   if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k))e.preventDefault();});
 addEventListener('keyup',e=>{const k=e.key.toLowerCase();
@@ -1924,6 +2045,11 @@ function syncMenu(){
   setTog(volTog,'rowVol',!Sound.muted);      // master: the mute flag (slider keeps its value)
   setTog(sfxTog,'rowSfx',Sound.sfxOn);       // effects: on == audible (level > 0)
   setTog(musicTog,'rowMusic',Sound.musicOn);}// music:   on == audible (level > 0)
+
+// --- graphics chips: light the active option in each group from Gfx state ---
+function syncGfx(){ const st=Gfx.state;
+  document.querySelectorAll('.gopts[data-gfx]').forEach(g=>{ const cur=st[g.dataset.gfx];
+    g.querySelectorAll('.gopt').forEach(b=>b.classList.toggle('sel',b.dataset.val===cur)); }); }
 
 // --- quest page rendering (from Quests.list()) ---
 function mk(tag,cls,txt){const e=document.createElement(tag); if(cls)e.className=cls; if(txt!=null)e.textContent=txt; return e;}
@@ -1968,7 +2094,8 @@ function showPage(name){
   document.getElementById('page-quests').hidden=name!=='quests';
   document.getElementById('page-settings').hidden=name!=='settings';
   if(name==='quests'&&listDirty){renderQuests(); listDirty=false;}
-  if(name==='settings')syncMenu();
+  if(name==='settings'){syncMenu();syncGfx();}
+  refreshMenu();                                                 // rebuild the keyboard cursor for this page
 }
 function switchTab(name){
   if(name===curTab)return; curTab=name; setActiveTab(name); Sound.sfx('flip');
@@ -1984,18 +2111,104 @@ function openJournal(tab){Sound.resume(); playing=false; held.up=held.down=held.
   if(rb)rb.style.display=started?'':'none';
   if(rs)rs.textContent=started?'resume':'back';
   const name=tab||curTab||'quests'; curTab=name; setActiveTab(name);
-  pagesEl.classList.remove('flipping'); listDirty=true; showPage(name);
+  pagesEl.classList.remove('flipping'); listDirty=true; menuNav.sel=0; showPage(name);
   document.getElementById('bMenu').classList.remove('badge');
-  journal.classList.add('on'); Sound.sfx('book');}
+  journal.classList.add('on'); menuNav.sel=0; menuNav.rebuild(); Sound.sfx('book');}  // build the keyboard cursor once the journal is actually open
 function closeJournal(){journal.classList.remove('on'); edgeJump=edgeTalk=false; last=null; playing=true; Sound.sfx('bookClose');}
 function toggleJournal(){Sound.resume(); journalOpen()?closeJournal():openJournal();}
+
+// --- keyboard cursor for the journal (so the whole game is playable without a mouse) ---
+// One roving selection over a flat vertical list: the two binder tabs, then the active
+// page's controls. Up/Down move the cursor, Space/Enter activate, Left/Right nudge a
+// slider. Mouse still works independently; this just mirrors it for the keyboard.
+function stepSlider(el,delta){const v=Math.max(0,Math.min(100,(+el.value||0)+delta));
+  if(v===(+el.value||0))return; el.value=v; el.dispatchEvent(new Event('input',{bubbles:true})); Sound.sfx('move');}
+const menuNav={
+  items:[], sel:0,
+  rebuild(){
+    if(!journalOpen()){this.items=[]; this.render(); return;}
+    const items=[];
+    document.querySelectorAll('.jtab').forEach(t=>items.push({el:t, activate:()=>switchTab(t.dataset.tab)}));
+    if(curTab==='quests'){
+      document.querySelectorAll('#questList .qhead').forEach(h=>items.push({el:h, activate:()=>h.click()}));
+    } else {
+      [['vol','volTog'],['sfxvol','sfxTog'],['musicvol','musicTog']].forEach(([sid,tid])=>{
+        const sl=document.getElementById(sid), tog=document.getElementById(tid), row=sl.closest('.srow');
+        items.push({el:row, left:()=>stepSlider(sl,-5), right:()=>stepSlider(sl,5), activate:()=>tog.click()});
+      });
+      // graphics chips: Left/Right cycle the option (like the sliders), Space activates the next
+      document.querySelectorAll('.gopts[data-gfx]').forEach(g=>{
+        const kind=g.dataset.gfx, row=g.closest('.gfxrow'), opts=[...g.querySelectorAll('.gopt')].map(b=>b.dataset.val);
+        const cyc=d=>{let i=opts.indexOf(Gfx.state[kind]); i=(i+d+opts.length)%opts.length;
+          Gfx.set(kind,opts[i]); syncGfx(); Sound.sfx('select');};
+        items.push({el:row, left:()=>cyc(-1), right:()=>cyc(1), activate:()=>cyc(1)});
+      });
+      const rb=document.getElementById('restartBtn'), rs=document.getElementById('resumeBtn');
+      if(rb&&rb.style.display!=='none')items.push({el:rb, activate:()=>rb.click()});
+      if(rs)items.push({el:rs, activate:()=>rs.click()});
+    }
+    this.items=items;
+    if(this.sel>=items.length)this.sel=Math.max(0,items.length-1);
+    this.render();
+  },
+  render(){journal.querySelectorAll('.ksel').forEach(e=>e.classList.remove('ksel'));
+    const it=this.items[this.sel]; if(it&&it.el)it.el.classList.add('ksel');},
+  move(d){if(!this.items.length)return; this.sel=(this.sel+d+this.items.length)%this.items.length;
+    Sound.sfx('move'); this.render(); const el=this.items[this.sel].el; if(el&&el.scrollIntoView)el.scrollIntoView({block:'nearest'});},
+  horizontal(d){const it=this.items[this.sel]; if(!it)return; if(d<0&&it.left)it.left(); else if(d>0&&it.right)it.right();},
+  activate(){const it=this.items[this.sel]; if(it&&it.activate){Sound.resume(); it.activate();}},
+  key(e){const k=e.key.toLowerCase();
+    if(k==='arrowup'||k==='w'){this.move(-1);e.preventDefault();}
+    else if(k==='arrowdown'||k==='s'){this.move(1);e.preventDefault();}
+    else if(k==='arrowleft'||k==='a'){this.horizontal(-1);e.preventDefault();}
+    else if(k==='arrowright'||k==='d'){this.horizontal(1);e.preventDefault();}
+    else if(k===' '||k==='enter'){this.activate();e.preventDefault();}},
+};
+// keep the cursor in sync whenever the page/quest list rebuilds while open
+const refreshMenu=()=>{if(journalOpen())menuNav.rebuild();};
+
+// QA self-test (deterministic): prove the whole game is keyboard-operable — the journal
+// opens from a key, the menu cursor moves + activates on Space, sliders nudge on Left/Right,
+// and the dialogue choice API is present. Drives the REAL keydown listeners via synthetic
+// events so the wiring (not just the helpers) is exercised. Returns {fails:[]} and restores
+// state. Used by studio/qa/checks/keyboard-nav.mjs.
+const key=(name)=>window.dispatchEvent(new KeyboardEvent('keydown',{key:name,bubbles:true,cancelable:true}));
+window.__kbNav=function(){
+  const fails=[], wasOpen=journalOpen(), wasMuted=Sound.muted, wasTab=curTab, volEl=document.getElementById('vol');
+  const wasVol=+volEl.value;
+  try{
+    if(!wasOpen)key('Escape');                                   // open via the real keybind
+    if(!journalOpen()){fails.push('Escape did not open the journal'); openJournal();}
+    if(menuNav.items.length<2)fails.push('menu cursor has no items to navigate');
+    const s0=menuNav.sel; key('ArrowDown');                      // synthetic key must move the cursor
+    if(menuNav.items.length>1&&menuNav.sel===s0)fails.push('ArrowDown did not move the menu cursor');
+    // settings page (set directly — skip the 200ms cosmetic flip)
+    curTab='settings'; setActiveTab('settings'); showPage('settings');
+    const vi=menuNav.items.findIndex(it=>it.el&&it.el.id==='rowVol');
+    if(vi<0)fails.push('volume row not reachable by keyboard');
+    else{
+      menuNav.sel=vi; const before=+volEl.value; menuNav.horizontal(-1);
+      if(+volEl.value===before)fails.push('Left arrow did not adjust the volume slider');
+      const m0=Sound.muted; menuNav.activate();                 // Space toggles the channel pill
+      if(Sound.muted===m0)fails.push('Space did not toggle the volume channel');
+    }
+    if(menuNav.items.findIndex(it=>it.el&&it.el.id==='resumeBtn')<0)fails.push('resume/back button not reachable by keyboard');
+    if(typeof Dialogue.move!=='function')fails.push('Dialogue choice navigation (Dialogue.move) missing');
+  }catch(e){fails.push('probe threw: '+(e&&e.message||e));}
+  // restore everything the probe touched
+  if(Sound.muted!==wasMuted)Sound.toggle();
+  volEl.value=wasVol; volEl.dispatchEvent(new Event('input',{bubbles:true}));
+  curTab=wasTab; setActiveTab(wasTab);
+  if(wasOpen)showPage(wasTab); else closeJournal();
+  return {fails};
+};
 
 // --- quest toast (milestones + hamster count) ---
 let toastT=null;
 function toast(msg){const t=document.getElementById('qtoast'); t.textContent=msg; t.classList.add('on');
   if(toastT)clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('on'),2200);}
 function questEvent(msg,sfx){toast(msg); Sound.sfx(sfx); listDirty=true;
-  if(journalOpen())renderQuests(); else document.getElementById('bMenu').classList.add('badge');}
+  if(journalOpen()){renderQuests(); refreshMenu();} else document.getElementById('bMenu').classList.add('badge');}
 
 // pick a state-aware dialogue entry node for an NPC tied to a quest
 function entryNode(npc){
@@ -2018,6 +2231,10 @@ musicvol.addEventListener('input',()=>{Sound.resume();Sound.setMusicVolume(+musi
 volTog.addEventListener('click',e=>{e.preventDefault();Sound.resume();Sound.toggle();syncMenu();});
 sfxTog.addEventListener('click',e=>{e.preventDefault();Sound.resume();Sound.toggleSfx();syncMenu();if(Sound.sfxOn)Sound.sfx('select');});
 musicTog.addEventListener('click',e=>{e.preventDefault();Sound.resume();Sound.toggleMusic();syncMenu();});
+// graphics option chips: set the knob, persist+apply, re-light the row, click sound
+document.querySelectorAll('.gopts[data-gfx]').forEach(g=>g.addEventListener('click',e=>{
+  const b=e.target.closest('.gopt'); if(!b)return; e.preventDefault(); Sound.resume();
+  Gfx.set(g.dataset.gfx,b.dataset.val); syncGfx(); Sound.sfx('select'); }));
 document.getElementById('resumeBtn').addEventListener('click',e=>{e.preventDefault();closeJournal();});
 document.getElementById('restartBtn').addEventListener('click',e=>{e.preventDefault();Save.wipe();
   const swap=curScene!=='town', F=fadeEl();
@@ -2148,9 +2365,9 @@ addEventListener('keydown',e=>{
   if(started)return;                        // only steer the menu before play
   Sound.resume();                           // first keypress is the audio gesture
   const k=e.key.toLowerCase();
-  if(journalOpen()){                         // Settings opened from the menu
-    if(k==='escape'||k==='enter'){e.preventDefault();closeJournal();}  // back to menu
-    return;                                  // otherwise let native slider keys work
+  if(journalOpen()){                         // Settings opened from the menu → drive the menu cursor
+    if(k==='escape'){e.preventDefault();closeJournal();return;}        // back to menu
+    menuNav.key(e); return;
   }
   if(k==='arrowup'||k==='w'){titleMove(-1);e.preventDefault();}
   else if(k==='arrowdown'||k==='s'){titleMove(1);e.preventDefault();}
