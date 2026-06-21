@@ -232,6 +232,18 @@
     font-weight:600;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .15s;
     z-index:15;box-shadow:0 3px 10px rgba(90,80,60,.16)}
   #talkPrompt.on{opacity:1}
+  /* cutscene mode: the engine owns input + camera, so hide every gameplay control and
+     let the scene play. The dialogue box stays (scripted lines) but lifts above the bars. */
+  body.cutscene #dpad, body.cutscene #acts, body.cutscene #bMenu, body.cutscene #bFull,
+  body.cutscene #daynight, body.cutscene #daybar { display:none !important; }
+  body.cutscene #talkPrompt { opacity:0 !important; }
+  /* cinematic letterbox bars slide in/out at the top + bottom during a cutscene */
+  .cinebar{position:fixed;left:0;right:0;height:8vh;max-height:70px;background:#2b2620;z-index:30;
+    pointer-events:none;transition:transform .5s ease}
+  .cinebar.top{top:0;transform:translateY(-101%)}
+  .cinebar.bot{bottom:0;transform:translateY(101%)}
+  body.cutscene .cinebar.top,body.cutscene .cinebar.bot{transform:translateY(0)}
+  body.cutscene #dlg{z-index:31;bottom:calc(8vh + 12px + env(safe-area-inset-bottom))}
   /* loading screen — pure CSS papercraft flower, no assets to wait on */
   #loader{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;
     align-items:center;justify-content:center;background:#e9f1ea;gap:0;
@@ -416,6 +428,8 @@
 </div>
 <canvas id="c"></canvas>
 <div id="fade"></div>
+<div class="cinebar top"></div><div class="cinebar bot"></div>
+
 <div id="daynight"><div id="dnSky"></div><div id="dnSun"></div><div id="dnMoon"></div><div id="dnLabel"></div></div>
 <div id="daybar" aria-label="day/night cycle">
   <div id="daybarTrack"><div id="dbClouds"></div><div id="dbStars"></div></div>
@@ -552,14 +566,15 @@
 // any studio/js/*.js so a reload actually loads the new code. (Deploys get fresh URLs
 // per commit, so this is purely a local-preview convenience.)
 import * as THREE from 'three';
-import { WORLD, initState, step, setBounds, setColliders } from './js/sim.js?v=4';
-import { Dialogue } from './js/dialogue.js?v=4';
-import * as Save from './js/save.js?v=4';
-import { Sound } from './js/audio.js?v=6';
-import { Quests } from './js/quests.js?v=4';
-import { Sky } from './js/sky.js?v=8';
-import { FX } from './js/fx.js?v=4';
-import { installPCSS } from './js/pcss.js?v=2';
+import { WORLD, initState, step, setBounds, setColliders } from './js/sim.js?v=9';
+import { Dialogue } from './js/dialogue.js?v=9';
+import * as Save from './js/save.js?v=9';
+import { Sound } from './js/audio.js?v=9';
+import { Quests } from './js/quests.js?v=9';
+import { Sky } from './js/sky.js?v=9';
+import { FX } from './js/fx.js?v=9';
+import { installPCSS } from './js/pcss.js?v=9';
+import { Cutscene } from './js/cutscene.js?v=9';
 
 // PCSS = contact-hardening SOFT shadows: crisp where an object meets the ground, bleeding softer
 // the farther it gets (the sun read as an AREA light, not a point). Patches the global shadow
@@ -651,6 +666,15 @@ let collected=new Set(), kindMap={};
 let portals=[], ambients=[], nearPortal=null, portalCooldown=0;
 let trans=null;                       // active door transition (state machine, see updateTransition)
 const fadeEl=()=>document.getElementById('fade');
+// ----- cutscene state (scripted, Paper-Mario "the world plays itself") -----
+// seenCutscenes = one-time cutscene ids already played (persisted in the save, additive).
+// pendingCutscene = a cutscene armed by a real entry (door/boot), started by the loop.
+// csTable/csHamsters = the procedural props the pet-shop intro builds + tears down.
+// csShen/csAdrian = additive emotion offsets the beats animate; draw() applies them ON
+// TOP of the normal pose so personality stays in MOTION (no tween between drawings).
+let seenCutscenes=new Set(), pendingCutscene=null;
+let csTable=null, csHamsters=[], csTableBox=null;
+let csShen=null, csAdrian=null;
 
 const clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
 const smooth=t=>t<=0?0:t>=1?1:t*t*(3-2*t);
@@ -1205,6 +1229,11 @@ function buildInterior(cols){
     const light=new THREE.PointLight(0xffe9c2, 14, 16, 2.0); light.position.set(lp.x,wallH-1.0,lp.z); sceneRoot.add(light);
   }
   buildInteriorProps(cols);
+  // the knocked-over table REMNANT: once the first-visit cutscene has played, the table Shen tipped
+  // stays in the shop on every later entry (built pre-tipped here). Non-colliding decor (it lies flat
+  // — the player steps past it), so it never affects reachability/camera QA.
+  if(SCENE.cutscene && SCENE.cutsceneTable && seenCutscenes.has(SCENE.cutscene))
+    buildCutsceneTable(SCENE.cutsceneTable.x, SCENE.cutsceneTable.z, {tipped:true, persistent:true});
 }
 // ---- interior fixtures (counter, tanks, shelves, cages, plants...) ----
 function iRug(p){ const g=new THREE.Group(), w=p.w||6, d=p.d||4;
@@ -1713,6 +1742,30 @@ window.__items=()=>{ const out=[];
     out.push({kind:'building', x:b.x, z:b.z, y:groundHeight(b.x,b.z), size:Math.max(b.w,b.d,b.h), w:b.w, d:b.d, h:b.h, face:fd,
       label:'bld_'+((b.facade&&b.facade.sign)||i).toString().replace(/\s+/g,'')}); });
   return out; };
+// CUTSCENE probe (studio/qa/checks/cutscene.mjs + scenario): the engine is wired, first-visit
+// scenes declare their cutscene id, and the town hamsters are GATED on the roundup quest (they
+// don't exist until it begins — they "escape" in the pet-shop cutscene). `liveHamsters` counts
+// the pickups built in the CURRENT scene; `townHamsterDefs` is what town declares (always 5).
+window.__cutscene=()=>({ active:Cutscene.active, hasEngine:typeof Cutscene.play==='function',
+  pending:pendingCutscene||null, seen:[...seenCutscenes],
+  petshopCutscene:(SPECS.petshop&&SPECS.petshop.cutscene)||null,
+  questStarted:Quests.started('q_hamsters'),
+  townHamsterDefs:(SPECS.town.collectibles||[]).filter(c=>c.kind==='hamster').length,
+  townHamstersGated:activeCollectibles(SPECS.town).filter(c=>c.kind==='hamster').length,
+  liveHamsters:(SCENE.collectibles?activeCollectibles(SCENE):[]).filter(c=>c.kind==='hamster').length });
+window.__csHam=()=>{ cam.updateMatrixWorld(); return csHamsters.map(h=>{ const p=new THREE.Vector3(h.x||0,(h.y||0)+0.2,h.z||0).project(cam);
+  return { mode:h.mode, x:+(h.x||0).toFixed(2), z:+(h.z||0).toFixed(2), y:+(h.y||0).toFixed(2),
+    vis:!!(h.m&&h.m.visible), op:+((h.m&&h.m.material.opacity)||0).toFixed(2),
+    nx:+p.x.toFixed(2), ny:+p.y.toFixed(2), onScreen:Math.abs(p.x)<1&&Math.abs(p.y)<1&&p.z<1 }; }); };
+// CUTSCENE PROP TEARDOWN guard: every cutscene-spawned object is tagged userData.csProp; a cutscene
+// MUST tear them all down at the end (the pet-shop table + hamsters). `lingering` lists any that
+// outlive a finished cutscene — the scenario asserts it's empty, so a future cutscene that forgets to
+// clean up its props (leaving them stuck in the room) fails loudly. Scans live refs AND the scene graph.
+window.__csProps=()=>{ const out=[];
+  if(csTable) out.push('csTable(ref)');
+  if(csHamsters.length) out.push('csHamsters['+csHamsters.length+']');
+  if(sceneRoot) sceneRoot.traverse(o=>{ if(o.userData&&o.userData.csProp) out.push((o.userData.fx||'csProp')); });
+  return { active:Cutscene.active, lingering:out }; };
 // SKY-LEAK / ABYSS guard (studio/qa/checks/sky-leak.mjs): the world must be ringed by a
 // continuous, tall backdrop so no outward sightline from a play-edge hits sky/void. From each
 // of 8 perimeter points (4 edge-mids + 4 corners) we march OUTWARD (the direction a player
@@ -1845,6 +1898,7 @@ async function build(){
   shen=new THREE.Group(); scene.add(shen);
   const st=await tx('out/shen-paper.png');
   mesh=billboard(st,SHEN_W,SHEN_H); mesh.position.y=SHEN_H/2; shen.add(mesh);
+  await tx('out/hamster-paper.png');   // PRELOAD: the pet-shop cutscene builds its table hamsters synchronously
   burst=billboard(softCanvasTex((x,s)=>{const g=x.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
     g.addColorStop(0,'rgba(255,255,255,0)');g.addColorStop(.7,'rgba(243,182,195,.5)');
     g.addColorStop(.85,'rgba(243,182,195,.7)');g.addColorStop(1,'rgba(243,182,195,0)');x.fillStyle=g;x.fillRect(0,0,s,s);}),
@@ -1853,20 +1907,25 @@ async function build(){
   try{const r=await fetch('build.json',{cache:'no-store'});if(r.ok){const j=await r.json();BUILD=j.sha||'dev';}}catch{}
   Sound.quietInDev(BUILD==='dev');   // dev worktree boots silent — effects + music off until you choose a level
 
-  // restore save (multi-scene): seed the GLOBAL collected set, then boot into the saved scene.
+  // restore save (multi-scene): seed the GLOBAL collected set + seen cutscenes.
   const saved=Save.load(SPECS);
   collected=new Set(saved?saved.collected:[]);
-  const bootScene=(saved&&saved.scene&&SPECS[saved.scene])?saved.scene:'town';
-  await buildScene(SPECS[bootScene], saved?{x:saved.player.x,z:saved.player.z,face:saved.player.facing}:null);
-  curScene=bootScene;
+  seenCutscenes=new Set(saved&&Array.isArray(saved.cutscenes)?saved.cutscenes:[]);
 
-  // quests (GLOBAL engine; ctx reads the GLOBAL collected set so progress survives scene swaps)
+  // quests (GLOBAL engine; ctx reads the GLOBAL collected set so progress survives scene
+  // swaps) — initialised BEFORE the first scene build because buildCollectibles GATES the
+  // town hamsters on Quests.started('q_hamsters') (they don't exist until the quest begins).
   Quests.init(world.quests, saved&&saved.quests, {
     collectedIds:()=>new Set([...collected]),
     kindOf:(id)=>kindMap[id]||null });
   Quests.onStart   =(d)=>questEvent('✶ New quest — '+d.name,'quest');
   Quests.onAdvance =(d)=>questEvent('✦ '+d.name+' — task updated','questStep');
   Quests.onComplete=(d)=>questEvent('✓ Quest complete — '+d.name,'questDone');
+
+  const bootScene=(saved&&saved.scene&&SPECS[saved.scene])?saved.scene:'town';
+  await buildScene(SPECS[bootScene], saved?{x:saved.player.x,z:saved.player.z,face:saved.player.facing}:null);
+  curScene=bootScene;
+
   setupTitle(!!saved);
   window.__ready=true; resize(); startAuto();
   const ld=document.getElementById('loader');
@@ -1899,7 +1958,7 @@ async function buildScene(spec, spawn){
   await buildCollectibles();
   await buildNpcs();
   const sp=spawn||spec.spawn||{x:0,z:0};
-  S=initState(spec.collectibles, sp);
+  S=initState(activeCollectibles(spec), sp);                  // gated list: keeps S.collectibles ↔ pickups[] index-aligned
   if(sp&&(sp.face===1||sp.face===-1)) S.facing=sp.face;
   for(const c of S.collectibles) c.got=collected.has(c.id);   // reflect global progress in this scene's pickups
   activeZone=null; blend=null; _warp(S.x,S.z);
@@ -1914,17 +1973,41 @@ async function buildScene(spec, spawn){
 // per-scene array. Persistent objects (ground/shen/shadow/burst/sky) are untouched.
 // (Geometries/materials aren't disposed: paper textures are shared+cached across
 // scenes, so disposing would corrupt the cache; the per-swap leak is small + bounded.)
+// A cutscene is bound to its scene. If the scene is torn down while one is still active
+// — only reachable via a debug teleport / future edge, NEVER in real play (a cutscene
+// completes before you can leave) — VOID it: reset the engine + staging and unlock input,
+// WITHOUT firing its consequences (no quest start, no seen-flag, no kept table). Only
+// endCutscene (natural completion) lands consequences. Keeps the invariant that
+// Cutscene.active is never true outside its own live scene (else its `!Cutscene.active`
+// gates — e.g. the ambient-sound loop — would wrongly stay suppressed in the next scene).
+function abortCutscene(){
+  if(!Cutscene.active && !pendingCutscene) return;
+  Cutscene.cancel();
+  for(const h of csHamsters){ if(h.m && sceneRoot) sceneRoot.remove(h.m); } csHamsters.length=0;
+  if(_csAdrianNpc){ _csAdrianNpc.emote=null; _csAdrianNpc=null; }
+  csTable=null; csTableBox=null; csShen=null; csShenMood='idle'; csAdrianMood='idle';
+  document.body.classList.remove('cutscene'); pendingCutscene=null;
+  S.mode='idle'; talkCooldown=0.4; portalCooldown=0.6;
+}
 function clearScene(){
+  abortCutscene();   // a scene swap voids any cutscene still bound to the outgoing scene
   if(sceneRoot){ scene.remove(sceneRoot); }
   sceneRoot=new THREE.Group(); scene.add(sceneRoot);
   npcs.length=0; pickups.length=0; billboards.length=0; propsMesh.length=0;
   BUILDING_MESHES.length=0; fountains.length=0; propAnims.length=0; ifish.length=0; SCENE_COLLIDERS=[];
   nearNpc=null; nearPortal=null; Sound.setWaterLevel(0);
 }
+// A scene's collectibles minus any GATED OFF by game state. The town hamsters only
+// exist once the roundup quest is active — they "escape" in the pet-shop cutscene, so
+// before that none show up anywhere. Used by BOTH initState and buildCollectibles so
+// S.collectibles and the pickup billboards stay index-aligned (draw() pairs them by i).
+function activeCollectibles(spec){
+  return (spec.collectibles||[]).filter(c=> c.kind!=='hamster' || Quests.started('q_hamsters'));
+}
 // collectible pickups (billboard sprites, grounded) for the active scene; index-aligned
 // to S.collectibles. got-state comes from the global `collected` set after init.
 async function buildCollectibles(){
-  const list=SCENE.collectibles||[]; if(!list.length) return;
+  const list=activeCollectibles(SCENE); if(!list.length) return;
   const htex=await tx('out/hamster-paper.png'); const HAM_H=0.62; const hw=HAM_H*(htex.image.width/htex.image.height);
   for(const c of list){ const m=billboard(htex,hw,HAM_H);
     m.position.set(c.x,groundHeight(c.x,c.z)+HAM_H/2,c.z);
@@ -1990,7 +2073,8 @@ function updateTransition(dt){
     const seg=Math.floor(S.walkPhase/Math.PI); if(seg!==trans.lastSeg){ trans.lastSeg=seg; Sound.sfx('step',0.7); }
     transShenScale=0.2+0.8*smooth(clamp(u/0.6,0,1));
     if(F)F.style.opacity=String(1-smooth(clamp(u/0.55,0,1)));
-    if(u>=1){ transShenScale=1; S.mode='idle'; if(F)F.style.opacity='0'; trans=null; portalCooldown=0.5; persist(); }
+    if(u>=1){ transShenScale=1; S.mode='idle'; if(F)F.style.opacity='0'; trans=null; portalCooldown=0.5; persist();
+      maybeArmCutscene(); }   // arrived via a door → a first-visit cutscene may now play
   }
 }
 
@@ -2149,13 +2233,372 @@ window.__dayBar=()=>{ const prog=(((Sky.phase-DB_DAYSTART)%1)+1)%1;
     markerLeft:_bar.marker?_bar.marker.style.left:null, time:_bar.time?_bar.time.textContent:null,
     sunOp:_bar.sun?+_bar.sun.style.opacity:null, moonOp:_bar.moon?+_bar.moon.style.opacity:null }; };
 
+// ============================ cutscenes (scripted) ============================
+// A cutscene is a beat timeline played by js/cutscene.js. game.html supplies the
+// staging: a DIRECTOR camera, the procedural props (the pet-shop table + hamsters),
+// MOTION-based emotion overlays (no tween between drawings), and the trigger/teardown.
+// The only one so far is the pet-shop first-visit "hamster escape" (cs_petshop_intro).
+
+// emotion state (set while a cutscene runs; consumed by draw/npc-loop above)
+let csShenMood='idle', csAdrianMood='idle', _csAdrianNpc=null;
+let csImp={ shen:{t:-1,dur:0,kind:null}, adrian:{t:-1,dur:0,kind:null} };
+// a held MOOD writes a gentle continuous offset (looping off animClock); idle = neutral
+// (the normal breathing still runs underneath). out = the offset object to fill.
+function moodOffset(mood,t,out){
+  // MOTION is the only emotion channel (no drawing tweens), so make it read clearly: mortified =
+  // hunched + nervously swaying + looking down; worried = a slower anxious sway; eager = bouncy.
+  if(mood==='fluster'){ out.rot=0.14*Math.sin(t*5.2); out.yW=-0.07+0.045*Math.sin(t*4.4); out.sx=1.03; out.sy=0.95; }
+  else if(mood==='fret'){ out.rot=0.095*Math.sin(t*3.9); out.yW=-0.055+0.035*Math.sin(t*3.2); out.sx=1.01; out.sy=0.975; }
+  else if(mood==='perk'){ const h=Math.abs(Math.sin(t*6.2)); out.yW=0.21*h; out.sy=1+0.08*h; out.sx=1/Math.sqrt(1+0.08*h); out.rot=0.05*Math.sin(t*6.2); }
+  else { out.rot=0; out.yW=0; out.sx=1; out.sy=1; }
+}
+// a one-shot decaying IMPULSE layered on top of the mood (a jolt: stumble/startle/nod)
+function applyImpulse(out,imp,dt){
+  if(imp.t<0) return;
+  imp.t+=dt; const u=imp.t/imp.dur; if(u>=1){ imp.t=-1; return; }
+  const d=1-u, k=Math.sin(u*Math.PI);
+  if(imp.kind==='stumble'){ out.rot+=-0.5*Math.sin(u*Math.PI)-0.2*Math.sin(u*26)*d; out.yW+=0.14*Math.sin(u*Math.PI*2)*d; out.sy*=1-0.13*k; out.sx*=1+0.11*k; }
+  else if(imp.kind==='startle'){ out.yW+=0.5*Math.sin(Math.min(u*1.4,1)*Math.PI)*d+0.05*Math.sin(u*34)*d; out.sy*=1+0.12*k; out.sx*=1/Math.sqrt(1+0.12*k); out.rot+=0.18*Math.sin(u*22)*d; }
+  else if(imp.kind==='nod'){ out.yW+=0.12*Math.sin(u*Math.PI*2)*d; out.rot+=0.05*Math.sin(u*Math.PI); }
+}
+
+// ---- director camera: author shots as {tx,ty,tz, yaw, pitch, dist, fov} (the same
+// target+orbit+dolly convention as window.__look), tween by lerping the PARAMS (so it
+// arcs + dollies, not a straight slide), and apply by pointing the real camera at it. ----
+function lookCam(L){ const ya=L.yaw*Math.PI/180, pa=L.pitch*Math.PI/180;
+  return { pos:[ L.tx+L.dist*Math.cos(pa)*Math.sin(ya), L.ty+L.dist*Math.sin(pa), L.tz+L.dist*Math.cos(pa)*Math.cos(ya) ],
+           tgt:[ L.tx, L.ty, L.tz ], fov:L.fov }; }
+function lerpLook(a,b,u){ const m=k=>a[k]+(b[k]-a[k])*u;
+  return { tx:m('tx'),ty:m('ty'),tz:m('tz'),yaw:m('yaw'),pitch:m('pitch'),dist:m('dist'),fov:m('fov') }; }
+function applyDirectorCam(){ const c=Cutscene.cam;
+  cam.position.set(c.pos[0],c.pos[1],c.pos[2]); cam.up.set(0,1,0);
+  cam.lookAt(c.tgt[0],c.tgt[1],c.tgt[2]);
+  if(Math.abs(cam.fov-c.fov)>1e-3){cam.fov=c.fov;cam.updateProjectionMatrix();} }
+
+// one scripted dialogue line, reusing the real Dialogue box (typewriter + per-speaker
+// voice + tap/Next). npc.name is the scene NPC so a 'Shen' speaker reads as the player
+// (blue), anyone else as the NPC (rose) — exactly the in-world dialogue colour rule.
+function csSay(speaker,text){
+  Dialogue.start({ name:'Adrian', dialogue:{ start:'l', nodes:{ l:{ text, speaker } } } }, 'l');
+}
+
+// ---- pet-shop intro props: a display table with 5 hamsters perched, that Shen knocks ----
+// pivot the group at the table's LEFT-bottom edge so it tips toward -x. opts.tipped builds it ALREADY
+// knocked over — the persistent REMNANT that stays in the shop after the cutscene (Shen knocked it
+// over; it doesn't vanish). opts.persistent makes it a real fixture, NOT a cutscene-swept csProp.
+const TABLE_TIP=1.5;   // the knocked-over rotation (shared by the live tip + the persistent remnant)
+function buildCutsceneTable(tx0,tz0,opts){
+  opts=opts||{};
+  const g=new THREE.Group(); g.position.set(tx0-0.75,0,tz0);
+  const off=0.75, top0=0.84, wood='#c2a07a', topc='#d9c3a3', pen='#b88a5e';
+  const slab=M(new THREE.BoxGeometry(1.5,0.12,0.92),topc,false,false); slab.position.set(off,top0,0); g.add(slab);
+  for(const [lx,lz] of [[-0.62,-0.36],[0.62,-0.36],[-0.62,0.36],[0.62,0.36]]){
+    const leg=M(new THREE.BoxGeometry(0.1,top0-0.06,0.1),wood,false,false); leg.position.set(off+lx,(top0-0.06)/2,lz); g.add(leg); }
+  const py=top0+0.18, ph=0.22, rail=(w,d,x,z)=>{ const r=M(new THREE.BoxGeometry(w,ph,d),pen,false,false); r.position.set(off+x,py,z); g.add(r); };
+  rail(1.24,0.06,0,-0.34); rail(1.24,0.06,0,0.34); rail(0.06,0.74,-0.62,0); rail(0.06,0.74,0.62,0);
+  const bed=M(new THREE.BoxGeometry(1.18,0.05,0.68),'#e8d8b4',false,false); bed.position.set(off,top0+0.10,0); g.add(bed);
+  if(opts.tipped) g.rotation.z=TABLE_TIP;                       // already knocked over (the remnant)
+  if(opts.persistent){ g.userData.fx='tipped_table'; }         // a real fixture — survives the cutscene + re-entries (NOT csProp)
+  else { g.userData.fx='cs_table'; g.userData.csProp=true; csTable=g; csTableBox={x:tx0,z:tz0,hw:0.78,hd:0.49}; }   // footprint for the clip guard
+  sceneRoot.add(g); return g;
+}
+function buildCutsceneHamsters(tx0,tz0){
+  csHamsters.length=0; const tex=txCacheU['out/hamster-paper.png']; if(!tex) return;
+  const H=0.55, W=H*(tex.image.width/tex.image.height);
+  for(let i=0;i<5;i++){
+    const m=new THREE.Mesh(new THREE.PlaneGeometry(W,H),
+      new THREE.MeshBasicMaterial({map:tex,transparent:true,alphaTest:0.22,depthWrite:false}));
+    // ONE row at the SAME depth + baseline so every hamster is the SAME on-screen size (a z-offset
+    // put the back ones further away → smaller + lower, reading as "a hamster shrunk").
+    const px=tx0+(i-2)*0.24, pz=tz0-0.02, py=1.06;
+    m.position.set(px,py,pz); m.renderOrder=2; m.userData.csProp=true; sceneRoot.add(m);
+    csHamsters.push({m,x:px,z:pz,y:py,phase:Math.random()*6.28,mode:'perch',t:0});
+  }
+}
+// Hamster behaviour is AUTONOMOUS + driven every cutscene frame (updateCutsceneHamsters in draw),
+// so the beats only TRIGGER transitions — they never freeze. Modes: perch (on the table) → loose
+// (spilled out, scurrying around the SHOP on little wandering loops) → flee (bolting out the door)
+// → gone. Christopher's pacing rule: the loose phase LOOPS continuously while the reaction dialogue
+// holds (player-paced, easy to follow); they only flee when the player advances the CUE line.
+const HAM_FLOOR=0.2;
+const randWander=()=>({ x:-4.3+Math.random()*8.6, z:-4.2+Math.random()*4.7 });   // open shop floor (in front of the counter)
+function releaseHamsters(){   // spill out of the knocked table → start scurrying around the shop
+  csHamsters.forEach((h)=>{ h.mode='loose'; h.t=0; h.fromY=h.y;
+    h.spd=1.5+Math.random()*0.9; h.hopRate=10+Math.random()*4; h.hp=Math.random()*6.28;
+    h.wt={ x:h.x+(Math.random()*3-1.5), z:h.z+0.4+Math.random()*1.4 }; });   // an initial outward burst, then free wander
+}
+function fleeHamsters(){      // the CUE: they all bolt for the door + file out (staggered = a stream, not a clump)
+  const doorX=-4.6, doorZ=-7.4;
+  csHamsters.forEach((h,i)=>{ if(h.mode==='gone')return; h.mode='flee'; h.fleeT=0; h.fleeDur=0.85+i*0.06+Math.random()*0.1;   // tight stagger → they file out as a PACK (no lone straggler holding the empty-door shot)
+    h.fromX=h.x; h.fromZ=h.z; h.toX=doorX+(Math.random()*0.8-0.4); h.toZ=doorZ+(Math.random()*0.4-0.2); });
+}
+function updateCutsceneHamsters(dt){
+  for(const h of csHamsters){ if(!h.m||h.mode==='gone')continue;
+    if(h.mode==='perch'){ h.m.scale.set(1,1,1); h.m.position.set(h.x, h.y+0.02*Math.sin(S.animClock*4+h.phase), h.z); faceYaw(h.m); continue; }
+    h.t+=dt;
+    if(h.mode==='loose'){                                    // scurry: wander to a point, repick on arrival; hop the whole time
+      const baseY=ease(h.fromY,HAM_FLOOR,smooth(clamp(h.t/0.4,0,1)));   // drop off the table to the floor over 0.4s
+      const dx=h.wt.x-h.x, dz=h.wt.z-h.z, d=Math.hypot(dx,dz);
+      if(d<0.4) h.wt=randWander(); else { const st=h.spd*dt; h.x+=dx/d*st; h.z+=dz/d*st; }
+      h.hp+=dt*h.hopRate; const hop=Math.abs(Math.sin(h.hp));
+      h.y=baseY+0.15*hop;
+      const sxm=1+0.12*(1-hop), sym=1-0.10*(1-hop); csHamMinScale=Math.min(csHamMinScale,sxm,sym);
+      h.m.position.set(h.x,h.y,h.z); h.m.scale.set(sxm,sym,1);
+    } else if(h.mode==='flee'){                              // bolt to the door + vanish
+      h.fleeT+=dt; const p=clamp(h.fleeT/h.fleeDur,0,1);
+      h.x=ease(h.fromX,h.toX,smooth(p)); h.z=ease(h.fromZ,h.toZ,smooth(p));
+      h.hp+=dt*(h.hopRate||12); const hop=Math.abs(Math.sin(h.hp)); h.y=HAM_FLOOR+0.16*hop;
+      const sxm=1+0.12*(1-hop), sym=1-0.10*(1-hop); csHamMinScale=Math.min(csHamMinScale,sxm,sym);
+      h.m.position.set(h.x,h.y,h.z); h.m.scale.set(sxm,sym,1);
+      h.m.material.opacity=p>0.85?clamp(1-(p-0.85)/0.15,0,1):1;
+      if(p>=1){ h.mode='gone'; h.m.visible=false; }
+    }
+    faceYaw(h.m);
+  }
+}
+
+// ---- per-frame framing TRACE: the permanent "go scene by scene — is anything weird?" guard.
+// Every cutscene frame records the beat's intended SUBJECT and whether that subject is actually
+// FRAMED (Shen / Adrian / both / hamsters on-screen), Shen's on-screen SIZE, and the smallest
+// hamster scale seen. __csReport() reduces it to violations the QA asserts on — so "the camera
+// zoomed in on someone who isn't there", a shrunk hamster, or Shen a tiny dot all fail loudly.
+let csTrace=[], csHamMinScale=9, _csLastEye=null;
+function csNDC(x,y,z){ const p=_tv.set(x,y,z).project(cam); return {nx:+p.x.toFixed(2),ny:+p.y.toFixed(2),on:Math.abs(p.x)<1.05&&Math.abs(p.y)<1.05&&p.z<1}; }
+function csRecord(){
+  if(!mesh) return; cam.updateMatrixWorld();
+  const gy=groundHeight(S.x,S.z);
+  const fy=_tv.set(S.x,gy+0.04,S.z).project(cam).y, hy=_tv.set(S.x,gy+SHEN_H,S.z).project(cam).y;
+  const shen=csNDC(S.x,gy+SHEN_H*0.55,S.z); shen.size=+(Math.abs(hy-fy)/2).toFixed(3);
+  const ad=_csAdrianNpc?csNDC(_csAdrianNpc.data.x,_csAdrianNpc.h*0.9,_csAdrianNpc.data.z):null;   // HEAD (for the head-stacking guard)
+  let hamOn=0; for(const h of csHamsters){ if((h.mode==='loose'||h.mode==='flee')&&h.m&&h.m.visible&&csNDC(h.x,h.y+0.2,h.z).on)hamOn++; }
+  // camera eye + frame-to-frame JUMP (a POP / hard cut in a tween) + a "behind the back wall /
+  // outside the room" sanity (a tween that swings the eye through geometry). Only meaningful in
+  // the DETERMINISTIC stepped filmstrip (fixed dt → a smooth tween is small per-frame).
+  const e=cam.position, eye={x:+e.x.toFixed(2),y:+e.y.toFixed(2),z:+e.z.toFixed(2)};
+  let jump=0; if(_csLastEye)jump=Math.hypot(eye.x-_csLastEye.x,eye.y-_csLastEye.y,eye.z-_csLastEye.z); _csLastEye=eye;
+  const camBad = eye.z<-7.6 || Math.abs(eye.x)>7.3 || eye.y<0.25;   // petshop room: behind back wall / past side walls / under floor
+  // CLIPPING guard: Shen's footprint CENTRE inside a STILL-STANDING solid prop (the table) = walking
+  // THROUGH it (an impossible move). She should stop at contact + knock it, never pass through. (Once
+  // the table is tipping — rotation past ~0.4 — it's no longer a standing obstacle, so stop checking.)
+  let clip=false;
+  if(csTable && csTableBox && csTable.rotation.z<0.4 && Math.abs(S.x-csTableBox.x)<csTableBox.hw && Math.abs(S.z-csTableBox.z)<csTableBox.hd) clip=true;
+  csTrace.push({beat:Cutscene.status().beat, subject:Cutscene.subject||null, dlg:Dialogue.active, shen, adrian:ad, hamOn, eye, jump:+jump.toFixed(2), camBad, clip});
+  if(csTrace.length>6000) csTrace.shift();
+}
+window.__csTrace=()=>csTrace.slice();
+// DETERMINISTIC frame-stepper: advance the active cutscene by EXACTLY dt and render one frame —
+// the way to sample the TWEENS densely (looking only at beat start/end states misses what happens
+// mid-motion). Auto-reveals + advances dialogue holds (after a few held frames) so stepping never
+// blocks, and self-starts an armed-but-not-yet-running cutscene. Caller __stopAuto()s first, then
+// loops __csStep(1/30) + screenshots. Returns the live beat/subject so the caller can label frames.
+let _csStepHold=0;
+window.__csStep=(dt)=>{
+  dt=dt||1/30;
+  if(!Cutscene.active && pendingCutscene && started) startPendingCutscene();
+  if(!Cutscene.active) return {active:false, done:true};
+  S.animClock+=dt;
+  Cutscene.step(dt);
+  // this is a MOTION-QA stepper, so skip the typewriter reveal (not motion) — fully reveal a line
+  // the frame it opens, then hold a few frames and advance, keeping the filmstrip focused on tweens.
+  if(Dialogue.active){ if(!Dialogue.done){ Dialogue.advance(); } else { _csStepHold++; if(_csStepHold>5){ _csStepHold=0; csNext(); } } }
+  else _csStepHold=0;
+  draw(dt);
+  return {active:Cutscene.active, beat:Cutscene.status().beat, subject:Cutscene.subject, dlg:Dialogue.active};
+};
+// Framing is judged ONLY while a dialogue line is actually showing (`dlg`) — that's exactly when
+// the camera must be ON its speaker. Camera TRANSITIONS (no dialogue) are exempt, so a tween that
+// briefly sweeps past empty floor isn't a false positive. The hamster escape is judged by its
+// peak on-screen count + the min run-scale (the shrink guard).
+window.__csReport=()=>{ const v={frames:csTrace.length,dlgFrames:0,shenOff:0,adrianOff:0,shenTiny:0,shenHuge:0,
+    bystanderInCU:0,hamMax:0,hamMinScale:+csHamMinScale.toFixed(2),maxJump:0,camBad:0,clip:0,bySubject:{}};
+  csTrace.forEach((r,i)=>{ const s=r.subject||'none'; v.bySubject[s]=(v.bySubject[s]||0)+1;
+    if(r.hamOn>v.hamMax)v.hamMax=r.hamOn;
+    if(i>2 && r.jump>v.maxJump)v.maxJump=r.jump;       // skip the initial snap-to-WIDE
+    if(r.camBad)v.camBad++;
+    if(r.clip)v.clip++;                                // Shen walked THROUGH the standing table
+    if(!r.dlg) return;
+    v.dlgFrames++;
+    // the OTHER character's HEAD stacking CLEARLY into a solo close-up (not a sliver at the edge):
+    // counted only when the bystander head projects well inside the frame (|ndc|<0.8).
+    const headIn=p=> p && Math.abs(p.nx)<0.8 && Math.abs(p.ny)<0.8 && p.on;
+    if(s==='shen'){ if(!r.shen.on)v.shenOff++; if(r.shen.size<0.05)v.shenTiny++; if(r.shen.size>0.85)v.shenHuge++; if(headIn(r.adrian))v.bystanderInCU++; }
+    else if(s==='adrian'){ if(r.adrian&&!r.adrian.on)v.adrianOff++; if(headIn(r.shen))v.bystanderInCU++; } });
+  v.maxJump=+v.maxJump.toFixed(2);
+  return v; };
+
+// the timeline. Closures over the scene objects; the engine keeps time. CHARACTER shots are
+// computed at RUNTIME from the live actor positions, so the camera always frames who's actually
+// there (a hardcoded target framed empty floor — "zooming in on someone who isn't there"). Fixed
+// shots only frame KNOWN static spots (establishing / the table / the door).
+function buildPetshopIntro(){
+  const TX=-0.9, TZ=-3.1;   // table LEFT of Adrian (back-right at the counter) → Shen ends up left of him → clean lateral shot-reverse-shot (no head-stacking) with natural camera angles
+  buildCutsceneTable(TX,TZ); buildCutsceneHamsters(TX,TZ);
+  csShen={yW:0,sx:1,sy:1,rot:0}; csShenMood='idle'; csAdrianMood='idle';
+  csImp={ shen:{t:-1,dur:0,kind:null}, adrian:{t:-1,dur:0,kind:null} };
+  csTrace=[]; csHamMinScale=9; _csLastEye=null; _csStepHold=0;
+  _csAdrianNpc=npcs.find(o=>o.data&&o.data.name==='Adrian')||null;
+  if(_csAdrianNpc) _csAdrianNpc.emote={yW:0,sx:1,sy:1,rot:0};
+  const adx=_csAdrianNpc?_csAdrianNpc.data.x:1.6, adz=_csAdrianNpc?_csAdrianNpc.data.z:-6.6;
+
+  const WIDE  ={tx:0.2,ty:1.2,tz:-3.4,yaw:0, pitch:23,dist:8.4,fov:48,subject:'wide'};
+  const WIDE2 ={tx:0.3,ty:1.15,tz:-3.2,yaw:2,pitch:20,dist:7.0,fov:47,subject:'wide'};
+  const PUNCH ={tx:TX,ty:0.8,tz:TZ,yaw:8, pitch:13,dist:3.7,fov:43,subject:'table'};
+  // character shots — evaluated at runtime so they always frame who's actually there.
+  // Shen's CU is angled well to the side (big yaw) + fairly tight so the OTHER character
+  // (Adrian, far behind the counter) sits off to the frame edge, never stacked on her head.
+  const tag=(f,s)=>{ f.subject=s; return f; };
+  // Shen ends the cutscene on the LEFT (she stumbled left); Adrian is back-RIGHT. So shoot her CU
+  // from her RIGHT (yaw POSITIVE): the sightline THROUGH Shen then points to the back-LEFT (door /
+  // left wall), so Adrian sits well off the right edge — a clean shot-reverse-shot, no head-stack.
+  // (Far bystanders converge toward frame-centre regardless of x, so the ANGLE — not mere lateral
+  // distance — is what excludes him. `bystanderInCU` guards it.)
+  const shenCU =(yaw)=> tag(()=>({tx:S.x,ty:1.18,tz:S.z,yaw:yaw==null?18:yaw,pitch:13,dist:3.6,fov:44,subject:'shen'}),'shen');
+  const shenMed=()=> tag(()=>({tx:S.x,ty:1.02,tz:S.z,yaw:16,pitch:12,dist:5.0,fov:48,subject:'shen'}),'shen');   // full-body medium (clean final hold; from Shen's right so Adrian stays off-frame)
+  const adrianCU=()=> tag(()=>({tx:adx,ty:1.55,tz:adz,yaw:15,pitch:11,dist:4.5,fov:46,subject:'adrian'}),'adrian');
+
+  let curLook=WIDE;
+  const subjOf=L=> (typeof L==='function'?L.subject:L.subject)||null;
+  const resolve=L=> typeof L==='function'?L():L;
+  function camTo(L,dur,ease){ let fromL=null,toL=null;
+    return { dur:dur||0.6, ease:ease||easeInOutCubic, subject:subjOf(L),
+      start(){ fromL=curLook; toL=resolve(L); },
+      update(u){ curLook=Object.assign(lerpLook(fromL,toL,u),{subject:toL.subject}); Cutscene.cam=lookCam(curLook); } }; }
+  const wait=(d,subject)=>({dur:d,subject});
+  const do_=fn=>({start:fn});
+  // a dialogue line; HOLDS for Next (the world keeps living underneath). opts.subject overrides the
+  // framing subject — use 'wide' for a line spoken over a wide two-shot (so the CU guards don't apply).
+  const say=(who,text,opts)=>({subject:(opts&&opts.subject)||who.toLowerCase(),start:()=>csSay(who,text),until:()=>!Dialogue.active,end:()=>{if(Dialogue.active)Dialogue.end();}});
+  const mood=(who,m)=>({start:()=>{ if(who==='shen')csShenMood=m; else csAdrianMood=m; }});
+  const impulse=(who,kind,dur)=>({start:()=>{ csImp[who]={t:0,dur:dur||0.5,kind}; }});
+  // Shen walks to (toX,toZ); the camera eases off the previous shot onto a Shen-FOLLOW over the
+  // first third, then tracks her — so she is framed the WHOLE walk (never an empty pan).
+  function walkShen(toX,toZ,dur){ let fx,fz,lastSeg,camFrom;
+    return { dur, ease:easeInOutCubic, subject:'shen',
+      start(){ fx=S.x;fz=S.z; lastSeg=Math.floor(S.walkPhase/Math.PI); S.mode='walk'; camFrom=Object.assign({},curLook); },
+      update(u,dt){ S.x=fx+(toX-fx)*u; S.z=fz+(toZ-fz)*u; S.mode='walk'; S.walkPhase+=dt*8.5;
+        if(Math.abs(toX-fx)>0.01)S.facing=toX<fx?-1:1;
+        const seg=Math.floor(S.walkPhase/Math.PI); if(seg!==lastSeg){lastSeg=seg;Sound.sfx('step',0.5);}
+        const follow={tx:S.x,ty:1.25,tz:S.z,yaw:-8,pitch:15,dist:5.1,fov:49,subject:'shen'};   // natural 3/4 follow (Shen's path is now left of Adrian, so he's off to the side, not behind)
+        curLook = u<0.32 ? Object.assign(lerpLook(camFrom,follow,smooth(u/0.32)),{subject:'shen'}) : follow;
+        Cutscene.cam=lookCam(curLook); },
+      end(){ S.mode='idle'; } }; }
+  // CHAOS: a high WIDE of the whole shop floor (where the loose hamsters scurry) with both characters
+  // in — held under the reaction dialogue so you SEE the hamsters running around the store.
+  const CHAOS={tx:-0.3,ty:0.95,tz:-2.6,yaw:0,pitch:21,dist:7.9,fov:54,subject:'wide'};
+  // ESCAPE: a tight, low shot on the DOOR (counter + characters off-frame); the fleeing hamsters
+  // file across it and out, big + readable. The knocked table sits off to the right.
+  const ESCAPE={tx:-3.7,ty:0.5,tz:-6.4,yaw:-3,pitch:10,dist:3.8,fov:48,subject:'hamsters'};
+  // KNOCK-OVER + SPILL: (A) ease the walk-follow into a PUNCH on the tipping table as the hamsters
+  // spill out, (B) pull back to the CHAOS wide as they scatter and start scurrying around the shop
+  // (loose). This beat ENDS once they're out + loose — it does NOT wait for them to leave; they keep
+  // looping around the store under the reaction dialogue and only flee on the player's CUE (see the
+  // flee beats below). Shen recoils back-LEFT (clear of the tipping table + left of Adrian).
+  function knockover(){ let released=false, scurried=false, rx,rz,entry, T=0;
+    return { dur:1.95, subject:'table',
+      start(){ Sound.sfx('knock'); csImp.shen={t:0,dur:0.6,kind:'stumble'}; rx=S.x; rz=S.z; entry=Object.assign({},curLook); T=0; },
+      update(u,dt){ T+=dt;
+        const r=smooth(clamp(T/0.52,0,1)); S.x=rx+(-1.7-rx)*r; S.z=rz+(-1.5-rz)*r;   // stumble back-left, off the table
+        let camL;
+        if(T<0.45){ camL=lerpLook(entry,PUNCH,smooth(clamp(T/0.32,0,1))); Cutscene.subject='table'; }           // punch: the SPILL
+        else { camL = T<1.1 ? lerpLook(PUNCH,CHAOS,smooth((T-0.45)/0.65)) : CHAOS; Cutscene.subject='wide'; }    // pull back to the chaos wide
+        camL=Object.assign({},camL);
+        if(T>=0.22&&T<0.54){ const k=(0.54-T)/0.32, a=0.07*k; camL.ty+=a*Math.sin(T*150); camL.tx+=a*0.6*Math.sin(T*101); }   // impact shake
+        curLook=Object.assign({},camL); Cutscene.cam=lookCam(camL);
+        if(csTable) csTable.rotation.z=1.5*smooth(clamp(T/0.38,0,1));
+        if(T>=0.28&&!released){ released=true; releaseHamsters(); Sound.sfx('squeak'); }   // spill → they scatter LOOSE (scurry around the shop)
+        if(T>=0.42&&!scurried){ scurried=true; Sound.sfx('scurry'); }
+        // (the hamsters update autonomously in updateCutsceneHamsters every draw frame — no call here)
+      },
+      end(){ if(csTable)csTable.rotation.z=1.5; curLook=Object.assign({},CHAOS); } }; }
+
+  return [
+    do_(()=>{ curLook=Object.assign({},WIDE); Cutscene.cam=lookCam(WIDE); Cutscene.subject='wide'; S.mode='idle'; S.facing=1; }),
+    camTo(WIDE2, 1.8),                                             // slow establishing push-in
+    camTo(adrianCU(), 0.7), impulse('adrian','nod',0.6),
+    say('Adrian',"Oh — welcome in! Make yourself right at home, dear."),
+    walkShen(-2.6,-1.6, 1.7),                                      // amble forward into the open shop floor (path stays LEFT of the table — no clipping through it)
+    walkShen(-0.9,-2.52, 0.7),                                     // turn + step up to the table front and BUMP it — stop at CONTACT, never walk through it
+    knockover(),                                                   // KNOCK + SPILL → hamsters loose; cam pulls to the CHAOS wide
+    wait(1.1,'wide'),                                              // a beat to take in the chaos (hamsters scurrying around the shop)
+    // ── reaction dialogue over the CHAOS wide: the hamsters LOOP around the shop the whole time
+    //    (player-paced — they keep scurrying until you advance), and only bolt for the door on the cue.
+    mood('shen','fluster'),
+    say('Shen',"Oh no — I'm so sorry! I didn't even see the table there!", {subject:'wide'}),
+    impulse('adrian','startle',0.8), mood('adrian','fret'),
+    say('Adrian',"Oh my goodness — my hamsters! They're scurrying all over the shop!", {subject:'wide'}),
+    mood('shen','perk'), impulse('shen','nod',0.55),
+    say('Shen',"Don't you worry — I'll round up every last one of them!", {subject:'wide'}),
+    say('Adrian',"Quick — there they go, slipping out the door!", {subject:'wide'}),   // ← the CUE
+    // ── the player advanced the cue → the hamsters bolt for the door + file out ──
+    do_(()=>{ fleeHamsters(); Sound.sfx('scurry'); }),
+    camTo(ESCAPE, 0.5, u=>1-Math.pow(1-u,3)),                      // whip to the door
+    { subject:'hamsters', dur:3.6, until:()=>csHamsters.every(h=>h.mode==='gone'),   // hold while they file out; END the instant the last is gone
+      update(){ curLook=Object.assign({},ESCAPE); Cutscene.cam=lookCam(ESCAPE); } },
+    // ── quiet aftermath: the quest (now the door is clear — clean shot-reverse-shot) ──
+    camTo(adrianCU(), 0.5, u=>1-Math.pow(1-u,3)), mood('adrian','fret'),   // ease-OUT off the (now empty) door fast — no dead hold on it
+    say('Adrian',"...And there they go. Five of them, loose in the town now."),
+    camTo(shenCU(18), 0.45), mood('shen','perk'), impulse('shen','nod',0.55),
+    say('Shen',"This was all my fault — I'll bring every one of them home, I promise!"),
+    camTo(adrianCU(), 0.5), mood('adrian','idle'), impulse('adrian','nod',0.6),
+    say('Adrian',"Would you? Oh, thank you, truly."),
+    do_(()=>{ Quests.start('q_hamsters'); }),                      // the Hamster Roundup begins
+    say('Adrian',"Be gentle, mind — they're shy little things. Bring them home to me here. ✿"),
+    wait(0.3,'adrian'),                                            // let Adrian's box close BEFORE the cut, so it doesn't linger over Shen's shot
+    camTo(shenMed(), 0.8), mood('shen','perk'), wait(0.8,'shen'),   // end on Shen alone — resolved + eager
+  ];
+}
+
+// arm a first-visit cutscene when arriving in its scene via a REAL entry (door / boot);
+// the debug game.enter() teleport deliberately does NOT arm it (QA wants the static room).
+function maybeArmCutscene(){
+  const id=SCENE&&SCENE.cutscene;
+  if(!id || !started || seenCutscenes.has(id) || Cutscene.active) return;
+  // A quest-giving cutscene is moot once its quest is already underway — an OLD save that
+  // started the Hamster Roundup the previous (dialogue-only) way, or a debug path, must NOT
+  // get the intro replayed mid-quest. Mark it seen + skip so it can never fire late.
+  if(id==='cs_petshop_intro' && Quests.started('q_hamsters')){ seenCutscenes.add(id); persist(); return; }
+  pendingCutscene=id;
+}
+function startPendingCutscene(){
+  const id=pendingCutscene; pendingCutscene=null;
+  if(!id || Cutscene.active) return;
+  const beats = id==='cs_petshop_intro' ? buildPetshopIntro() : null;
+  if(!beats){ seenCutscenes.add(id); return; }                    // unknown id → mark seen, skip
+  held.up=held.down=held.left=held.right=false; edgeJump=edgeTalk=false;
+  nearNpc=null; nearPortal=null; if(Dialogue.active)Dialogue.end();
+  document.getElementById('talkPrompt').classList.remove('on');
+  document.body.classList.add('cutscene'); Sound.resume();
+  Cutscene.play(beats, { label:id, onEnd:()=>endCutscene(id) });
+}
+function endCutscene(id){
+  seenCutscenes.add(id);
+  // LEAVE the knocked-over table — Shen tipped it; it stays in the shop as the remnant (re-built on
+  // every later entry by buildInterior when the cutscene is seen). Convert it from a cutscene csProp
+  // to a permanent 'tipped_table' fixture so the teardown sweep below doesn't take it.
+  if(csTable){ csTable.userData.csProp=false; csTable.userData.fx='tipped_table'; csTable.rotation.z=TABLE_TIP; csTable=null; } csTableBox=null;
+  // GENERIC teardown: drop EVERY remaining cutscene-spawned prop (userData.csProp — the hamsters, who
+  // fled out the door) so nothing a cutscene built is left stuck in the room. Standing rule for ALL
+  // cutscenes. (The table is now untagged → it stays.)
+  for(const h of csHamsters){ if(h.m)sceneRoot.remove(h.m); } csHamsters.length=0;
+  if(sceneRoot){ const strays=[]; sceneRoot.traverse(o=>{ if(o.userData&&o.userData.csProp)strays.push(o); }); for(const o of strays) sceneRoot.remove(o); }
+  if(_csAdrianNpc){ _csAdrianNpc.emote=null; _csAdrianNpc=null; }
+  csShen=null; csShenMood='idle'; csAdrianMood='idle';
+  if(!Quests.started('q_hamsters')) Quests.start('q_hamsters');   // belt-and-suspenders (e.g. a skip)
+  // hand the camera back to the gameplay zone rig from where the cutscene left it
+  const c=Cutscene.cam; CAMRIG.pos.set(c.pos[0],c.pos[1],c.pos[2]); CAMRIG.tgt.set(c.tgt[0],c.tgt[1],c.tgt[2]);
+  CAMRIG.fov=c.fov; CAMRIG.pitch=0; blend=null; activeZone=pickZone(S.x,S.z);
+  document.body.classList.remove('cutscene');
+  S.mode='idle'; talkCooldown=0.4; portalCooldown=0.6; persist();
+}
+function csNext(){ if(!Cutscene.active)return; if(Dialogue.active)Dialogue.advance(); else Cutscene.next(); }
+
 function draw(dt){
   Sky.update(dt,cam);                       // advance day/night (wall clock — runs even while paused)
   if(!mesh){FX.render();return;}
   if(talkCooldown>0)talkCooldown-=dt;
   if(portalCooldown>0)portalCooldown-=dt;
   if(playing)Dialogue.tick(dt);
-  cameraFrame(S,dt);
+  if(Cutscene.active) applyDirectorCam(); else cameraFrame(S,dt);   // a cutscene drives its own camera
   const q=pose(S);
   if(!Dinit){D.yW=q.yW;D.sx=q.sx;D.sy=q.sy;D.rot=q.rot;Dinit=true;}
   D.yW =damp(D.yW, q.yW, 0.035,dt);   // height: snappy so jumps stay responsive
@@ -2168,7 +2611,13 @@ function draw(dt){
   // poke up through her (no sink/clip). On flat ground gy is constant → this is a no-op.
   if(Dgy==null)Dgy=gy; Dgy=Math.max(damp(Dgy,gy,0.05,dt),gy);
   shen.position.set(S.x,Dgy+GROUND_EPS,S.z); faceYaw(shen);
-  mesh.position.y=SHEN_H/2+D.yW; shen.scale.set(D.sx*transShenScale,D.sy*transShenScale,1); shen.rotation.z=D.rot;
+  // cutscene emotion overlay: personality stays in MOTION (squash/lean/hop), layered
+  // on top of the normal pose — never a tween between drawings. csShen is non-null only
+  // during a cutscene; moodOffset is the held mood, applyImpulse a decaying one-shot jolt.
+  let eYW=0,eSX=1,eSY=1,eROT=0;
+  if(csShen){ moodOffset(csShenMood,S.animClock,csShen); applyImpulse(csShen,csImp.shen,dt);
+    eYW=csShen.yW; eSX=csShen.sx; eSY=csShen.sy; eROT=csShen.rot; }
+  mesh.position.y=SHEN_H/2+D.yW+eYW; shen.scale.set(D.sx*transShenScale*eSX,D.sy*transShenScale*eSY,1); shen.rotation.z=D.rot+eROT;
   const k=clamp(D.yW/MAX_LIFT,0,1);
   shadow.position.set(S.x,gy+GROUND_EPS,S.z); const ss=1-0.5*k; shadow.scale.set(ss,ss,1);
   shadow.material.opacity=(1-0.55*k);
@@ -2203,12 +2652,15 @@ function draw(dt){
         const nm=o.rep.seq[o.repIdx], tex=o.poses[nm];
         if(tex){ o.mesh.material.map=tex; o.mesh.material.needsUpdate=true; }
         if(o.rep.sfxOn===nm){ const pg=proxGain(o.data.x,o.data.z); if(pg>0) Sound.sfx('lift',pg); } } }
-    let sy=1+0.02*Math.sin(t*2.0), yW=0;
+    let sy=1+0.02*Math.sin(t*2.0), yW=0, sx=null, rot=0.012*Math.sin(t*1.3);
     if(o.greet>0){o.greet=Math.max(0,o.greet-dt);const p=1-o.greet/0.5;
       yW=Math.sin(p*Math.PI)*0.5; sy=1+0.06*Math.sin(p*Math.PI);}
+    // cutscene emotion overlay (Adrian) — same MOTION-not-tween rule as Shen's, layered on
+    if(o.emote){ moodOffset(o===_csAdrianNpc?csAdrianMood:'idle',S.animClock,o.emote); applyImpulse(o.emote,csImp.adrian,dt);
+      yW+=o.emote.yW; sy*=o.emote.sy; sx=(1/Math.sqrt(sy))*o.emote.sx; rot+=o.emote.rot; }
     faceYaw(o.group);
-    o.group.scale.set(1/Math.sqrt(sy),sy,1);
-    o.group.rotation.z=0.012*Math.sin(t*1.3);
+    o.group.scale.set(sx!=null?sx:1/Math.sqrt(sy),sy,1);
+    o.group.rotation.z=rot;
     o.mesh.position.y=o.h/2+yW;
   });
   billboards.forEach(faceYaw);   // pickups + NPCs yaw to the rotating camera
@@ -2225,12 +2677,18 @@ function draw(dt){
   for(const f of ifish){ f.m.position.x=f.ax+0.45*Math.sin(S.animClock*0.7+f.ph);
     f.m.position.y=f.base+0.06*Math.sin(S.animClock*1.3+f.ph*1.7);
     f.m.scale.x=(Math.cos(S.animClock*0.7+f.ph)>=0?1.5:-1.5); }
+  // cutscene props (the pet-shop intro's table hamsters): yaw to camera + perch bob;
+  // their RUN is driven by the cutscene beat. No-op outside a cutscene (empty array).
+  if(csHamsters.length) updateCutsceneHamsters(dt);
   // timed ambient sounds (e.g. the birdcage chirp) — spatial: gated by player proximity,
-  // never fired when far, never while paused/talking. Each schedules its own next beat.
-  if(playing&&!Dialogue.active&&!trans){ for(const a of ambients){ a.next-=dt;
+  // never fired when far, never while paused/talking/in a cutscene. Each schedules its own beat.
+  if(playing&&!Dialogue.active&&!trans&&!Cutscene.active){ for(const a of ambients){ a.next-=dt;
     if(a.next<=0){ const e=a.every||[3,6]; a.next=e[0]+Math.random()*(e[1]-e[0]);
       const pg=proxGain(a.x,a.z); if(pg>0.02) Sound.sfx(a.type,pg); } } }
 
+  // a cutscene locks out the talk/door prompts entirely (input is the engine's; no walking)
+  if(Cutscene.active){ document.getElementById('talkPrompt').classList.remove('on');
+    document.body.classList.toggle('talking',Dialogue.active); csRecord(); updateDayBar(); FX.render(); return; }
   // proximity → nearest talkable NPC + floating prompt (off-duty NPCs are not talkable)
   nearNpc=null;
   if(!Dialogue.active && talkCooldown<=0 && !dnTrans){let best=1e9;
@@ -2290,6 +2748,10 @@ let aiMove=null, aiTarget=null, aiJump=false;
 addEventListener('keydown',e=>{const k=e.key.toLowerCase();
   if(!started)return;                        // title screen owns input until play begins
   Sound.resume();                            // browsers gate audio behind a gesture
+  if(Cutscene.active){                        // a cutscene owns input: only Next; no walk/journal
+    if(k===' '||k==='enter'||k==='e'){e.preventDefault();if(!e.repeat)csNext();return;}
+    if(['arrowup','arrowdown','arrowleft','arrowright','w','a','s','d','escape'].includes(k))e.preventDefault();
+    return;}
   if(k==='escape'&&!e.repeat){e.preventDefault();toggleJournal();return;}
   if(k==='m'&&!e.repeat){Sound.toggle();syncMenu();return;}
   if(journalOpen()){menuNav.key(e);return;}  // open journal: keys drive the menu cursor
@@ -2404,7 +2866,7 @@ function openJournal(tab){Sound.resume(); playing=false; held.up=held.down=held.
   document.getElementById('bMenu').classList.remove('badge');
   journal.classList.add('on'); menuNav.sel=0; menuNav.rebuild(); Sound.sfx('book');}  // build the keyboard cursor once the journal is actually open
 function closeJournal(){journal.classList.remove('on'); edgeJump=edgeTalk=false; last=null; playing=true; Sound.sfx('bookClose');}
-function toggleJournal(){Sound.resume(); journalOpen()?closeJournal():openJournal();}
+function toggleJournal(){if(Cutscene.active)return; Sound.resume(); journalOpen()?closeJournal():openJournal();}
 
 // --- keyboard cursor for the journal (so the whole game is playable without a mouse) ---
 // One roving selection over a flat vertical list: the two binder tabs, then the active
@@ -2549,6 +3011,7 @@ document.getElementById('bTalk').addEventListener('click',()=>{
 // game works. Choices are tapped directly, so ignore taps on a choice / while the
 // choice menu is open (there you pick an option, you don't "continue").
 function tapAdvance(e){
+  if(Cutscene.active){ if(e)e.preventDefault(); Sound.resume(); csNext(); return; }   // tap = Next during a cutscene
   if(!Dialogue.active) return;
   if(e&&e.target&&e.target.closest&&e.target.closest('.dlgChoice')) return; // choice handles itself
   if(Dialogue.choiceMode) return;                                          // pick a choice, don't advance
@@ -2559,7 +3022,7 @@ function tapAdvance(e){
 document.getElementById('dlg').addEventListener('pointerdown',tapAdvance);
 canvas.addEventListener('pointerdown',e=>{ if(started) tapAdvance(e); });
 function resolveInput(){
-  if(!started) return {moveX:0,moveZ:0,jump:false};
+  if(!started || Cutscene.active) return {moveX:0,moveZ:0,jump:false};   // a cutscene fully owns Shen
   // camera-relative: UP = into the screen (where the camera looks), LEFT/RIGHT = screen-relative
   const fwd=(held.up?1:0)-(held.down?1:0), stf=(held.right?1:0)-(held.left?1:0);
   let mx=0,mz=0;
@@ -2580,6 +3043,8 @@ function frame(){const now=performance.now();if(last===null)last=now;
   let e=(now-last)/1000;last=now; if(e>0.5)e=0.5;
   if(trans){ edgeTalk=edgeJump=false; updateTransition(e); draw(e); return; }   // a door transition owns the loop
   if(dnTrans){ edgeTalk=edgeJump=false; updateDayNight(e); draw(e); return; }   // a day/night curtain owns the loop
+  if(pendingCutscene && started && !Cutscene.active) startPendingCutscene();    // a first-visit cutscene was armed
+  if(Cutscene.active){ edgeTalk=edgeJump=false; S.animClock+=e; Cutscene.step(e); draw(e); return; }  // a cutscene owns the loop (day/night can't begin mid-cutscene)
   if(started&&playing&&!Dialogue.active){ maybeBeginDayNight();                 // 21:00/07:00 crossing → curtain
     if(dnTrans){ draw(e); return; } }
   if(started&&edgeTalk){edgeTalk=false;
@@ -2634,11 +3099,11 @@ function openSettingsFromMenu(){ openJournal('settings'); }
 // New Game / restart reset: wipe the global collected set + quests and return to
 // town. If the preview/journal was inside another scene, rebuild town (under a fade).
 async function resetToTown(){
-  collected=new Set();
+  collected=new Set(); seenCutscenes=new Set();                 // a New Game replays first-visit cutscenes
+  Quests.init(world.quests, null, Quests.ctx);                  // fresh quests FIRST so the hamster gating sees them unstarted
   if(curScene!=='town') await swapScene('town', SPECS.town.spawn);
-  else { S=initState(SPECS.town.collectibles, SPECS.town.spawn);
+  else { S=initState(activeCollectibles(SPECS.town), SPECS.town.spawn);
     for(const c of S.collectibles) c.got=false; activeZone=null; blend=null; _warp(S.x,S.z); }
-  Quests.init(world.quests, null, Quests.ctx);
 }
 function beginGame(fresh){
   Sound.resume();                           // first gesture — unlock audio
@@ -2651,7 +3116,7 @@ function beginGame(fresh){
   if(journalOpen())closeJournal();             // a Settings peek may still be open
   if(fresh){ Save.wipe(); const swap=curScene!=='town', F=fadeEl();   // New Game resets quests + scene too
     (async()=>{ if(swap&&F)F.style.opacity='1'; await resetToTown(); if(swap&&F)F.style.opacity='0'; listDirty=true; persist(); })();
-  } else persist();                         // stamp a save the moment play begins
+  } else { persist(); maybeArmCutscene(); }  // Continue: a save sitting in an unseen first-visit scene plays its cutscene
 }
 addEventListener('keydown',e=>{
   if(started)return;                        // only steer the menu before play
@@ -2667,7 +3132,7 @@ addEventListener('keydown',e=>{
 });
 
 // autosave: on hide / pagehide (true "exit any time") + a 10s crash backstop.
-function persist(){if(!started)return;try{Save.write(S,world,BUILD,{quests:Quests.serialize(),collected:[...collected],scene:curScene});}catch{}}
+function persist(){if(!started)return;try{Save.write(S,world,BUILD,{quests:Quests.serialize(),collected:[...collected],scene:curScene,cutscenes:[...seenCutscenes]});}catch{}}
 addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')persist();});
 addEventListener('pagehide',persist);
 setInterval(persist,10000);
@@ -2769,6 +3234,11 @@ window.game={
   enter:(id,spawn)=>{ if(!SPECS[id])return 'no scene '+id; const ws=started; started=true;
     return swapScene(id, spawn?(SPECS[id].spawns&&SPECS[id].spawns[spawn])||{x:+spawn.x,z:+spawn.z}:SPECS[id].spawn).then(()=>{started=ws;return 'entered '+id;}); },
   useDoor:()=>{ const p=nearPortal||portals[0]; if(!p)return 'no door'; const to=p.to; startPortal(p); return 'enter '+to; },
+  // cutscene debug surface
+  cutscene:()=>({...Cutscene.status(), pending:pendingCutscene, seen:[...seenCutscenes]}),
+  csNext:()=>{ csNext(); return Cutscene.status(); },
+  csSkip:()=>{ if(Cutscene.active)Cutscene.skip(); return Cutscene.status(); },
+  playCutscene:(id)=>{ if(!started)return 'not started'; if(SCENE&&SCENE.cutscene&&(!id||id===SCENE.cutscene)){ seenCutscenes.delete(SCENE.cutscene); pendingCutscene=SCENE.cutscene; return 'armed '+SCENE.cutscene; } return 'no cutscene here'; },
   // quests + journal debug surface
   quests:()=>Quests.list(),
   startQuest:(id)=>Quests.start(id)?('started '+id):'no',

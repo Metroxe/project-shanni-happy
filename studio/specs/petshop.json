@@ -1,6 +1,8 @@
 {
   "interior": true,
   "music": "out/music/shop.ogg",
+  "cutscene": "cs_petshop_intro",
+  "cutsceneTable": { "x": -0.9, "z": -3.1 },
   "ground": "c9b48f",
   "bounds": { "xmin": -6.3, "xmax": 6.3, "zmin": -7.2, "zmax": 1.5 },
   "spawn": { "x": -4.6, "z": -5.9 },
